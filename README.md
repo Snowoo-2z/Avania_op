@@ -22,8 +22,8 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
 
 - **Monde vide** (aucune construction prédéfinie) : terrain plat d'herbe,
   bordure d'eau, arbres & rochers éparpillés comme ressources.
-- **Collecte de blocs** : clic gauche = casser (récolte) ou pelleter le
-  sable / la terre, clic droit = poser.
+- **Collecte de blocs** : maintenir le clic gauche pour miner progressivement
+  (la durée dépend de la ressource et de l'outil), clic droit = poser.
 - **Inventaire réaliste** : 36 cases (27 stockage + 9 barre rapide), piles de 64,
   déplacement par glisser-déposer / shift-clic, compteur de capacité et détails de l'objet.
 - **Fabrication façon Minecraft** (touche `C` ou bouton 🛠️) : grille 3×3,
@@ -50,8 +50,8 @@ node server.js
 | Action | Touche / clic |
 |---|---|
 | Se déplacer | ZQSD / WASD / flèches |
-| Casser un bloc (récolter) | Clic gauche sur l'arbre / le rocher |
-| Pelleter (sable, terre) | Clic gauche sur la plage / la terre |
+| Miner / récolter | Maintenir le clic gauche sur la ressource |
+| Pelleter (sable, terre) | Maintenir le clic gauche sur la plage / la terre |
 | Poser le bloc sélectionné | Clic droit |
 | Changer d'objet | Touches 1..9 / molette |
 | Ouvrir l'inventaire | Touche `E` |

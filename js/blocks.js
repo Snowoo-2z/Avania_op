@@ -21,25 +21,25 @@ export const BLOCK_DEFS = {
   // --- ressources naturelles (objets à casser) ---
   tree: {
     id: 'tree', label: 'Arbre', kind: 'object', solid: true, breakable: true,
-    drop: 'wood', color: '#4f9337', requiredTool: 'axe',
+    drop: 'wood', color: '#4f9337', requiredTool: 'axe', breakTime: 0.9,
   },
   rock: {
     id: 'rock', label: 'Rocher', kind: 'object', solid: true, breakable: true,
-    drop: 'stone', color: '#8d8d94', requiredTool: 'pickaxe',
+    drop: 'stone', color: '#8d8d94', requiredTool: 'pickaxe', breakTime: 1.25,
   },
 
   // --- blocs constructibles (posés puis cassables) ---
-  wood:  { id: 'wood',  label: 'Bois',   kind: 'block', solid: true, breakable: true, drop: 'wood',  color: '#b07a3c', requiredTool: 'axe' },
-  stone: { id: 'stone', label: 'Pierre', kind: 'block', solid: true, breakable: true, drop: 'stone', color: '#9a9aa3', requiredTool: 'pickaxe' },
+  wood:  { id: 'wood',  label: 'Bois',   kind: 'block', solid: true, breakable: true, drop: 'wood',  color: '#b07a3c', requiredTool: 'axe', breakTime: 0.9 },
+  stone: { id: 'stone', label: 'Pierre', kind: 'block', solid: true, breakable: true, drop: 'stone', color: '#9a9aa3', requiredTool: 'pickaxe', breakTime: 1.25 },
 
   // --- blocs fabriqués ---
-  plank:  { id: 'plank',  label: 'Planche', kind: 'block', solid: true, breakable: true, drop: 'plank',  color: '#c89a5e', requiredTool: 'axe' },
-  brick:  { id: 'brick',  label: 'Brique',  kind: 'block', solid: true, breakable: true, drop: 'brick',  color: '#b4553f', requiredTool: 'pickaxe' },
-  glass:  { id: 'glass',  label: 'Verre',   kind: 'block', solid: true, breakable: true, drop: 'glass',  color: '#bfe3ea', requiredTool: 'pickaxe' },
+  plank:  { id: 'plank',  label: 'Planche', kind: 'block', solid: true, breakable: true, drop: 'plank',  color: '#c89a5e', requiredTool: 'axe', breakTime: 0.7 },
+  brick:  { id: 'brick',  label: 'Brique',  kind: 'block', solid: true, breakable: true, drop: 'brick',  color: '#b4553f', requiredTool: 'pickaxe', breakTime: 1.05 },
+  glass:  { id: 'glass',  label: 'Verre',   kind: 'block', solid: true, breakable: true, drop: 'glass',  color: '#bfe3ea', requiredTool: 'pickaxe', breakTime: 0.6 },
 
   // --- blocs de terrain (récoltés à la pelle, reposés) ---
-  sandBlock: { id: 'sandBlock', label: 'Sable', kind: 'block', solid: true, breakable: true, drop: 'sand', color: '#e2c88a', requiredTool: 'shovel' },
-  dirtBlock: { id: 'dirtBlock', label: 'Terre', kind: 'block', solid: true, breakable: true, drop: 'dirt', color: '#8a6a46', requiredTool: 'shovel' },
+  sandBlock: { id: 'sandBlock', label: 'Sable', kind: 'block', solid: true, breakable: true, drop: 'sand', color: '#e2c88a', requiredTool: 'shovel', breakTime: 0.5 },
+  dirtBlock: { id: 'dirtBlock', label: 'Terre', kind: 'block', solid: true, breakable: true, drop: 'dirt', color: '#8a6a46', requiredTool: 'shovel', breakTime: 0.45 },
 };
 
 // Les objets que le joueur peut posséder. maxStack reprend le principe
@@ -151,6 +151,6 @@ export const RECIPES = [
 
 // Sols que l'on peut creuser à la pelle (clic gauche) pour récolter.
 export const DIGGABLE_FLOOR = {
-  sand: { drop: 'sand', becomes: 'dirt', tool: 'shovel' },
-  dirt: { drop: 'dirt', becomes: 'grass', tool: 'shovel' },
+  sand: { drop: 'sand', becomes: 'dirt', tool: 'shovel', breakTime: 0.5 },
+  dirt: { drop: 'dirt', becomes: 'grass', tool: 'shovel', breakTime: 0.45 },
 };

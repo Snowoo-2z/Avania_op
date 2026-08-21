@@ -64,6 +64,9 @@ export class Game {
     this.actionCooldown = 0;
     this.paused = false;
     this.toastTimer = 0;
+    // Progression de minage : le bloc ne disparaît qu'après un maintien
+    // du clic gauche. Le bon outil réduit la durée nécessaire.
+    this.mining = { tx: -1, ty: -1, progress: 0, duration: 0 };
 
     this.running = false;
     this.onFrame = this.onFrame.bind(this);
@@ -86,7 +89,15 @@ export class Game {
       this.input.mouse.rightClicked = false;
       this.input.mouse.leftDown = false;
       this.input.mouse.rightDown = false;
+      this.resetMining();
     }
+  }
+
+  resetMining() {
+    this.mining.tx = -1;
+    this.mining.ty = -1;
+    this.mining.progress = 0;
+    this.mining.duration = 0;
   }
 
   notify(message) {
@@ -159,7 +170,7 @@ export class Game {
 
     this.updateTarget();
     this.handleHotbarKeys();
-    this.handleClicks();
+    this.handleClicks(dt);
   }
 
   // ------------------------------------------------------------
@@ -201,70 +212,95 @@ export class Game {
   }
 
   // ------------------------------------------------------------
-  //  Casser (clic gauche) / Poser (clic droit)
+  //  Casser (maintenir clic gauche) / Poser (clic droit)
   // ------------------------------------------------------------
-  handleClicks() {
+  handleClicks(dt) {
     const clickedLeft = this.input.mouse.leftClicked;
     const clickedRight = this.input.mouse.rightClicked;
     const holdingLeft = this.input.mouse.leftDown;
     const holdingRight = this.input.mouse.rightDown;
-    if (!clickedLeft && !clickedRight && !holdingLeft && !holdingRight) return;
 
-    // Un clic est consommé même s'il est hors de portée. Le maintien du
-    // bouton, lui, réessaie à la fin du délai d'action (outils plus rapides).
+    // Les clics ponctuels sont consommés ici. Pour miner, le joueur doit
+    // garder le bouton gauche enfoncé : le bloc se fissure progressivement.
     this.input.mouse.leftClicked = false;
     this.input.mouse.rightClicked = false;
-    if (this.actionCooldown > 0 || !this.inReach) return;
 
-    if (clickedLeft || holdingLeft) {
-      const i = this.world.idx(this.targetTx, this.targetTy);
-      const oldFloor = this.world.floor[i];
-      const existingBlock = this.world.blockAt(this.targetTx, this.targetTy);
-      const possibleDrop = existingBlock
-        ? BLOCK_DEFS[existingBlock]?.drop
-        : DIGGABLE_FLOOR[this.world.floorAt(this.targetTx, this.targetTy)]?.drop;
+    if (holdingLeft) this.mineTarget(dt);
+    else if (clickedLeft || this.mining.progress > 0) this.resetMining();
 
-      // Ne détruit pas une ressource si toutes les cases sont pleines.
-      if (possibleDrop && !this.inventory.canAdd(possibleDrop, 1)) {
-        this.notify('Inventaire plein : libère une case avant de récolter.');
-        return;
-      }
+    if (clickedRight || holdingRight) this.placeSelectedBlock();
+  }
 
-      const selected = this.inventory.getSelectedStack();
-      const selectedDef = selected ? ITEM_DEFS[selected.id] : null;
-      const requiredTool = this.world.requiredToolAt(this.targetTx, this.targetTy);
-      const effectiveTool = selectedDef?.toolType === requiredTool;
-      const drop = this.world.breakBlock(this.targetTx, this.targetTy);
-      if (drop) {
-        this.inventory.add(drop);
-        if (selectedDef?.type === 'tool') {
-          const result = this.inventory.damageSelectedTool(1);
-          if (result.broken) this.notify(`${selectedDef.label} s'est cassé.`);
-          else if (effectiveTool && clickedLeft) this.notify(`${selectedDef.label} efficace pour cette ressource.`);
-        } else if (requiredTool && clickedLeft) {
-          const labels = { axe: 'une hache', pickaxe: 'une pioche', shovel: 'une pelle' };
-          this.notify(`Conseil : utilise ${labels[requiredTool] || 'un outil'} pour aller plus vite.`);
-        }
-      }
-      if (this.world.floor[i] !== oldFloor) this.invalidateFloorChunk(this.targetTx, this.targetTy);
-
-      // Le maintien de la souris mine en continu. L'efficacité Minecraft
-      // est volontairement simple : les outils adaptés sont plus rapides.
-      const efficiency = effectiveTool ? (selectedDef.efficiency || 2) : 1;
-      this.actionCooldown = 0.34 / efficiency;
+  mineTarget(dt) {
+    if (!this.inReach || !this.world.inBounds(this.targetTx, this.targetTy)) {
+      this.resetMining();
+      return;
     }
 
-    if (clickedRight || holdingRight) {
-      const selected = this.inventory.getSelectedStack();
-      const item = selected?.id;
-      if (!item || !ITEM_DEFS[item]?.place) return;
-      if (this.isPlayerOnTile(this.targetTx, this.targetTy)) return;
+    const duration = this.world.breakDurationAt(this.targetTx, this.targetTy);
+    if (duration <= 0) {
+      this.resetMining();
+      return;
+    }
 
-      const placed = this.world.placeBlock(this.targetTx, this.targetTy, item);
-      if (placed) {
-        this.inventory.takeSlot(this.inventory.selectedSlotIndex(), 1);
-        this.actionCooldown = 0.16;
+    if (this.mining.tx !== this.targetTx || this.mining.ty !== this.targetTy) {
+      this.mining.tx = this.targetTx;
+      this.mining.ty = this.targetTy;
+      this.mining.progress = 0;
+    }
+
+    const selected = this.inventory.getSelectedStack();
+    const selectedDef = selected ? ITEM_DEFS[selected.id] : null;
+    const requiredTool = this.world.requiredToolAt(this.targetTx, this.targetTy);
+    const effectiveTool = selectedDef?.toolType === requiredTool;
+
+    // Une hache / pioche / pelle adaptée accélère réellement le minage.
+    // La main reste utilisable, mais demande davantage de temps.
+    const speed = effectiveTool
+      ? (selectedDef.efficiency || 1)
+      : selectedDef?.type === 'tool' ? 0.7 : 0.55;
+    this.mining.duration = duration / speed;
+    this.mining.progress += dt / this.mining.duration;
+
+    if (this.mining.progress < 1) return;
+
+    const existingBlock = this.world.blockAt(this.targetTx, this.targetTy);
+    const possibleDrop = existingBlock
+      ? BLOCK_DEFS[existingBlock]?.drop
+      : DIGGABLE_FLOOR[this.world.floorAt(this.targetTx, this.targetTy)]?.drop;
+
+    // Ne détruit pas une ressource si toutes les cases sont pleines.
+    if (possibleDrop && !this.inventory.canAdd(possibleDrop, 1)) {
+      this.notify('Inventaire plein : libère une case avant de récolter.');
+      this.resetMining();
+      return;
+    }
+
+    const i = this.world.idx(this.targetTx, this.targetTy);
+    const oldFloor = this.world.floor[i];
+    const drop = this.world.breakBlock(this.targetTx, this.targetTy);
+    if (drop) {
+      this.inventory.add(drop);
+      if (selectedDef?.type === 'tool') {
+        const result = this.inventory.damageSelectedTool(1);
+        if (result.broken) this.notify(`${selectedDef.label} s'est cassé.`);
       }
+    }
+    if (this.world.floor[i] !== oldFloor) this.invalidateFloorChunk(this.targetTx, this.targetTy);
+    this.resetMining();
+  }
+
+  placeSelectedBlock() {
+    if (this.actionCooldown > 0 || !this.inReach) return;
+    const selected = this.inventory.getSelectedStack();
+    const item = selected?.id;
+    if (!item || !ITEM_DEFS[item]?.place) return;
+    if (this.isPlayerOnTile(this.targetTx, this.targetTy)) return;
+
+    const placed = this.world.placeBlock(this.targetTx, this.targetTy, item);
+    if (placed) {
+      this.inventory.takeSlot(this.inventory.selectedSlotIndex(), 1);
+      this.actionCooldown = 0.16;
     }
   }
 
@@ -416,6 +452,27 @@ export class Game {
       ctx.strokeRect(px + 1, py + 1, TILE - 2, TILE - 2);
     }
     ctx.restore();
+
+    // Barre de progression de minage, lisible sans ajouter d'interface fixe.
+    if (
+      this.mining.progress > 0
+      && this.mining.tx === this.targetTx
+      && this.mining.ty === this.targetTy
+    ) {
+      const progress = Math.min(1, this.mining.progress);
+      const barX = px + 4;
+      const barY = py + TILE - 6;
+      const barW = TILE - 8;
+      ctx.save();
+      ctx.fillStyle = 'rgba(20,22,24,0.86)';
+      ctx.fillRect(barX, barY, barW, 5);
+      ctx.fillStyle = progress > 0.7 ? '#f1d36d' : '#d8dadd';
+      ctx.fillRect(barX + 1, barY + 1, (barW - 2) * progress, 3);
+      ctx.strokeStyle = 'rgba(0,0,0,0.72)';
+      ctx.lineWidth = 1 / zoom;
+      ctx.strokeRect(barX, barY, barW, 5);
+      ctx.restore();
+    }
   }
 
   drawDepthSorted(ctx, minTx, minTy, maxTx, maxTy) {
