@@ -249,8 +249,7 @@ export class Game {
     const w = ctx.measureText(name).width + 8;
     ctx.fillStyle = 'rgba(20,25,20,0.72)';
     const bx = player.x - w / 2;
-    const by = player.y - 46;
-    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(bx, by, w, 13, 6); ctx.fill(); }
+    const by = player.y - 50;    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(bx, by, w, 13, 6); ctx.fill(); }
     else ctx.fillRect(bx, by, w, 13);
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';

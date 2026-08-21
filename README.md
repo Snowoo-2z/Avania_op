@@ -28,9 +28,10 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
 - **Fabrication** (touche `C` ou bouton 🛠️) : 1 bois → 2 planches,
   1 pierre → 2 briques, 2 sable → 1 verre.
 - **Plus de blocs** : bois, pierre, planche, brique, verre, sable, terre.
-- **Personnage carré 100 % personnalisable** : peau, 11 coiffures, couleurs
-  de cheveux, yeux, chapeau (8), lunettes (5), barbe (4), haut, pantalon,
-  nom — aperçu live animé (respiration, clignement), look sauvegardé.
+- **Personnage carré = un vrai CUBE** : le perso est un seul carré avec
+  visage, cheveux et accessoires dessus — 11 coiffures, couleurs de cheveux,
+  yeux, chapeau (8), lunettes (5), barbe (4), peau, haut, pantalon, nom —
+  aperçu live animé (respiration, clignement), look sauvegardé.
 
 ## 🚀 Lancer le jeu
 

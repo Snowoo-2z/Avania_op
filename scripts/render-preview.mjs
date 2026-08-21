@@ -74,11 +74,11 @@ function renderCharacter() {
   const pad = 20;
 
   const rows = [
-    { title: 'Orientations', items: ['down', 'left', 'up', 'right'], draw: (ctx, it, x, y) => drawCharacter(ctx, DEFAULT_APPEARANCE, x, y - 8, { facing: it, scale: 2.5 }) },
-    { title: 'Coiffures', items: HAIR_STYLES, draw: (ctx, it, x, y) => drawCharacter(ctx, { ...DEFAULT_APPEARANCE, hairStyle: it.id }, x, y - 8, { facing: 'down', scale: 2.5 }) },
-    { title: 'Chapeaux', items: HATS, draw: (ctx, it, x, y) => drawCharacter(ctx, { ...DEFAULT_APPEARANCE, hat: it.id }, x, y - 8, { facing: 'down', scale: 2.5 }) },
-    { title: 'Lunettes', items: GLASSES, draw: (ctx, it, x, y) => drawCharacter(ctx, { ...DEFAULT_APPEARANCE, glasses: it.id }, x, y - 8, { facing: 'down', scale: 2.5 }) },
-    { title: 'Barbes', items: FACIAL_HAIR, draw: (ctx, it, x, y) => drawCharacter(ctx, { ...DEFAULT_APPEARANCE, facialHair: it.id }, x, y - 8, { facing: 'down', scale: 2.5 }) },
+    { title: 'Orientations', items: ['down', 'left', 'up', 'right'], draw: (ctx, it, x, y) => drawCharacter(ctx, DEFAULT_APPEARANCE, x, y - 8, { facing: it, scale: 2.2 }) },
+    { title: 'Coiffures', items: HAIR_STYLES, draw: (ctx, it, x, y) => drawCharacter(ctx, { ...DEFAULT_APPEARANCE, hairStyle: it.id }, x, y - 8, { facing: 'down', scale: 2.2 }) },
+    { title: 'Chapeaux', items: HATS, draw: (ctx, it, x, y) => drawCharacter(ctx, { ...DEFAULT_APPEARANCE, hat: it.id }, x, y - 8, { facing: 'down', scale: 2.2 }) },
+    { title: 'Lunettes', items: GLASSES, draw: (ctx, it, x, y) => drawCharacter(ctx, { ...DEFAULT_APPEARANCE, glasses: it.id }, x, y - 8, { facing: 'down', scale: 2.2 }) },
+    { title: 'Barbes', items: FACIAL_HAIR, draw: (ctx, it, x, y) => drawCharacter(ctx, { ...DEFAULT_APPEARANCE, facialHair: it.id }, x, y - 8, { facing: 'down', scale: 2.2 }) },
   ];
 
   let totalH = 0;
@@ -111,7 +111,7 @@ function renderCharacter() {
       ctx.fillStyle = '#9fb6a5';
       ctx.font = '12px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(typeof it === 'string' ? it : it.label, x, y + 52);
+      ctx.fillText(typeof it === 'string' ? it : it.label, x, y + 44);
     });
   }
 
