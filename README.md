@@ -33,7 +33,7 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   quand leur type correspond à la ressource (hache pour bois, pioche pour pierre, pelle pour sol).
 - **Plus de blocs** : bois, pierre, planche, brique, verre, sable, terre.
 - **Personnage carré = un vrai CUBE** : le perso est un seul carré avec
-  visage, cheveux et accessoires dessus — 11 coiffures, couleurs de cheveux,
+  visage, cheveux et accessoires dessus — 18 coiffures, couleurs de cheveux,
   yeux, chapeau (8), lunettes (5), barbe (4), peau, haut, pantalon, nom —
   aperçu live animé (respiration, clignement), look sauvegardé. En jeu, sa taille
   est réduite pour rester proportionnée aux arbres et aux rochers.

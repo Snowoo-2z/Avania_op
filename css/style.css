@@ -852,3 +852,232 @@ html.low-power .craft-output.ready {
   .craft-result-wrap { min-width: 78px; }
   .game-toast { top: 66px; }
 }
+
+/* ============================================================
+   Direction artistique premium — sac d'explorateur
+   ============================================================ */
+:root {
+  --inventory-ink: #f6fbf5;
+  --inventory-subtle: #abc5b0;
+  --inventory-line: rgba(157, 199, 161, 0.18);
+  --inventory-line-bright: rgba(189, 224, 185, 0.32);
+  --inventory-deep: #0b1510;
+  --inventory-card: #14261a;
+  --inventory-card-2: #1b3423;
+  --inventory-gold: #f4c968;
+  --inventory-teal: #62d5b2;
+}
+
+.inventory-btn {
+  color: var(--inventory-ink);
+  background: linear-gradient(145deg, rgba(31, 61, 43, 0.95), rgba(12, 27, 18, 0.96));
+  border-color: rgba(125, 207, 142, 0.3);
+  box-shadow: 0 12px 30px rgba(3, 12, 7, 0.42), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.inventory-btn:hover { border-color: var(--inventory-teal); box-shadow: 0 14px 32px rgba(3, 12, 7, 0.5), 0 0 0 3px rgba(98,213,178,0.12); }
+.inventory-btn kbd,
+.craft-btn kbd {
+  min-width: 22px;
+  padding: 3px 6px;
+  text-align: center;
+  color: var(--inventory-gold);
+  background: rgba(0,0,0,0.28);
+  border-color: rgba(244,201,104,0.22);
+}
+
+.inventory-panel {
+  isolation: isolate;
+  width: min(930px, calc(100vw - 28px));
+  max-height: min(90vh, 760px);
+  padding: 27px 29px 25px;
+  overflow: auto;
+  color: var(--inventory-ink);
+  background:
+    radial-gradient(700px 260px at 12% -12%, rgba(105, 203, 146, 0.2), transparent 68%),
+    radial-gradient(480px 300px at 96% 105%, rgba(240, 191, 95, 0.12), transparent 70%),
+    linear-gradient(145deg, #203c29 0%, #14261a 47%, #0c1710 100%);
+  border: 1px solid rgba(166, 220, 165, 0.3);
+  border-radius: 28px;
+  box-shadow:
+    0 35px 100px rgba(2, 9, 5, 0.75),
+    0 0 0 1px rgba(3, 12, 7, 0.7),
+    inset 0 1px 0 rgba(255,255,255,0.15),
+    inset 0 -22px 55px rgba(2,12,6,0.24);
+}
+.inventory-panel::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+  background-size: 26px 26px;
+  pointer-events: none;
+}
+.inventory-panel::after {
+  content: '';
+  position: absolute;
+  inset: 9px;
+  z-index: 0;
+  border: 1px solid rgba(175, 218, 169, 0.1);
+  border-radius: 21px;
+  pointer-events: none;
+}
+.inventory-panel > * { position: relative; z-index: 1; }
+.inventory-ornament {
+  position: absolute !important;
+  z-index: 1 !important;
+  width: 70px;
+  height: 70px;
+  border: 1px solid rgba(244,201,104,0.22);
+  border-radius: 50%;
+  opacity: 0.65;
+  pointer-events: none;
+}
+.inventory-ornament::before,
+.inventory-ornament::after {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  border: 1px dashed rgba(244,201,104,0.18);
+  border-radius: 50%;
+}
+.inventory-ornament::after { inset: 30px; background: var(--inventory-gold); border: 0; box-shadow: 0 0 18px rgba(244,201,104,0.35); }
+.inventory-ornament--one { top: -29px; right: 94px; }
+.inventory-ornament--two { bottom: -39px; left: 52px; transform: scale(0.55); opacity: 0.35; }
+.inventory-header {
+  min-height: 70px;
+  padding: 0 4px 20px;
+  border-bottom-color: var(--inventory-line);
+}
+.inventory-brand { display: flex; align-items: center; gap: 14px; }
+.inventory-emblem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(244,201,104,0.42);
+  border-radius: 16px;
+  background: linear-gradient(145deg, #426b45, #172e1e);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 8px 20px rgba(3,13,7,0.3);
+  font-size: 27px;
+  transform: rotate(-3deg);
+}
+.inventory-header h2 { color: var(--inventory-ink); font-size: 27px; letter-spacing: -0.4px; line-height: 1; }
+.inventory-header p { margin-top: 7px; color: var(--inventory-subtle); font-size: 11.5px; font-weight: 700; }
+.inventory-head-actions { gap: 17px; }
+.capacity-stat { min-width: 150px; }
+.capacity-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--inventory-subtle); font-size: 10px; font-weight: 900; letter-spacing: 0.2px; text-transform: uppercase; }
+.capacity-line b { color: var(--inventory-teal); font-size: 14px; }
+.capacity-line small { color: rgba(220,239,220,0.55); font-size: 10px; font-weight: 800; }
+.capacity-line small b { color: inherit; font-size: inherit; }
+.capacity-meter { height: 6px; margin-top: 8px; overflow: hidden; border: 1px solid rgba(125,207,142,0.2); border-radius: 10px; background: rgba(4,12,7,0.64); box-shadow: inset 0 1px 3px rgba(0,0,0,0.4); }
+.capacity-meter i { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--inventory-teal), #9ce374); box-shadow: 0 0 12px rgba(98,213,178,0.48); transition: width 0.25s, background 0.25s; }
+.capacity-meter i.near-full { background: linear-gradient(90deg, #f4c968, #ed765d); box-shadow: 0 0 12px rgba(244,201,104,0.45); }
+.inventory-header .craft-close { width: 36px; height: 36px; margin: 0; border: 1px solid var(--inventory-line); border-radius: 11px; background: rgba(5,14,8,0.3); color: var(--inventory-subtle); }
+.inventory-header .craft-close:hover { color: var(--inventory-ink); border-color: var(--inventory-gold); background: rgba(244,201,104,0.12); }
+.inventory-rule { display: flex; align-items: center; gap: 10px; margin: 15px 4px 19px; color: rgba(202,232,201,0.53); font-size: 9px; font-weight: 900; letter-spacing: 1.7px; }
+.inventory-rule i { height: 1px; flex: 1; background: linear-gradient(90deg, transparent, var(--inventory-line)); }
+.inventory-rule i:nth-of-type(2) { background: linear-gradient(90deg, var(--inventory-line), transparent); }
+.inventory-rule-dot { color: var(--inventory-gold); font-size: 13px; line-height: 1; }
+.inventory-content { grid-template-columns: minmax(0, 1fr) 214px; gap: 24px; padding-top: 0; }
+.inventory-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 0 3px 10px; }
+.inventory-section-head strong { display: block; margin-top: 3px; color: var(--inventory-ink); font-size: 13px; font-weight: 900; }
+.section-kicker { color: var(--inventory-gold); font-size: 9px; font-weight: 900; letter-spacing: 1.4px; }
+.section-badge { padding: 5px 8px; color: var(--inventory-subtle); background: rgba(10,25,15,0.46); border: 1px solid var(--inventory-line); border-radius: 7px; font-size: 9px; font-weight: 900; letter-spacing: 0.7px; }
+.inventory-grid-shell,
+.inventory-hotbar-shell { padding: 11px; border: 1px solid var(--inventory-line); border-radius: 15px; background: linear-gradient(145deg, rgba(10,24,14,0.68), rgba(8,16,11,0.43)); box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), inset 0 -10px 20px rgba(0,0,0,0.12); }
+.inventory-grid { gap: 6px; }
+.inventory-grid .slot { height: 53px; border: 1px solid rgba(150,198,153,0.23); border-radius: 11px; background: linear-gradient(145deg, rgba(38,69,46,0.88), rgba(12,27,17,0.95)); box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -5px 8px rgba(0,0,0,0.25), 0 2px 0 rgba(4,12,6,0.7); transition: border-color 0.16s, transform 0.16s, box-shadow 0.16s, background 0.16s; }
+.inventory-grid .slot:hover { transform: translateY(-2px); border-color: rgba(244,201,104,0.68); background: linear-gradient(145deg, rgba(55,92,58,0.9), rgba(14,31,19,0.96)); box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 6px 14px rgba(2,10,5,0.35); }
+.inventory-grid .slot.selected,
+.inventory-grid .slot.focused { border-color: var(--inventory-gold); background: linear-gradient(145deg, rgba(63,92,52,0.98), rgba(23,42,24,0.98)); box-shadow: 0 0 0 2px rgba(244,201,104,0.22), inset 0 1px 0 rgba(255,255,255,0.13), 0 7px 18px rgba(2,10,5,0.35); transform: translateY(-2px); }
+.inventory-grid .slot::before { content: ''; position: absolute; inset: 4px; border: 1px solid rgba(255,255,255,0.045); border-radius: 7px; pointer-events: none; }
+.inventory-grid .slot-icon { inset: 8px; border-radius: 8px; font-size: 22px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.32), inset -4px -4px 0 rgba(0,0,0,0.2), 0 2px 5px rgba(0,0,0,0.2); }
+.inventory-grid .slot:not(.occupied) .slot-icon { background: rgba(255,255,255,0.025) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.04); }
+.inventory-grid .slot-count { right: 7px; bottom: 5px; color: #fff; font-size: 12px; }
+.inventory-grid .slot-durability { left: 8px; right: 8px; bottom: 6px; height: 4px; }
+.inventory-divider { display: flex; align-items: center; gap: 9px; height: auto; margin: 20px 2px 14px; background: none; }
+.inventory-divider span { height: 1px; flex: 1; background: var(--inventory-line); }
+.inventory-divider b { color: rgba(202,232,201,0.58); font-size: 9px; letter-spacing: 1.3px; }
+.inventory-section-head--hotbar { margin-bottom: 9px; }
+.hotbar-hint { display: flex; align-items: center; gap: 3px; color: rgba(202,232,201,0.55); font-size: 10px; font-weight: 800; }
+.hotbar-hint kbd { min-width: 18px; padding: 2px 4px; border-color: var(--inventory-line); color: var(--inventory-gold); background: rgba(3,13,7,0.45); font-size: 9px; text-align: center; }
+.inventory-hotbar-shell { padding: 8px; border-color: rgba(244,201,104,0.2); background: linear-gradient(145deg, rgba(45,57,28,0.45), rgba(10,20,12,0.65)); }
+.inventory-hotbar-grid { gap: 6px; padding: 0; background: transparent; border: 0; }
+.inventory-help { display: flex; align-items: flex-start; gap: 7px; margin: 12px 4px 0; color: rgba(202,232,201,0.58); font-size: 10.5px; }
+.inventory-help span { color: var(--inventory-gold); }
+.inventory-help b { color: var(--inventory-ink); }
+.inventory-detail { min-height: 100%; padding: 17px; border: 1px solid var(--inventory-line); border-radius: 17px; background: linear-gradient(160deg, rgba(28,57,36,0.72), rgba(8,19,12,0.68)); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -18px 35px rgba(0,0,0,0.18); }
+.detail-topline { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 15px; }
+.detail-kicker { color: var(--inventory-gold); font-size: 9px; font-weight: 900; letter-spacing: 1.1px; }
+.detail-slot { color: rgba(202,232,201,0.52); font-size: 9px; font-weight: 900; }
+.detail-icon { width: 74px; height: 74px; margin: 0 0 15px; border: 1px solid rgba(244,201,104,0.27); border-radius: 18px; background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.2), rgba(10,25,15,0.7)); box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 10px 22px rgba(2,10,5,0.28); font-size: 37px; }
+.inventory-detail h3 { color: var(--inventory-ink); font-size: 16px; line-height: 1.2; }
+.inventory-detail > p { min-height: 51px; margin-top: 8px; color: var(--inventory-subtle); font-size: 11.5px; line-height: 1.5; }
+.detail-stats { display: grid; gap: 8px; margin-top: 15px; padding: 11px 0; border-top: 1px solid var(--inventory-line); border-bottom: 1px solid var(--inventory-line); }
+.detail-stats div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.detail-stats span { color: rgba(202,232,201,0.52); font-size: 8px; font-weight: 900; letter-spacing: 0.9px; }
+.detail-stats b { color: var(--inventory-ink); font-size: 11px; font-weight: 900; text-align: right; }
+.detail-tip { display: flex; gap: 8px; margin-top: 14px; padding: 9px; border: 1px solid rgba(98,213,178,0.15); border-radius: 10px; background: rgba(98,213,178,0.06); }
+.detail-tip span { color: var(--inventory-teal); font-size: 14px; }
+.detail-tip p { min-height: 0; margin: 0; color: rgba(202,232,201,0.6); font-size: 10px; line-height: 1.4; }
+
+/* Rendu amélioré de la fabrication : même langage visuel que le sac. */
+.crafting { width: min(520px, calc(100vw - 32px)); padding-bottom: 14px; border-color: rgba(166,220,165,0.3); background: linear-gradient(145deg, rgba(31,60,40,0.98), rgba(10,20,13,0.99)); box-shadow: 0 30px 80px rgba(2,9,5,0.72), inset 0 1px 0 rgba(255,255,255,0.12); }
+.crafting-header { padding: 15px 18px; border-bottom-color: var(--inventory-line); }
+.craft-workbench { padding: 19px; background: radial-gradient(360px 180px at 15% 30%, rgba(105,203,146,0.1), transparent 72%), rgba(5,15,8,0.28); }
+.craft-grid { padding: 9px; gap: 6px; border-color: var(--inventory-line); border-radius: 14px; background: rgba(5,15,8,0.72); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); }
+.craft-slot { border-color: rgba(150,198,153,0.25); border-radius: 9px; background: linear-gradient(145deg, #25442c, #102318); box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -4px 8px rgba(0,0,0,0.22); }
+.craft-slot .slot-icon { font-size: 20px; }
+.craft-output { border-color: rgba(244,201,104,0.3); background: linear-gradient(145deg, #25442c, #102318); box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -5px 10px rgba(0,0,0,0.22); }
+.craft-output.ready { border-color: var(--inventory-gold); box-shadow: 0 0 0 3px rgba(244,201,104,0.16), 0 8px 22px rgba(244,201,104,0.12), inset 0 1px 0 rgba(255,255,255,0.12); }
+.craft-book-title { color: var(--inventory-gold); }
+.recipe-category { padding: 4px 5px 2px; color: var(--inventory-gold); }
+.recipe { background: linear-gradient(145deg, rgba(31,59,38,0.75), rgba(8,19,12,0.66)); border-color: var(--inventory-line); box-shadow: inset 0 1px 0 rgba(255,255,255,0.04); }
+.recipe:hover { border-color: rgba(244,201,104,0.38); }
+.recipe-icon { border: 1px solid rgba(255,255,255,0.16); box-shadow: inset 0 1px 0 rgba(255,255,255,0.32), inset -3px -3px 0 rgba(0,0,0,0.2); }
+.recipe-cost { color: rgba(202,232,201,0.6); }
+.recipe .btn-primary { color: #112317; background: linear-gradient(135deg, #9ce374, #62d5b2); box-shadow: 0 5px 14px rgba(98,213,178,0.16); }
+
+@media (max-width: 700px) {
+  .inventory-panel { width: calc(100vw - 14px); max-height: 92vh; padding: 20px 15px 18px; border-radius: 22px; }
+  .inventory-header { align-items: flex-start; gap: 10px; }
+  .inventory-brand { gap: 10px; }
+  .inventory-emblem { width: 43px; height: 43px; font-size: 22px; border-radius: 13px; }
+  .inventory-header h2 { font-size: 22px; }
+  .inventory-header p { max-width: 210px; font-size: 10px; }
+  .inventory-head-actions { align-items: flex-end; gap: 7px; }
+  .capacity-stat { min-width: 100px; }
+  .capacity-line { font-size: 8px; }
+  .capacity-line b { font-size: 12px; }
+  .inventory-content { grid-template-columns: 1fr; gap: 16px; }
+  .inventory-detail { min-height: 0; display: grid; grid-template-columns: 64px 1fr; column-gap: 12px; padding: 13px; }
+  .inventory-detail .detail-topline { grid-column: 1 / -1; }
+  .inventory-detail .detail-icon { grid-row: span 3; width: 64px; height: 64px; margin: 0; }
+  .inventory-detail h3 { align-self: end; }
+  .inventory-detail > p { min-height: 0; align-self: start; }
+  .detail-stats, .detail-tip { grid-column: 1 / -1; }
+  .inventory-grid-shell, .inventory-hotbar-shell { padding: 7px; }
+  .inventory-grid { gap: 4px; }
+  .inventory-grid .slot { height: 45px; border-radius: 8px; }
+  .inventory-grid .slot-icon { inset: 6px; font-size: 18px; }
+  .inventory-grid .slot-count { right: 4px; bottom: 3px; font-size: 10px; }
+  .inventory-divider { margin: 15px 2px 11px; }
+  .inventory-section-head strong { font-size: 11px; }
+  .crafting { right: 7px; bottom: 118px; width: calc(100vw - 14px); }
+}
+
+/* Options de coiffure : des pastilles lisibles même avec les 18 styles. */
+.swatch-hair {
+  width: 40px;
+  letter-spacing: -0.2px;
+  background: linear-gradient(145deg, #355f40, #1d3826) !important;
+  border-color: rgba(125,207,142,0.18);
+  font-size: 10px;
+}
+.swatch-hair:hover { background: linear-gradient(145deg, #4d8554, #254b30) !important; }
+.swatch-hair.active { border-color: var(--inventory-gold, #f2c14e); }

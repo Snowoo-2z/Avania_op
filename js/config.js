@@ -65,17 +65,24 @@ export const SKIN_TONES = [
 ];
 
 export const HAIR_STYLES = [
-  { id: 'chauve',    label: 'Chauve' },
-  { id: 'court',     label: 'Court' },
-  { id: 'mi-long',   label: 'Mi-long' },
-  { id: 'long',      label: 'Long' },
-  { id: 'afro',      label: 'Afro' },
-  { id: 'degrades',  label: 'Dégradé' },
-  { id: 'mohawk',    label: 'Crête' },
-  { id: 'chignon',   label: 'Chignon' },
-  { id: 'queue',     label: 'Queue' },
-  { id: 'tresses',   label: 'Tresses' },
-  { id: 'casquette', label: 'Casquette' },
+  { id: 'chauve',          label: 'Chauve' },
+  { id: 'court',           label: 'Court' },
+  { id: 'frange',          label: 'Frange' },
+  { id: 'mi-long',         label: 'Mi-long' },
+  { id: 'long',            label: 'Long' },
+  { id: 'boucles',         label: 'Boucles' },
+  { id: 'boucles-longues', label: 'Boucles longues' },
+  { id: 'afro',            label: 'Afro' },
+  { id: 'degrades',        label: 'Dégradé' },
+  { id: 'undercut',        label: 'Undercut' },
+  { id: 'raie',            label: 'Raie côté' },
+  { id: 'mohawk',          label: 'Crête' },
+  { id: 'chignon',         label: 'Chignon' },
+  { id: 'couettes',        label: 'Couettes' },
+  { id: 'queue',           label: 'Queue' },
+  { id: 'tresses',         label: 'Tresses' },
+  { id: 'nattes',          label: 'Nattes' },
+  { id: 'casquette',       label: 'Casquette' },
 ];
 
 export const HAIR_COLORS = [

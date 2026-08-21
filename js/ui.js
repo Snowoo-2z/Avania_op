@@ -126,7 +126,9 @@ export function openCharacterCreation() {
         btn.title = opt.label;
         if (sec.swatch === 'text') {
           btn.classList.add('swatch-text');
-          btn.textContent = opt.label.charAt(0).toUpperCase();
+          if (sec.id === 'hairstyle') btn.classList.add('swatch-hair');
+          btn.textContent = opt.label.slice(0, 2).toUpperCase();
+          btn.setAttribute('aria-label', opt.label);
         } else {
           btn.style.background = opt.color;
         }
@@ -415,23 +417,41 @@ export class InventoryPanel {
 
     const used = document.getElementById('inventory-used');
     const capacity = document.getElementById('inventory-capacity');
+    const capacityBar = document.getElementById('inventory-capacity-bar');
     if (used) used.textContent = this.inventory.usedSlots;
     if (capacity) capacity.textContent = this.inventory.slotCount;
+    if (capacityBar) {
+      capacityBar.style.width = `${Math.max(0, Math.min(100, this.inventory.usedSlots / this.inventory.slotCount * 100))}%`;
+      capacityBar.classList.toggle('near-full', this.inventory.usedSlots / this.inventory.slotCount > 0.8);
+    }
 
     const detailIcon = document.getElementById('inventory-detail-icon');
     const detailName = document.getElementById('inventory-detail-name');
     const detailText = document.getElementById('inventory-detail-text');
+    const detailSlot = document.getElementById('inventory-detail-slot');
+    const detailType = document.getElementById('inventory-detail-type');
+    const detailStack = document.getElementById('inventory-detail-stack');
+    const detailDurability = document.getElementById('inventory-detail-durability');
     const selected = this.inventory.getSelectedStack();
     const def = selected && ITEM_DEFS[selected.id];
     if (detailIcon) {
       detailIcon.textContent = def?.icon || '＋';
       detailIcon.style.background = def?.color || 'rgba(255,255,255,0.06)';
     }
+    if (detailSlot) detailSlot.textContent = `CASE ${this.inventory.selected + 1}`;
     if (detailName) detailName.textContent = def ? def.label : 'Case sélectionnée vide';
+    if (detailType) {
+      const types = { resource: 'Ressource', material: 'Matériau', tool: 'Outil', block: 'Bloc' };
+      detailType.textContent = def ? (types[def.type] || def.type) : '—';
+    }
+    if (detailStack) detailStack.textContent = def ? `${selected.count}/${def.maxStack || 64}` : '—';
+    if (detailDurability) detailDurability.textContent = def?.type === 'tool'
+      ? `${selected.durability ?? def.durability}/${def.durability}`
+      : '—';
     if (detailText) {
       if (!def) detailText.textContent = 'Choisis une case de la barre rapide ou déplace une pile par glisser-déposer.';
-      else if (def.type === 'tool') detailText.textContent = `Outil ${def.toolType} · durabilité ${selected.durability}/${def.durability}`;
-      else detailText.textContent = `${selected.count} objet${selected.count > 1 ? 's' : ''} · pile max ${def.maxStack || 64}`;
+      else if (def.type === 'tool') detailText.textContent = `Outil ${def.toolType} · plus efficace sur les ressources correspondantes.`;
+      else detailText.textContent = `${selected.count} objet${selected.count > 1 ? 's' : ''} prêt${selected.count > 1 ? 's' : ''} à être utilisé${selected.count > 1 ? 's' : ''}.`;
     }
   }
 

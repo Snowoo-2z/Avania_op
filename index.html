@@ -43,29 +43,52 @@
 
   <!-- Inventaire complet : 27 cases + barre rapide -->
   <section id="inventory-panel" class="inventory-panel hidden" aria-label="Inventaire">
+    <div class="inventory-ornament inventory-ornament--one"></div>
+    <div class="inventory-ornament inventory-ornament--two"></div>
     <header class="inventory-header">
-      <div>
-        <span class="panel-eyebrow">AVANIA // SAC À DOS</span>
-        <h2>🎒 Inventaire</h2>
+      <div class="inventory-brand">
+        <div class="inventory-emblem">🎒</div>
+        <div>
+          <span class="panel-eyebrow">AVANIA // ÉQUIPEMENT</span>
+          <h2>Inventaire</h2>
+          <p>Tout ce que tu transportes pour bâtir ton monde.</p>
+        </div>
       </div>
       <div class="inventory-head-actions">
-        <span class="capacity"><b id="inventory-used">0</b>/<b id="inventory-capacity">36</b> cases</span>
+        <div class="capacity-stat">
+          <div class="capacity-line"><span><b id="inventory-used">0</b> cases occupées</span><small><b id="inventory-capacity">36</b> max</small></div>
+          <div class="capacity-meter"><i id="inventory-capacity-bar"></i></div>
+        </div>
         <button id="inventory-close" class="craft-close" title="Fermer">✕</button>
       </div>
     </header>
+    <div class="inventory-rule"><span>CONTENU DU SAC</span><i></i><span class="inventory-rule-dot">✦</span><i></i></div>
     <div class="inventory-content">
       <div class="inventory-storage">
-        <div class="section-title">Stockage</div>
-        <div id="inventory-grid" class="inventory-grid"></div>
-        <div class="inventory-divider"></div>
-        <div class="section-title">Barre rapide · 1 à 9</div>
-        <div id="inventory-hotbar" class="inventory-grid inventory-hotbar-grid"></div>
-        <p class="inventory-help">Glisse-dépose une pile ou clique deux cases pour la déplacer. Shift-clic transfère vers l'autre zone.</p>
+        <div class="inventory-section-head">
+          <div><span class="section-kicker">STOCKAGE</span><strong>Compartiment principal</strong></div>
+          <span class="section-badge">27 CASES</span>
+        </div>
+        <div class="inventory-grid-shell"><div id="inventory-grid" class="inventory-grid"></div></div>
+        <div class="inventory-divider"><span></span><b>BARRE RAPIDE</b><span></span></div>
+        <div class="inventory-section-head inventory-section-head--hotbar">
+          <div><span class="section-kicker">ACCÈS RAPIDE</span><strong>Objets prêts à utiliser</strong></div>
+          <span class="hotbar-hint"><kbd>1</kbd> à <kbd>9</kbd></span>
+        </div>
+        <div class="inventory-hotbar-shell"><div id="inventory-hotbar" class="inventory-grid inventory-hotbar-grid"></div></div>
+        <p class="inventory-help"><span>✦</span> Glisse une pile, clique deux cases pour l'échanger ou utilise <b>Shift-clic</b> pour transférer.</p>
       </div>
       <aside class="inventory-detail">
+        <div class="detail-topline"><span class="detail-kicker">OBJET SÉLECTIONNÉ</span><span id="inventory-detail-slot" class="detail-slot">CASE 1</span></div>
         <div id="inventory-detail-icon" class="detail-icon">＋</div>
         <h3 id="inventory-detail-name">Case sélectionnée vide</h3>
         <p id="inventory-detail-text">Choisis une case de la barre rapide ou déplace une pile par glisser-déposer.</p>
+        <div class="detail-stats">
+          <div><span>CATÉGORIE</span><b id="inventory-detail-type">—</b></div>
+          <div><span>QUANTITÉ</span><b id="inventory-detail-stack">—</b></div>
+          <div><span>DURABILITÉ</span><b id="inventory-detail-durability">—</b></div>
+        </div>
+        <div class="detail-tip"><span>✧</span><p>Les matériaux s'empilent. Les outils gardent leur propre durabilité.</p></div>
       </aside>
     </div>
   </section>
@@ -147,6 +170,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/main.js?v=6"></script>
+  <script type="module" src="js/main.js?v=7"></script>
 </body>
 </html>

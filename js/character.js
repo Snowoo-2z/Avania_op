@@ -27,8 +27,9 @@ export function appearanceColors(app) {
   };
 }
 
-function withAlpha(hex, a) {
-  const n = parseInt(hex.slice(1), 16);
+function withAlpha(color, a) {
+  if (color.startsWith('rgb(')) return color.replace('rgb(', 'rgba(').replace(')', `,${a})`);
+  const n = parseInt(color.slice(1), 16);
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
   return `rgba(${r},${g},${b},${a})`;
 }
@@ -116,34 +117,47 @@ function drawCubeBody(ctx, x0, y0, S, c) {
   const shirtY = y0 + S - pantsH - shirtH;
   const pantsY = y0 + S - pantsH;
 
-  // base = peau (le visage)
-  ctx.fillStyle = c.skin;
+  // base = peau (le visage), avec un léger volume de lumière.
+  const skinGradient = ctx.createLinearGradient(x0, y0, x0 + S, y0 + S);
+  skinGradient.addColorStop(0, withAlpha(c.skin, 0.98));
+  skinGradient.addColorStop(0.55, c.skin);
+  skinGradient.addColorStop(1, withAlpha(shade(c.skin, 0.74), 0.94));
+  ctx.fillStyle = skinGradient;
   ctx.fillRect(x0, y0, S, S);
 
-  // bande "haut" (chemise)
-  ctx.fillStyle = c.shirt;
+  // bande "haut" (chemise), elle aussi légèrement éclairée en haut.
+  const shirtGradient = ctx.createLinearGradient(x0, shirtY, x0, shirtY + shirtH);
+  shirtGradient.addColorStop(0, shade(c.shirt, 1.12));
+  shirtGradient.addColorStop(0.45, c.shirt);
+  shirtGradient.addColorStop(1, shade(c.shirt, 0.76));
+  ctx.fillStyle = shirtGradient;
   ctx.fillRect(x0, shirtY, S, shirtH);
-  ctx.fillStyle = shade(c.shirt, 0.8);
-  ctx.fillRect(x0, shirtY, S, 1.5);
-  ctx.fillRect(x0, shirtY + shirtH - 1.5, S, 1.5);
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.fillRect(x0 + 1, shirtY + 1, S - 2, 1.2);
 
-  // bande "pantalon" (tout en bas)
-  ctx.fillStyle = c.pants;
+  // bande "pantalon" (tout en bas), avec une couture centrale discrète.
+  const pantsGradient = ctx.createLinearGradient(x0, pantsY, x0 + S, pantsY);
+  pantsGradient.addColorStop(0, shade(c.pants, 1.06));
+  pantsGradient.addColorStop(0.65, c.pants);
+  pantsGradient.addColorStop(1, shade(c.pants, 0.72));
+  ctx.fillStyle = pantsGradient;
   ctx.fillRect(x0, pantsY, S, pantsH);
-  ctx.fillStyle = shade(c.pants, 0.78);
-  ctx.fillRect(x0, pantsY + pantsH - 1.5, S, 1.5);
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  ctx.fillRect(x0 + S / 2 - 0.6, pantsY + 1, 1.2, pantsH - 1);
 
   // effet cube 3D : reflet en haut, ombre à droite et en bas
-  ctx.fillStyle = 'rgba(255,255,255,0.22)';
-  ctx.fillRect(x0 + 1, y0 + 1, S - 2, 4);
-  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fillRect(x0 + 1, y0 + 1, S - 2, 3);
+  ctx.fillStyle = 'rgba(0,0,0,0.13)';
   ctx.fillRect(x0 + S - 3, y0, 3, S);
   ctx.fillRect(x0 + 1, y0 + S - 3, S - 2, 3);
 
-  // contour
-  ctx.strokeStyle = shade(c.skin, 0.55);
+  // contour double : un bord sombre + un pixel de lumière sur la gauche.
+  ctx.strokeStyle = shade(c.skin, 0.48);
   ctx.lineWidth = 1.5;
   ctx.strokeRect(x0 + 0.5, y0 + 0.5, S - 1, S - 1);
+  ctx.fillStyle = 'rgba(255,255,255,0.16)';
+  ctx.fillRect(x0 + 1, y0 + 5, 1.2, S - 9);
 }
 
 // ---- Cheveux (sur le dessus / les côtés du cube) ----
@@ -168,10 +182,49 @@ function drawHair(ctx, app, color, x0, y0, S, facing) {
       else ctx.fillRect(x0 + S, y0, 4, 12);
       break;
 
+    case 'frange':
+      // Une mèche irrégulière descend sur le front, plus douce que la coupe courte.
+      voxel(ctx, x0 - 2, y0 - 5, S + 4, 6, color, { hlHeight: 2 });
+      if (facing === 'down') {
+        ctx.fillRect(x0 + 1, y0 + 1, 7, 6);
+        ctx.fillRect(x0 + 10, y0 + 1, 6, 4);
+        ctx.fillRect(x0 + 19, y0 + 1, 8, 7);
+      } else if (facing === 'left') {
+        ctx.fillRect(x0 - 4, y0 + 1, 6, 9);
+      } else if (facing === 'right') {
+        ctx.fillRect(x0 + S - 2, y0 + 1, 6, 9);
+      } else {
+        ctx.fillRect(x0, y0, S, 8);
+      }
+      break;
+
     case 'mi-long':
       ctx.fillRect(x0 - 4, y0 + 1, 4, 10);
       ctx.fillRect(x0 + S, y0 + 1, 4, 10);
       if (facing === 'down') ctx.fillRect(x0, y0, S, 3);
+      break;
+
+    case 'boucles':
+      // Petites mèches carrées en relief autour de la tête.
+      voxel(ctx, x0 - 3, y0 - 7, S + 6, 8, color, { hlHeight: 2 });
+      for (const [bx, by] of [[-5, 1], [-4, 7], [S - 1, 1], [S - 2, 7]]) {
+        voxel(ctx, x0 + bx, y0 + by, 6, 6, color, { hlHeight: 2 });
+      }
+      if (facing === 'down') {
+        ctx.fillRect(x0 + 1, y0, 7, 5);
+        ctx.fillRect(x0 + 11, y0, 7, 4);
+        ctx.fillRect(x0 + 21, y0, 7, 5);
+      }
+      break;
+
+    case 'boucles-longues':
+      voxel(ctx, x0 - 3, y0 - 6, S + 6, 7, color, { hlHeight: 2 });
+      for (let i = 0; i < 4; i++) {
+        voxel(ctx, x0 - 5, y0 + i * 5, 6, 7, color, { hlHeight: 2 });
+        voxel(ctx, x0 + S - 1, y0 + i * 5, 6, 7, color, { hlHeight: 2 });
+      }
+      if (facing === 'up') ctx.fillRect(x0, y0, S, 13);
+      else if (facing === 'down') ctx.fillRect(x0, y0, S, 3);
       break;
 
     case 'long':
@@ -192,13 +245,40 @@ function drawHair(ctx, app, color, x0, y0, S, facing) {
       break;
 
     case 'degrades':
-      ctx.fillRect(x0 - 2, y0 - 6, S + 4, 7);
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      ctx.fillRect(x0 - 2, y0 - 6, S + 4, 2);
+      voxel(ctx, x0 - 2, y0 - 6, S + 4, 7, color, { hlHeight: 2 });
       ctx.fillStyle = color;
       if (facing === 'down' || facing === 'up') ctx.fillRect(x0, y0, S, 3);
       else if (facing === 'left') ctx.fillRect(x0 - 4, y0, 4, 10);
       else ctx.fillRect(x0 + S, y0, 4, 10);
+      break;
+
+    case 'undercut':
+      // Dessus dense, côtés plus courts, avec une petite ligne de transition.
+      voxel(ctx, x0 - 2, y0 - 6, S + 4, 7, color, { hlHeight: 2 });
+      ctx.fillStyle = shade(color, 0.72);
+      if (facing === 'left') ctx.fillRect(x0 - 3, y0 + 1, 3, 5);
+      else if (facing === 'right') ctx.fillRect(x0 + S, y0 + 1, 3, 5);
+      else ctx.fillRect(x0, y0 + 1, S, 2);
+      ctx.fillStyle = color;
+      if (facing === 'down') ctx.fillRect(x0 + 2, y0, S - 4, 4);
+      break;
+
+    case 'raie':
+      voxel(ctx, x0 - 2, y0 - 5, S + 4, 6, color, { hlHeight: 2 });
+      // Parting line and a swept lock on the chosen side.
+      ctx.fillStyle = shade(color, 0.62);
+      ctx.fillRect(x0 + 8, y0 - 3, 2, 7);
+      ctx.fillStyle = color;
+      if (facing === 'down') {
+        ctx.fillRect(x0 + 8, y0 + 1, 8, 6);
+        ctx.fillRect(x0 + 16, y0 + 1, 10, 4);
+      } else if (facing === 'left') {
+        ctx.fillRect(x0 - 4, y0 + 1, 5, 8);
+      } else if (facing === 'right') {
+        ctx.fillRect(x0 + S - 1, y0 + 1, 5, 8);
+      } else {
+        ctx.fillRect(x0, y0, S, 8);
+      }
       break;
 
     case 'mohawk':
@@ -211,6 +291,18 @@ function drawHair(ctx, app, color, x0, y0, S, facing) {
     case 'chignon':
       ctx.fillRect(x0 - 2, y0 - 3, S + 4, 4);
       voxel(ctx, cx - 5, y0 - 11, 10, 8, color);
+      break;
+
+    case 'couettes':
+      voxel(ctx, x0 - 2, y0 - 5, S + 4, 6, color, { hlHeight: 2 });
+      if (facing === 'up') {
+        voxel(ctx, x0 - 8, y0 - 1, 8, 9, color, { hlHeight: 2 });
+        voxel(ctx, x0 + S, y0 - 1, 8, 9, color, { hlHeight: 2 });
+      } else {
+        voxel(ctx, x0 - 7, y0 + 2, 7, 9, color, { hlHeight: 2 });
+        voxel(ctx, x0 + S, y0 + 2, 7, 9, color, { hlHeight: 2 });
+      }
+      if (facing === 'down') ctx.fillRect(x0 + 1, y0, S - 2, 3);
       break;
 
     case 'queue':
@@ -233,6 +325,19 @@ function drawHair(ctx, app, color, x0, y0, S, facing) {
         ctx.fillRect(x0 - 6, y0 + 2 + i * 4, 4, 3);
         ctx.fillRect(x0 + S + 2, y0 + 2 + i * 4, 4, 3);
       }
+      break;
+
+    case 'nattes':
+      voxel(ctx, x0 - 2, y0 - 5, S + 4, 6, color, { hlHeight: 2 });
+      ctx.fillStyle = color;
+      ctx.fillRect(x0, y0, S, 3);
+      // Alternating voxel segments suggest a braided silhouette.
+      for (let i = 0; i < 4; i++) {
+        const yy = y0 + 2 + i * 4;
+        voxel(ctx, x0 - 6, yy, 4, 4, color, { hlHeight: 1 });
+        voxel(ctx, x0 + S + 2, yy + (i % 2), 4, 4, color, { hlHeight: 1 });
+      }
+      if (facing === 'up') ctx.fillRect(x0, y0, S, 12);
       break;
 
     case 'casquette':
@@ -271,8 +376,14 @@ function drawFace(ctx, app, c, x0, y0, S, facing, blink = false) {
     ctx.fillRect(rx + ox, eyeY, 1.8, 1.8);
   }
 
+  // Petit nez et ombre sous le regard pour donner du relief au visage.
+  ctx.fillStyle = withAlpha(shade(c.skin, 0.72), 0.58);
+  ctx.fillRect(x0 + 14 + ox, y0 + 13, 3, 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fillRect(x0 + 14 + ox, y0 + 12, 1.2, 1.2);
+
   // bouche
-  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillStyle = 'rgba(0,0,0,0.42)';
   ctx.fillRect(x0 + 13 + ox, y0 + 16, 4, 2);
 
   // joues rosées
