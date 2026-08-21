@@ -11,6 +11,8 @@ export class Input {
       x: 0, y: 0,
       leftClicked: false,
       rightClicked: false,
+      leftDown: false,
+      rightDown: false,
       wheel: 0,
     };
 
@@ -25,15 +27,32 @@ export class Input {
     this.onKeyUp = (e) => {
       this.keys.delete(e.key.toLowerCase());
     };
-    this.onBlur = () => this.keys.clear();
+    this.onBlur = () => {
+      this.keys.clear();
+      this.mouse.leftDown = false;
+      this.mouse.rightDown = false;
+    };
 
     this.onMouseMove = (e) => {
       this.mouse.x = e.clientX;
       this.mouse.y = e.clientY;
     };
     this.onMouseDown = (e) => {
-      if (e.button === 0) this.mouse.leftClicked = true;
-      if (e.button === 2) this.mouse.rightClicked = true;
+      // Les boutons et les cases de l'interface ne doivent jamais devenir
+      // une action de minage dans le canvas derrière eux.
+      if (e.target && e.target.tagName !== 'CANVAS') return;
+      if (e.button === 0) {
+        this.mouse.leftClicked = true;
+        this.mouse.leftDown = true;
+      }
+      if (e.button === 2) {
+        this.mouse.rightClicked = true;
+        this.mouse.rightDown = true;
+      }
+    };
+    this.onMouseUp = (e) => {
+      if (e.button === 0) this.mouse.leftDown = false;
+      if (e.button === 2) this.mouse.rightDown = false;
     };
     this.onContextMenu = (e) => e.preventDefault();
     this.onWheel = (e) => {
@@ -45,6 +64,7 @@ export class Input {
     window.addEventListener('blur', this.onBlur);
     window.addEventListener('mousemove', this.onMouseMove);
     window.addEventListener('mousedown', this.onMouseDown);
+    window.addEventListener('mouseup', this.onMouseUp);
     window.addEventListener('contextmenu', this.onContextMenu);
     window.addEventListener('wheel', this.onWheel, { passive: true });
   }

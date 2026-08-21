@@ -24,14 +24,19 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   bordure d'eau, arbres & rochers éparpillés comme ressources.
 - **Collecte de blocs** : clic gauche = casser (récolte) ou pelleter le
   sable / la terre, clic droit = poser.
-- **Inventaire / barre rapide** : touches 1..7 ou molette pour choisir le bloc.
-- **Fabrication** (touche `C` ou bouton 🛠️) : 1 bois → 2 planches,
-  1 pierre → 2 briques, 2 sable → 1 verre.
+- **Inventaire réaliste** : 36 cases (27 stockage + 9 barre rapide), piles de 64,
+  déplacement par glisser-déposer / shift-clic, compteur de capacité et détails de l'objet.
+- **Fabrication façon Minecraft** (touche `C` ou bouton 🛠️) : grille 3×3,
+  livre de recettes, préparation des ingrédients puis récupération du résultat.
+  Bois → planches → bâtons, puis pioches, haches, pelles et épées en bois ou pierre.
+- **Outils durables** : les outils ont une barre de durabilité et accélèrent la récolte
+  quand leur type correspond à la ressource (hache pour bois, pioche pour pierre, pelle pour sol).
 - **Plus de blocs** : bois, pierre, planche, brique, verre, sable, terre.
 - **Personnage carré = un vrai CUBE** : le perso est un seul carré avec
-  visage, cheveux et accessoires dessus — 11 coiffures, couleurs de cheveux,
+  visage, cheveux et accessoires dessus — 18 coiffures, couleurs de cheveux,
   yeux, chapeau (8), lunettes (5), barbe (4), peau, haut, pantalon, nom —
-  aperçu live animé (respiration, clignement), look sauvegardé.
+  aperçu live animé (respiration, clignement), look sauvegardé. En jeu, sa taille
+  est réduite pour rester proportionnée aux arbres et aux rochers.
 
 ## 🚀 Lancer le jeu
 
@@ -48,8 +53,10 @@ node server.js
 | Casser un bloc (récolter) | Clic gauche sur l'arbre / le rocher |
 | Pelleter (sable, terre) | Clic gauche sur la plage / la terre |
 | Poser le bloc sélectionné | Clic droit |
-| Changer de bloc | Touches 1..7 / molette |
-| Fabriquer (planches, briques, verre) | Touche `C` ou bouton 🛠️ |
+| Changer d'objet | Touches 1..9 / molette |
+| Ouvrir l'inventaire | Touche `E` |
+| Fabriquer (matériaux & outils) | Touche `C` ou bouton 🛠️ |
+| Déplacer une pile | Glisser-déposer ou deux clics dans l'inventaire |
 
 Astuce : casse les **arbres** (→ bois) et les **rochers** (→ pierre) autour de toi,
 puis construis ta première cabane.
@@ -60,7 +67,8 @@ puis construis ta première cabane.
 - [x] **Plus de blocs** — planche, brique, sable, verre, terre… (+ craft).
 - [ ] **Économie** — monnaie, banque, achats, salaires, taxes.
 - [ ] **Intérieurs** — entrer dans les bâtiments construits.
-- [ ] **Objets & coffres** — inventaire persistant, stockage, vols.
+- [x] **Inventaire & objets** — 36 cases, piles, outils durables et fabrication 3×3.
+- [ ] **Coffres** — stockage partagé, vols.
 - [ ] **Caméras & sécurité** — poser des caméras, zones surveillées.
 - [ ] **Métiers & police** — rôles, arrestations, enquêtes.
 - [ ] **Propriété** — revendiquer un terrain, protéger sa maison.
