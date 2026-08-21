@@ -460,6 +460,35 @@ kbd {
   transform: none;
 }
 
+/* ---------------- Mode performance ---------------- */
+html.low-power .hud-card,
+html.low-power .hotbar {
+  backdrop-filter: none;
+}
+
+html.low-power .hud-card,
+html.low-power .hotbar,
+html.low-power .crafting,
+html.low-power .panel,
+html.low-power .craft-btn,
+html.low-power .btn-primary,
+html.low-power .slot.selected {
+  box-shadow: none;
+}
+
+html.low-power .slot,
+html.low-power .btn,
+html.low-power .craft-btn {
+  transition: none;
+}
+
+html.low-power .slot:hover,
+html.low-power .slot.selected,
+html.low-power .btn:hover,
+html.low-power .craft-btn:hover {
+  transform: none;
+}
+
 /* Responsive */
 @media (max-width: 700px) {
   .creator { grid-template-columns: 1fr; }

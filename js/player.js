@@ -44,15 +44,15 @@ export class Player {
   // collision : cercle du joueur contre les tuiles solides
   collides(world, px, py) {
     const r = PLAYER_RADIUS;
-    // on échantillonne le périmètre du cercle
-    const pts = [
-      [px, py - r], [px, py + r], [px - r, py], [px + r, py],
-      [px - r * 0.7, py - r * 0.7], [px + r * 0.7, py - r * 0.7],
-      [px - r * 0.7, py + r * 0.7], [px + r * 0.7, py + r * 0.7],
-    ];
-    for (const [sx, sy] of pts) {
-      if (world.isSolidAt(sx, sy)) return true;
-    }
-    return false;
+    const d = r * 0.7;
+    // Évite d'allouer un tableau à chaque frame : important sur petits PC.
+    return world.isSolidAt(px, py - r)
+      || world.isSolidAt(px, py + r)
+      || world.isSolidAt(px - r, py)
+      || world.isSolidAt(px + r, py)
+      || world.isSolidAt(px - d, py - d)
+      || world.isSolidAt(px + d, py - d)
+      || world.isSolidAt(px - d, py + d)
+      || world.isSolidAt(px + d, py + d);
   }
 }

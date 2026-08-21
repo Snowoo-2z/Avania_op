@@ -2,20 +2,25 @@
 //  AVANIA — Boucle de jeu, rendu et interactions avec les blocs
 // ============================================================
 
-import { TILE, WORLD_W, WORLD_H, REACH } from './config.js';
+import { TILE, WORLD_W, WORLD_H, REACH, PERFORMANCE } from './config.js';
 import { BLOCK_DEFS } from './blocks.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { Camera } from './camera.js';
 import { Input } from './input.js';
 import { Inventory } from './inventory.js';
-import { buildTileset, getTileCanvas, getWaterFrame, WATER_FRAMES, drawTreeObject, drawRockObject } from './tileset.js';
+import { buildTileset, getTileCanvas, getWaterFrame, drawTreeObject, drawRockObject } from './tileset.js';
 import { drawCharacter } from './character.js';
+import { isLowPowerDevice, makeCanvas } from './utils.js';
+
+const REACH_SQ = REACH * REACH;
+const SORT_BY_Y = (a, b) => a.sortY - b.sortY;
 
 export class Game {
   constructor(canvas, appearance) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
+    this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+    this.ctx.imageSmoothingEnabled = false;
     this.world = new World();
     this.player = new Player(this.world.spawn.x, this.world.spawn.y, appearance);
     this.input = new Input();
@@ -31,6 +36,25 @@ export class Game {
     this.time = 0;
     this.tileset = buildTileset();
 
+    // Rendu optimisé : le sol est rendu par chunks statiques au lieu
+    // d'être redessiné tuile par tuile à chaque frame.
+    this.chunkTiles = PERFORMANCE.CHUNK_TILES;
+    this.floorChunkCache = new Map();
+    this.drawables = [];
+    this.nameTagCache = new Map();
+    this.vignetteCanvas = null;
+    this.vignetteW = 0;
+    this.vignetteH = 0;
+
+    // Mode performance activé d'office sur les petites configs, puis
+    // automatiquement si le coût moyen de rendu devient trop haut.
+    this.performanceMode = isLowPowerDevice();
+    this.frameCostAvg = 0;
+    this.frameSamples = 0;
+    if (this.performanceMode && typeof document !== 'undefined') {
+      document.documentElement.classList.add('low-power');
+    }
+
     // cible visée par la souris
     this.targetTx = -1;
     this.targetTy = -1;
@@ -41,6 +65,7 @@ export class Game {
   }
 
   start() {
+    if (this.running) return;
     this.running = true;
     requestAnimationFrame(this.onFrame);
   }
@@ -51,16 +76,54 @@ export class Game {
 
   onFrame(now) {
     if (!this.running) return;
+
+    // Ne consomme pas inutilement le CPU/GPU lorsque l'onglet est caché.
+    if (typeof document !== 'undefined' && document.hidden) {
+      this.lastTime = now;
+      requestAnimationFrame(this.onFrame);
+      return;
+    }
+
     const dt = Math.min((now - this.lastTime) / 1000, 0.05);
     this.lastTime = now;
 
+    const renderStart = performance.now();
     this.update(dt);
     this.render();
+    this.trackPerformance(performance.now() - renderStart);
 
     requestAnimationFrame(this.onFrame);
   }
 
+  trackPerformance(frameCostMs) {
+    if (this.performanceMode) return;
+    this.frameSamples++;
+    this.frameCostAvg = this.frameCostAvg === 0
+      ? frameCostMs
+      : this.frameCostAvg * 0.96 + frameCostMs * 0.04;
+
+    if (
+      this.frameSamples > PERFORMANCE.ADAPTIVE_SAMPLE_FRAMES
+      && this.frameCostAvg > PERFORMANCE.ADAPTIVE_FRAME_COST_MS
+    ) {
+      this.performanceMode = true;
+      if (typeof document !== 'undefined') document.documentElement.classList.add('low-power');
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('resize'));
+      console.info('AVANIA: mode performance activé automatiquement.');
+    }
+  }
+
+  resizeView() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    if (w === this.viewW && h === this.viewH) return;
+    this.viewW = this.camera.viewW = w;
+    this.viewH = this.camera.viewH = h;
+    this.vignetteCanvas = null;
+  }
+
   update(dt) {
+    this.resizeView();
     this.time += dt;
     const dir = this.input.getDirection();
     this.player.update(dir, dt, this.world);
@@ -84,12 +147,12 @@ export class Game {
     this.targetTx = tx;
     this.targetTy = ty;
 
-    // portée : distance du joueur au centre de la tuile
+    // portée : distance du joueur au centre de la tuile (sans sqrt)
     const cx = tx * TILE + TILE / 2;
     const cy = ty * TILE + TILE / 2;
     const dx = cx - this.player.x;
     const dy = cy - this.player.y;
-    this.inReach = Math.sqrt(dx * dx + dy * dy) <= REACH && this.world.inBounds(tx, ty);
+    this.inReach = (dx * dx + dy * dy) <= REACH_SQ && this.world.inBounds(tx, ty);
   }
 
   // ------------------------------------------------------------
@@ -113,35 +176,52 @@ export class Game {
   //  Casser (clic gauche) / Poser (clic droit)
   // ------------------------------------------------------------
   handleClicks() {
+    const leftClicked = this.input.mouse.leftClicked;
+    const rightClicked = this.input.mouse.rightClicked;
+    if (!leftClicked && !rightClicked) return;
+
+    // On consomme toujours les clics. Avant, un clic hors portée restait
+    // en attente et pouvait casser/poser plus tard sans que le joueur le veuille.
+    this.input.mouse.leftClicked = false;
+    this.input.mouse.rightClicked = false;
+
     if (!this.inReach) return;
 
-    if (this.input.mouse.leftClicked) {
-      this.input.mouse.leftClicked = false;
+    if (leftClicked) {
+      const i = this.world.idx(this.targetTx, this.targetTy);
+      const oldFloor = this.world.floor[i];
       const drop = this.world.breakBlock(this.targetTx, this.targetTy);
       if (drop) this.inventory.add(drop);
+      if (this.world.floor[i] !== oldFloor) this.invalidateFloorChunk(this.targetTx, this.targetTy);
     }
 
-    if (this.input.mouse.rightClicked) {
-      this.input.mouse.rightClicked = false;
+    if (rightClicked) {
       const item = this.inventory.getSelected();
+      if (this.inventory.count(item) <= 0) return;
+      if (this.isPlayerOnTile(this.targetTx, this.targetTy)) return;
+
       const placed = this.world.placeBlock(this.targetTx, this.targetTy, item);
       if (placed) this.inventory.remove(item);
     }
+  }
+
+  isPlayerOnTile(tx, ty) {
+    return Math.floor(this.player.x / TILE) === tx && Math.floor(this.player.y / TILE) === ty;
   }
 
   // ------------------------------------------------------------
   //  Rendu
   // ------------------------------------------------------------
   render() {
+    this.resizeView();
     const ctx = this.ctx;
     const cam = this.camera;
     const zoom = cam.zoom;
-    this.viewW = cam.viewW = window.innerWidth;
-    this.viewH = cam.viewH = window.innerHeight;
     const W = this.viewW;
     const H = this.viewH;
 
     ctx.save();
+    ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = '#2f76b2'; // hors-monde (eau)
     ctx.fillRect(0, 0, W, H);
@@ -153,85 +233,179 @@ export class Game {
     const viewT = Math.floor(cam.y / TILE) - 1;
     const viewR = Math.ceil((cam.x + W / zoom) / TILE) + 1;
     const viewB = Math.ceil((cam.y + H / zoom) / TILE) + 1;
+    const minTx = Math.max(0, viewL);
+    const minTy = Math.max(0, viewT);
+    const maxTx = Math.min(WORLD_W - 1, viewR);
+    const maxTy = Math.min(WORLD_H - 1, viewB);
 
-    // 1) sols + blocs pleins (bois, pierre)
-    const waterFrame = Math.floor(this.time * 2.4) % WATER_FRAMES;
-    for (let ty = viewT; ty <= viewB; ty++) {
-      for (let tx = viewL; tx <= viewR; tx++) {
-        if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) continue;
-        const i = this.world.idx(tx, ty);
-        const floor = this.world.floor[i];
+    // 1) sols par chunks + blocs pleins posés
+    this.drawFloorChunks(ctx, viewL, viewT, viewR, viewB);
+    this.drawPlacedBlocks(ctx, minTx, minTy, maxTx, maxTy);
+
+    // 2) surbrillance de la tuile ciblée
+    this.drawTargetHighlight(ctx, zoom);
+
+    // 3) objets (arbres, rochers) + joueurs, triés par profondeur
+    this.drawDepthSorted(ctx, minTx, minTy, maxTx, maxTy);
+
+    ctx.restore();
+
+    // 4) vignette d'ambiance. Elle est cachée en mode performance et
+    // pré-rendue sinon, pour éviter un radialGradient à chaque frame.
+    if (!this.performanceMode) {
+      ctx.drawImage(this.getVignette(W, H), 0, 0, W, H);
+    }
+  }
+
+  drawFloorChunks(ctx, viewL, viewT, viewR, viewB) {
+    const ct = this.chunkTiles;
+    const chunkL = Math.max(0, Math.floor(viewL / ct));
+    const chunkT = Math.max(0, Math.floor(viewT / ct));
+    const chunkR = Math.min(Math.ceil(WORLD_W / ct) - 1, Math.floor(viewR / ct));
+    const chunkB = Math.min(Math.ceil(WORLD_H / ct) - 1, Math.floor(viewB / ct));
+
+    for (let cy = chunkT; cy <= chunkB; cy++) {
+      for (let cx = chunkL; cx <= chunkR; cx++) {
+        const chunk = this.getFloorChunk(cx, cy);
+        ctx.drawImage(chunk, cx * ct * TILE, cy * ct * TILE);
+      }
+    }
+  }
+
+  floorChunkKey(cx, cy) {
+    return `${cx},${cy}`;
+  }
+
+  invalidateFloorChunk(tx, ty) {
+    const cx = Math.floor(tx / this.chunkTiles);
+    const cy = Math.floor(ty / this.chunkTiles);
+    this.floorChunkCache.delete(this.floorChunkKey(cx, cy));
+  }
+
+  getFloorChunk(cx, cy) {
+    const key = this.floorChunkKey(cx, cy);
+    const cached = this.floorChunkCache.get(key);
+    if (cached) return cached;
+
+    const ct = this.chunkTiles;
+    const startTx = cx * ct;
+    const startTy = cy * ct;
+    const tilesW = Math.min(ct, WORLD_W - startTx);
+    const tilesH = Math.min(ct, WORLD_H - startTy);
+    const c = makeCanvas(tilesW * TILE, tilesH * TILE);
+    const cctx = c.getContext('2d');
+    cctx.imageSmoothingEnabled = false;
+
+    for (let y = 0; y < tilesH; y++) {
+      for (let x = 0; x < tilesW; x++) {
+        const tx = startTx + x;
+        const ty = startTy + y;
+        const floor = this.world.floor[this.world.idx(tx, ty)];
+        const img = floor === 'water' ? getWaterFrame(0) : getTileCanvas(floor);
+        cctx.drawImage(img, x * TILE, y * TILE);
+      }
+    }
+
+    this.floorChunkCache.set(key, c);
+    return c;
+  }
+
+  drawPlacedBlocks(ctx, minTx, minTy, maxTx, maxTy) {
+    for (let ty = minTy; ty <= maxTy; ty++) {
+      let i = this.world.idx(minTx, ty);
+      for (let tx = minTx; tx <= maxTx; tx++, i++) {
         const block = this.world.blocks[i];
-
-        if (floor === 'water') {
-          ctx.drawImage(getWaterFrame((waterFrame + tx + ty) % WATER_FRAMES), tx * TILE, ty * TILE);
-        } else {
-          ctx.drawImage(getTileCanvas(floor), tx * TILE, ty * TILE);
-        }
-        // bloc plein posé (pas un objet avec hauteur)
         if (block && BLOCK_DEFS[block].kind === 'block') {
           ctx.drawImage(getTileCanvas(block), tx * TILE, ty * TILE);
         }
       }
     }
+  }
 
-    // 2) surbrillance de la tuile ciblée
-    if (this.inReach && this.world.inBounds(this.targetTx, this.targetTy)) {
-      const i = this.world.idx(this.targetTx, this.targetTy);
-      const hasBlock = this.world.blocks[i] !== null;
-      const onWater = this.world.floor[i] === 'water';
-      const diggable = this.world.isDiggable(this.targetTx, this.targetTy);
-      const canAct = hasBlock || diggable || !onWater;
-      const px = this.targetTx * TILE, py = this.targetTy * TILE;
+  drawTargetHighlight(ctx, zoom) {
+    if (!this.inReach || !this.world.inBounds(this.targetTx, this.targetTy)) return;
 
-      // halo animé
-      const pulse = 0.5 + Math.sin(this.time * 6) * 0.2;
-      ctx.save();
-      ctx.strokeStyle = canAct ? `rgba(255,255,255,${0.7 + pulse})` : 'rgba(255,80,80,0.85)';
-      ctx.lineWidth = 2.5 / zoom;
-      ctx.shadowColor = canAct ? 'rgba(255,255,255,0.6)' : 'rgba(255,80,80,0.6)';
+    const i = this.world.idx(this.targetTx, this.targetTy);
+    const hasBlock = this.world.blocks[i] !== null;
+    const onWater = this.world.floor[i] === 'water';
+    const diggable = this.world.isDiggable(this.targetTx, this.targetTy);
+    const canAct = hasBlock || diggable || !onWater;
+    const px = this.targetTx * TILE;
+    const py = this.targetTy * TILE;
+
+    const alpha = this.performanceMode ? 0.82 : 0.72 + Math.sin(this.time * 6) * 0.12;
+    ctx.save();
+    ctx.strokeStyle = canAct ? `rgba(255,255,255,${alpha})` : 'rgba(255,80,80,0.85)';
+    ctx.lineWidth = 2.5 / zoom;
+    if (!this.performanceMode) {
+      ctx.shadowColor = canAct ? 'rgba(255,255,255,0.55)' : 'rgba(255,80,80,0.55)';
       ctx.shadowBlur = 8;
-      ctx.fillStyle = canAct ? 'rgba(255,255,255,0.10)' : 'rgba(255,80,80,0.12)';
-      const r = 6;
-      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(px + 1, py + 1, TILE - 2, TILE - 2, r); ctx.fill(); ctx.stroke(); }
-      else { ctx.fillRect(px + 1, py + 1, TILE - 2, TILE - 2); ctx.strokeRect(px + 1, py + 1, TILE - 2, TILE - 2); }
-      ctx.restore();
     }
+    ctx.fillStyle = canAct ? 'rgba(255,255,255,0.10)' : 'rgba(255,80,80,0.12)';
+    const r = 6;
+    if (ctx.roundRect) {
+      ctx.beginPath();
+      ctx.roundRect(px + 1, py + 1, TILE - 2, TILE - 2, r);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.fillRect(px + 1, py + 1, TILE - 2, TILE - 2);
+      ctx.strokeRect(px + 1, py + 1, TILE - 2, TILE - 2);
+    }
+    ctx.restore();
+  }
 
-    // 3) objets (arbres, rochers) + joueurs, triés par profondeur
-    const drawables = [];
-    for (let ty = viewT; ty <= viewB; ty++) {
-      for (let tx = viewL; tx <= viewR; tx++) {
-        if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) continue;
-        const b = this.world.objectAt(tx, ty);
-        if (b) {
-          const cx = tx * TILE + TILE / 2;
-          const cy = ty * TILE + TILE / 2;
-          const isTree = b === 'tree';
+  drawDepthSorted(ctx, minTx, minTy, maxTx, maxTy) {
+    const drawables = this.drawables;
+    drawables.length = 0;
+
+    for (let ty = minTy; ty <= maxTy; ty++) {
+      let i = this.world.idx(minTx, ty);
+      for (let tx = minTx; tx <= maxTx; tx++, i++) {
+        const b = this.world.blocks[i];
+        if (b && BLOCK_DEFS[b].kind === 'object') {
           drawables.push({
-            sortY: cy,
-            draw: () => isTree ? drawTreeObject(ctx, cx, cy) : drawRockObject(ctx, cx, cy),
+            sortY: ty * TILE + TILE / 2,
+            kind: b,
+            x: tx * TILE + TILE / 2,
+            y: ty * TILE + TILE / 2,
           });
         }
       }
     }
 
-    drawables.push({ sortY: this.player.y, draw: () => this.drawPlayer(ctx, this.player) });
+    drawables.push({ sortY: this.player.y, kind: 'player', player: this.player });
     for (const p of this.otherPlayers) {
-      drawables.push({ sortY: p.y, draw: () => this.drawPlayer(ctx, p) });
+      drawables.push({ sortY: p.y, kind: 'player', player: p });
     }
 
-    drawables.sort((a, b) => a.sortY - b.sortY);
-    for (const d of drawables) d.draw();
+    drawables.sort(SORT_BY_Y);
+    for (let i = 0; i < drawables.length; i++) {
+      const d = drawables[i];
+      if (d.kind === 'tree') drawTreeObject(ctx, d.x, d.y);
+      else if (d.kind === 'rock') drawRockObject(ctx, d.x, d.y);
+      else this.drawPlayer(ctx, d.player);
+    }
+  }
 
-    ctx.restore();
+  getVignette(W, H) {
+    if (this.vignetteCanvas && this.vignetteW === W && this.vignetteH === H) return this.vignetteCanvas;
 
-    // 4) vignette d'ambiance (coin légèrement assombris)
-    const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
+    const c = makeCanvas(W, H);
+    const vctx = c.getContext('2d');
+    const vg = vctx.createRadialGradient(
+      W / 2, H / 2, Math.min(W, H) * 0.35,
+      W / 2, H / 2, Math.max(W, H) * 0.75,
+    );
     vg.addColorStop(0, 'rgba(0,0,0,0)');
     vg.addColorStop(1, 'rgba(10,18,12,0.28)');
-    ctx.fillStyle = vg;
-    ctx.fillRect(0, 0, W, H);
+    vctx.fillStyle = vg;
+    vctx.fillRect(0, 0, W, H);
+
+    this.vignetteCanvas = c;
+    this.vignetteW = W;
+    this.vignetteH = H;
+    return c;
   }
 
   drawPlayer(ctx, player) {
@@ -239,21 +413,46 @@ export class Game {
       facing: player.facing,
       walkPhase: player.moving ? player.walkPhase : 0,
       scale: 1,
+      shadow: !this.performanceMode,
     });
     this.drawNameTag(ctx, player);
   }
 
+  getNameTag(name) {
+    const key = name || 'Aventurier';
+    const cached = this.nameTagCache.get(key);
+    if (cached) return cached;
+
+    const font = 'bold 9px system-ui, sans-serif';
+    this.ctx.save();
+    this.ctx.font = font;
+    const w = Math.ceil(this.ctx.measureText(key).width + 8);
+    this.ctx.restore();
+
+    const h = 13;
+    const c = makeCanvas(w, h);
+    const nctx = c.getContext('2d');
+    nctx.font = font;
+    nctx.fillStyle = 'rgba(20,25,20,0.72)';
+    if (nctx.roundRect) {
+      nctx.beginPath();
+      nctx.roundRect(0, 0, w, h, 6);
+      nctx.fill();
+    } else {
+      nctx.fillRect(0, 0, w, h);
+    }
+    nctx.fillStyle = '#fff';
+    nctx.textAlign = 'center';
+    nctx.textBaseline = 'middle';
+    nctx.fillText(key, w / 2, 7);
+
+    const tag = { canvas: c, w, h };
+    this.nameTagCache.set(key, tag);
+    return tag;
+  }
+
   drawNameTag(ctx, player) {
-    const name = player.appearance.name;
-    ctx.font = 'bold 9px system-ui, sans-serif';
-    const w = ctx.measureText(name).width + 8;
-    ctx.fillStyle = 'rgba(20,25,20,0.72)';
-    const bx = player.x - w / 2;
-    const by = player.y - 50;    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(bx, by, w, 13, 6); ctx.fill(); }
-    else ctx.fillRect(bx, by, w, 13);
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(name, player.x, by + 7);
+    const tag = this.getNameTag(player.appearance.name);
+    ctx.drawImage(tag.canvas, player.x - tag.w / 2, player.y - 50);
   }
 }

@@ -9,6 +9,19 @@ export const TILE = 32; // taille d'une tuile en pixels (monde)
 export const WORLD_W = 128;
 export const WORLD_H = 128;
 
+// --- Budget rendu / compatibilité PC modestes ---
+// Ces valeurs gardent le jeu fluide sur les machines peu puissantes :
+// on limite les pixels réellement rendus et on regroupe le sol en chunks.
+export const PERFORMANCE = {
+  CHUNK_TILES: 16,
+  MAX_DPR: 1.5,
+  LOW_POWER_MAX_DPR: 1,
+  LOW_POWER_CORES: 4,
+  LOW_POWER_MEMORY_GB: 4,
+  ADAPTIVE_SAMPLE_FRAMES: 90,
+  ADAPTIVE_FRAME_COST_MS: 24,
+};
+
 // Vitesse de déplacement du joueur (px / seconde)
 export const PLAYER_SPEED = 190;
 export const PLAYER_RADIUS = 10; // rayon de collision du joueur
