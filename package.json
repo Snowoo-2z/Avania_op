@@ -8,7 +8,11 @@
     "test": "node test/smoke.mjs"
   },
   "license": "MIT",
-  "dependencies": {
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {},
+  "devDependencies": {
     "@napi-rs/canvas": "^1.0.7"
   }
 }

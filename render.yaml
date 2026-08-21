@@ -1,0 +1,20 @@
+# ============================================================
+#  AVANIA — Blueprint de déploiement Render
+#  Service : Web Service (Node.js) — prêt pour le multijoueur
+#  WebSocket à venir.
+# ============================================================
+
+services:
+  - type: web
+    name: avania
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: NODE_ENV
+        value: production
+    autoDeploy: true
