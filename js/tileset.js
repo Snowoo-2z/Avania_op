@@ -251,8 +251,10 @@ const DRAWERS = {
 const cache = {};
 const waterCache = [];
 const objectCache = {};
+let built = false;
 
 export function buildTileset() {
+  if (built) return cache;
   for (const key of Object.keys(DRAWERS)) {
     const c = makeCanvas(S, S);
     const ctx = c.getContext('2d');
@@ -269,6 +271,7 @@ export function buildTileset() {
     waterCache[f] = c;
   }
   buildObjectSprites();
+  built = true;
   return cache;
 }
 
@@ -349,6 +352,19 @@ function makeObjectSprite(width, height, anchorX, anchorY, draw) {
 function buildObjectSprites() {
   objectCache.tree = makeObjectSprite(44, 52, 22, 42, drawTreeObjectRaw);
   objectCache.rock = makeObjectSprite(40, 40, 20, 32, drawRockObjectRaw);
+}
+
+// Dimensions + ancrage du sprite d'un objet (arbre, rocher). Utile pour
+// dessiner les fissures de minage sur TOUT le corps de l'objet.
+export function getObjectSpriteInfo(kind) {
+  const sprite = objectCache[kind];
+  if (!sprite) return null;
+  return {
+    w: sprite.canvas.width,
+    h: sprite.canvas.height,
+    anchorX: sprite.anchorX,
+    anchorY: sprite.anchorY,
+  };
 }
 
 export function drawTreeObject(ctx, x, y) {

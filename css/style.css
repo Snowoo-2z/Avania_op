@@ -1331,3 +1331,125 @@ html.low-power .craft-output.ready {
   .craft-recipe-book { height: 38vh; min-height: 0; }
   .craft-recipe-book .craft-list { height: auto; max-height: 34vh; }
 }
+
+/* ------------------------------------------------------------
+   Icônes d'objets (sprites PNG, sans emoji)
+   Rendu net quel que soit le zoom grâce à image-rendering.
+   ------------------------------------------------------------ */
+.slot-icon,
+.recipe-icon,
+.detail-icon,
+.craft-output .slot-icon {
+  image-rendering: pixelated;
+}
+/* Fond "tuile pierre" sous les icônes d'outils (sprites transparents). */
+.recipe-icon {
+  background: #555a5e;
+}
+
+/* ============================================================
+   Tutoriel illustré
+   ============================================================ */
+.tutorial-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(6, 12, 8, 0.72);
+  backdrop-filter: blur(4px);
+  animation: tutorialFade 0.2s ease;
+}
+.tutorial-backdrop.hidden { display: none; }
+@keyframes tutorialFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.tutorial-panel {
+  width: min(860px, 100%);
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 22px 24px 20px;
+  background: linear-gradient(180deg, var(--panel-2, #1e3025), var(--panel, #16261c));
+  border: 1px solid var(--border, #2c4634);
+  border-radius: 20px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+}
+
+.tutorial-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.tutorial-brand { display: flex; align-items: center; gap: 12px; }
+.tutorial-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  font-size: 24px;
+  color: #0f1a13;
+  background: var(--accent-2, #f2c14e);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 4px 12px rgba(0,0,0,0.3);
+}
+.tutorial-brand h2 { margin: 2px 0 0; font-size: 20px; color: var(--text, #eef6ee); }
+.tutorial-header .craft-close { flex: 0 0 auto; }
+
+.tutorial-intro {
+  margin: 0 0 18px;
+  color: var(--muted, #9ab7a2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.tutorial-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.tutorial-card {
+  overflow: hidden;
+  background: rgba(10, 19, 13, 0.5);
+  border: 1px solid var(--border, #2c4634);
+  border-radius: 14px;
+  transition: transform 0.14s, border-color 0.14s;
+}
+.tutorial-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent-2, #f2c14e);
+}
+
+.tutorial-figure {
+  background: #0e1712;
+  border-bottom: 1px solid var(--border, #2c4634);
+}
+.tutorial-figure canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+.tutorial-body { padding: 12px 14px 14px; }
+.tutorial-body h3 { margin: 0 0 5px; font-size: 15px; color: var(--text, #eef6ee); }
+.tutorial-body p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted, #9ab7a2); }
+
+.tutorial-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+.tutorial-footer .btn { font-size: 15px; padding: 13px 22px; }
+
+@media (max-width: 700px) {
+  .tutorial-panel { padding: 16px 14px 14px; border-radius: 16px; }
+  .tutorial-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+}
