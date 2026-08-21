@@ -235,6 +235,11 @@ kbd {
   background: rgba(124, 207, 106, 0.08);
   border: 1px solid var(--border);
 }
+.pill-v {
+  color: var(--accent-2);
+  background: rgba(242, 193, 78, 0.12);
+  border-color: rgba(242, 193, 78, 0.4);
+}
 
 .creator {
   display: grid;
