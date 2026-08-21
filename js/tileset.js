@@ -250,19 +250,25 @@ const DRAWERS = {
 
 const cache = {};
 const waterCache = [];
+const objectCache = {};
 
 export function buildTileset() {
   for (const key of Object.keys(DRAWERS)) {
     const c = makeCanvas(S, S);
-    DRAWERS[key](c.getContext('2d'), mulberry32(hashStr(key)));
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    DRAWERS[key](ctx, mulberry32(hashStr(key)));
     cache[key] = c;
   }
   // frames d'eau
   for (let f = 0; f < WATER_FRAMES; f++) {
     const c = makeCanvas(S, S);
-    drawWater(c.getContext('2d'), mulberry32(hashStr('water' + f)), f);
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    drawWater(ctx, mulberry32(hashStr('water' + f)), f);
     waterCache[f] = c;
   }
+  buildObjectSprites();
   return cache;
 }
 
@@ -301,7 +307,7 @@ function voxel(ctx, x, y, w, h, color) {
   ctx.fillRect(x + 1, y + h - 2, Math.max(0, w - 2), Math.min(2, h));
 }
 
-export function drawTreeObject(ctx, x, y) {
+function drawTreeObjectRaw(ctx, x, y) {
   softShadow(ctx, x, y + 1, 15, 6);
   // tronc
   voxel(ctx, x - 4, y - 14, 8, 16, '#6e4426');
@@ -316,7 +322,7 @@ export function drawTreeObject(ctx, x, y) {
   ctx.fillRect(x - 6, y - 39, 12, 3);
 }
 
-export function drawRockObject(ctx, x, y) {
+function drawRockObjectRaw(ctx, x, y) {
   softShadow(ctx, x, y + 1, 14, 5);
   voxel(ctx, x - 13, y - 20, 26, 21, '#7a7a82');
   voxel(ctx, x - 11, y - 25, 22, 19, '#8d8d94');
@@ -330,4 +336,29 @@ export function drawRockObject(ctx, x, y) {
   ctx.moveTo(x - 9, y - 12); ctx.lineTo(x - 2, y - 16); ctx.lineTo(x - 5, y - 8);
   ctx.moveTo(x + 4, y - 18); ctx.lineTo(x + 9, y - 12);
   ctx.stroke();
+}
+
+function makeObjectSprite(width, height, anchorX, anchorY, draw) {
+  const c = makeCanvas(width, height);
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  draw(ctx, anchorX, anchorY);
+  return { canvas: c, anchorX, anchorY };
+}
+
+function buildObjectSprites() {
+  objectCache.tree = makeObjectSprite(44, 52, 22, 42, drawTreeObjectRaw);
+  objectCache.rock = makeObjectSprite(40, 40, 20, 32, drawRockObjectRaw);
+}
+
+export function drawTreeObject(ctx, x, y) {
+  const sprite = objectCache.tree;
+  if (!sprite) return drawTreeObjectRaw(ctx, x, y);
+  ctx.drawImage(sprite.canvas, x - sprite.anchorX, y - sprite.anchorY);
+}
+
+export function drawRockObject(ctx, x, y) {
+  const sprite = objectCache.rock;
+  if (!sprite) return drawRockObjectRaw(ctx, x, y);
+  ctx.drawImage(sprite.canvas, x - sprite.anchorX, y - sprite.anchorY);
 }

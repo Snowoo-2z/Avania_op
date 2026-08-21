@@ -59,7 +59,7 @@ const CUBE = 30;
 // Dessine le personnage — un cube unique posé sur (x, y).
 // y = point de contact au sol.
 export function drawCharacter(ctx, app, x, y, opts = {}) {
-  const { facing = 'down', walkPhase = 0, scale = 1, blink = false } = opts;
+  const { facing = 'down', walkPhase = 0, scale = 1, blink = false, shadow = true } = opts;
   const c = appearanceColors(app);
   const S = CUBE;
   const bob = Math.sin(walkPhase) * 1.4;
@@ -69,14 +69,17 @@ export function drawCharacter(ctx, app, x, y, opts = {}) {
   ctx.translate(x, y);
   ctx.scale(scale, scale);
 
-  // Ombre douce au sol
-  const sg = ctx.createRadialGradient(0, 1, 2, 0, 1, 14);
-  sg.addColorStop(0, 'rgba(0,0,0,0.32)');
-  sg.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = sg;
-  ctx.beginPath();
-  ctx.ellipse(0, 1, 14, 6, 0, 0, Math.PI * 2);
-  ctx.fill();
+  // Ombre douce au sol. En mode performance, le jeu peut la désactiver
+  // pour éviter de créer un radialGradient par personnage à chaque frame.
+  if (shadow) {
+    const sg = ctx.createRadialGradient(0, 1, 2, 0, 1, 14);
+    sg.addColorStop(0, 'rgba(0,0,0,0.32)');
+    sg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = sg;
+    ctx.beginPath();
+    ctx.ellipse(0, 1, 14, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   // Le cube : on le fait rebondir (bob) et respirer (squash) autour du sol.
   ctx.save();

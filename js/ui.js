@@ -10,7 +10,7 @@ import {
 } from './config.js';
 import { ITEM_DEFS, RECIPES } from './blocks.js';
 import { drawCharacter } from './character.js';
-import { pick } from './utils.js';
+import { isLowPowerDevice, pick } from './utils.js';
 
 const SAVE_KEY = 'avania.personnage';
 
@@ -36,10 +36,12 @@ export function openCharacterCreation() {
     const app = { ...DEFAULT_APPEARANCE };
     const saved = loadSaved();
     if (saved) Object.assign(app, saved);
+    const lowPowerPreview = isLowPowerDevice();
     let facing = 'down';
     const nameInput = document.getElementById('char-name');
     const preview = document.getElementById('char-preview');
-    const pctx = preview.getContext('2d');
+    const pctx = preview.getContext('2d', { alpha: false, desynchronized: true });
+    pctx.imageSmoothingEnabled = false;
     nameInput.value = app.name || '';
 
     document.getElementById('name-random').onclick = () => {
@@ -163,9 +165,14 @@ export function openCharacterCreation() {
     }, 1000);
 
     let raf = 0;
+    let lastPreviewFrame = 0;
     const t0 = performance.now();
     function loop(now) {
-      renderPreview((now - t0) / 1000);
+      // 30 FPS sur petites configs suffit pour l'aperçu et laisse le CPU respirer.
+      if (!lowPowerPreview || now - lastPreviewFrame >= 33) {
+        renderPreview((now - t0) / 1000);
+        lastPreviewFrame = now;
+      }
       raf = requestAnimationFrame(loop);
     }
     raf = requestAnimationFrame(loop);

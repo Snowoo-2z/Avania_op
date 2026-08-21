@@ -2,6 +2,8 @@
 //  AVANIA — Petites fonctions utilitaires
 // ============================================================
 
+import { PERFORMANCE } from './config.js';
+
 // Générateur pseudo-aléatoire déterministe (seed) pour une carte stable
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -30,11 +32,31 @@ export function pick(rng, arr) {
   return arr[Math.floor(rng() * arr.length)];
 }
 
+export function prefersReducedMotion() {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+export function isLowPowerDevice() {
+  if (typeof navigator === 'undefined') return false;
+  const cores = navigator.hardwareConcurrency || 8;
+  const memory = navigator.deviceMemory || 8;
+  return cores <= PERFORMANCE.LOW_POWER_CORES
+    || memory <= PERFORMANCE.LOW_POWER_MEMORY_GB
+    || prefersReducedMotion();
+}
+
 // Crée un canvas hors-écran de taille donnée
 export function makeCanvas(w, h) {
+  const width = Math.max(1, Math.ceil(w));
+  const height = Math.max(1, Math.ceil(h));
+  if (typeof OffscreenCanvas !== 'undefined') {
+    return new OffscreenCanvas(width, height);
+  }
   const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
+  c.width = width;
+  c.height = height;
   return c;
 }
 

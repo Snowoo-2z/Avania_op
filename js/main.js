@@ -5,20 +5,34 @@
 // ============================================================
 
 import { Game } from './game.js';
+import { PERFORMANCE } from './config.js';
 import { openCharacterCreation, HUD, Hotbar, Crafting } from './ui.js';
+import { isLowPowerDevice } from './utils.js';
 
 const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+const lowPowerDevice = isLowPowerDevice();
+document.documentElement.classList.toggle('low-power', lowPowerDevice);
+
+function targetDpr() {
+  const nativeDpr = window.devicePixelRatio || 1;
+  const forceLowPower = document.documentElement.classList.contains('low-power');
+  const cap = (lowPowerDevice || forceLowPower)
+    ? PERFORMANCE.LOW_POWER_MAX_DPR
+    : PERFORMANCE.MAX_DPR;
+  return Math.min(nativeDpr, cap);
+}
 
 function resize() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = window.innerWidth * dpr;
-  canvas.height = window.innerHeight * dpr;
+  const dpr = targetDpr();
+  canvas.width = Math.max(1, Math.floor(window.innerWidth * dpr));
+  canvas.height = Math.max(1, Math.floor(window.innerHeight * dpr));
   canvas.style.width = window.innerWidth + 'px';
   canvas.style.height = window.innerHeight + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = false;
 }
-window.addEventListener('resize', resize);
+window.addEventListener('resize', resize, { passive: true });
 resize();
 
 const hud = new HUD(document.getElementById('hud'));
