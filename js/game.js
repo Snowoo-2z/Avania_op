@@ -347,6 +347,9 @@ export class Game {
     // 3) objets (arbres, rochers) + joueurs, triés par profondeur
     this.drawDepthSorted(ctx, minTx, minTy, maxTx, maxTy);
 
+    // 4) fissures de minage par-dessus la ressource ciblée, comme dans Minecraft
+    this.drawMiningCracks(ctx, zoom);
+
     ctx.restore();
 
     // 4) vignette d'ambiance. Elle est cachée en mode performance et
@@ -452,27 +455,70 @@ export class Game {
       ctx.strokeRect(px + 1, py + 1, TILE - 2, TILE - 2);
     }
     ctx.restore();
+  }
 
-    // Barre de progression de minage, lisible sans ajouter d'interface fixe.
+  // Animation de fissures inspirée du minage Minecraft. Les branches se
+  // dévoilent par étapes au lieu d'afficher une barre de chargement.
+  drawMiningCracks(ctx, zoom) {
     if (
-      this.mining.progress > 0
-      && this.mining.tx === this.targetTx
-      && this.mining.ty === this.targetTy
-    ) {
-      const progress = Math.min(1, this.mining.progress);
-      const barX = px + 4;
-      const barY = py + TILE - 6;
-      const barW = TILE - 8;
-      ctx.save();
-      ctx.fillStyle = 'rgba(20,22,24,0.86)';
-      ctx.fillRect(barX, barY, barW, 5);
-      ctx.fillStyle = progress > 0.7 ? '#f1d36d' : '#d8dadd';
-      ctx.fillRect(barX + 1, barY + 1, (barW - 2) * progress, 3);
-      ctx.strokeStyle = 'rgba(0,0,0,0.72)';
-      ctx.lineWidth = 1 / zoom;
-      ctx.strokeRect(barX, barY, barW, 5);
-      ctx.restore();
+      this.mining.progress <= 0
+      || this.mining.tx !== this.targetTx
+      || this.mining.ty !== this.targetTy
+    ) return;
+
+    const progress = Math.min(1, this.mining.progress);
+    const px = this.targetTx * TILE;
+    const py = this.targetTy * TILE;
+    const centerX = px + TILE * 0.5;
+    const centerY = py + TILE * 0.54;
+    const crackBranches = [
+      { at: 0.02, points: [[0, 0], [-0.18, -0.18], [-0.31, -0.11]] },
+      { at: 0.16, points: [[-0.18, -0.18], [-0.14, -0.36], [-0.27, -0.48]] },
+      { at: 0.28, points: [[0, 0], [0.16, -0.12], [0.28, -0.3]] },
+      { at: 0.42, points: [[0.16, -0.12], [0.34, -0.08], [0.45, 0.08]] },
+      { at: 0.55, points: [[0, 0], [-0.08, 0.17], [-0.26, 0.3]] },
+      { at: 0.68, points: [[-0.08, 0.17], [0.06, 0.36], [0.2, 0.46]] },
+      { at: 0.8, points: [[0, 0], [0.22, 0.14], [0.4, 0.3]] },
+      { at: 0.91, points: [[-0.08, 0.17], [-0.22, 0.1], [-0.42, 0.16]] },
+    ];
+
+    ctx.save();
+    // Voile très léger sur la case pour donner une impression de matière qui
+    // cède, sans masquer l'arbre, la pierre ou le bloc posé.
+    ctx.fillStyle = `rgba(12,14,15,${0.035 + progress * 0.09})`;
+    ctx.fillRect(px + 2, py + 2, TILE - 4, TILE - 4);
+    ctx.strokeStyle = `rgba(18,20,21,${0.68 + progress * 0.2})`;
+    ctx.lineWidth = 1.55 / zoom;
+    ctx.lineCap = 'square';
+    ctx.lineJoin = 'miter';
+
+    for (const branch of crackBranches) {
+      if (progress < branch.at) continue;
+      ctx.beginPath();
+      branch.points.forEach(([x, y], index) => {
+        const px2 = centerX + x * TILE;
+        const py2 = centerY + y * TILE;
+        if (index === 0) ctx.moveTo(px2, py2);
+        else ctx.lineTo(px2, py2);
+      });
+      ctx.stroke();
     }
+
+    // Fine lueur sur le bord des fissures pour rester lisible à faible zoom.
+    ctx.strokeStyle = `rgba(245,245,245,${0.16 + progress * 0.12})`;
+    ctx.lineWidth = 0.65 / zoom;
+    for (const branch of crackBranches) {
+      if (progress < branch.at) continue;
+      ctx.beginPath();
+      branch.points.forEach(([x, y], index) => {
+        const px2 = centerX + x * TILE - 0.7 / zoom;
+        const py2 = centerY + y * TILE - 0.7 / zoom;
+        if (index === 0) ctx.moveTo(px2, py2);
+        else ctx.lineTo(px2, py2);
+      });
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   drawDepthSorted(ctx, minTx, minTy, maxTx, maxTy) {
