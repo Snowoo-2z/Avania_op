@@ -1,14 +1,15 @@
 // ============================================================
-//  AVANIA — Boucle de jeu principale & rendu
+//  AVANIA — Boucle de jeu, rendu et interactions avec les blocs
 // ============================================================
 
-import { TILE, WORLD_W, WORLD_H } from './config.js';
+import { TILE, WORLD_W, WORLD_H, REACH } from './config.js';
+import { BLOCK_DEFS } from './blocks.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { Camera } from './camera.js';
 import { Input } from './input.js';
-import { buildTileset, getTileCanvas } from './tileset.js';
-import { drawDecor } from './decor.js';
+import { Inventory } from './inventory.js';
+import { buildTileset, getTileCanvas, drawTreeObject, drawRockObject } from './tileset.js';
 import { drawCharacter } from './character.js';
 
 export class Game {
@@ -18,15 +19,21 @@ export class Game {
     this.world = new World();
     this.player = new Player(this.world.spawn.x, this.world.spawn.y, appearance);
     this.input = new Input();
+    this.inventory = new Inventory();
+
     this.viewW = window.innerWidth;
     this.viewH = window.innerHeight;
     this.camera = new Camera(this.viewW, this.viewH, WORLD_W * TILE, WORLD_H * TILE);
     this.camera.snapTo(this.player.x, this.player.y);
 
-    this.money = 0; // porte-monnaie (l'économie viendra bientôt !)
     this.otherPlayers = []; // futurs joueurs en ligne
     this.lastTime = performance.now();
     this.tileset = buildTileset();
+
+    // cible visée par la souris
+    this.targetTx = -1;
+    this.targetTy = -1;
+    this.inReach = false;
 
     this.running = false;
     this.onFrame = this.onFrame.bind(this);
@@ -56,6 +63,68 @@ export class Game {
     const dir = this.input.getDirection();
     this.player.update(dir, dt, this.world);
     this.camera.follow(this.player.x, this.player.y, dt);
+
+    this.updateTarget();
+    this.handleHotbarKeys();
+    this.handleClicks();
+  }
+
+  // ------------------------------------------------------------
+  //  Ciblage souris -> tuile sous le curseur
+  // ------------------------------------------------------------
+  updateTarget() {
+    const m = this.input.mouse;
+    const zoom = this.camera.zoom;
+    const wx = this.camera.x + m.x / zoom;
+    const wy = this.camera.y + m.y / zoom;
+    const tx = Math.floor(wx / TILE);
+    const ty = Math.floor(wy / TILE);
+    this.targetTx = tx;
+    this.targetTy = ty;
+
+    // portée : distance du joueur au centre de la tuile
+    const cx = tx * TILE + TILE / 2;
+    const cy = ty * TILE + TILE / 2;
+    const dx = cx - this.player.x;
+    const dy = cy - this.player.y;
+    this.inReach = Math.sqrt(dx * dx + dy * dy) <= REACH && this.world.inBounds(tx, ty);
+  }
+
+  // ------------------------------------------------------------
+  //  Sélection de la barre rapide (touches 1..9 + molette)
+  // ------------------------------------------------------------
+  handleHotbarKeys() {
+    const n = this.inventory.order.length;
+    for (let i = 0; i < n; i++) {
+      if (this.input.isDown(String(i + 1))) {
+        this.input.keys.delete(String(i + 1));
+        this.inventory.select(i);
+      }
+    }
+    if (this.input.mouse.wheel !== 0) {
+      this.inventory.cycle(this.input.mouse.wheel);
+      this.input.mouse.wheel = 0;
+    }
+  }
+
+  // ------------------------------------------------------------
+  //  Casser (clic gauche) / Poser (clic droit)
+  // ------------------------------------------------------------
+  handleClicks() {
+    if (!this.inReach) return;
+
+    if (this.input.mouse.leftClicked) {
+      this.input.mouse.leftClicked = false;
+      const drop = this.world.breakBlock(this.targetTx, this.targetTy);
+      if (drop) this.inventory.add(drop);
+    }
+
+    if (this.input.mouse.rightClicked) {
+      this.input.mouse.rightClicked = false;
+      const item = this.inventory.getSelected();
+      const placed = this.world.placeBlock(this.targetTx, this.targetTy, item);
+      if (placed) this.inventory.remove(item);
+    }
   }
 
   // ------------------------------------------------------------
@@ -65,7 +134,6 @@ export class Game {
     const ctx = this.ctx;
     const cam = this.camera;
     const zoom = cam.zoom;
-    // mise à jour de la vue (gère le redimensionnement de la fenêtre)
     this.viewW = cam.viewW = window.innerWidth;
     this.viewH = cam.viewH = window.innerHeight;
     const W = this.viewW;
@@ -73,12 +141,9 @@ export class Game {
 
     ctx.save();
     ctx.clearRect(0, 0, W, H);
-
-    // fond
-    ctx.fillStyle = '#4f7d31';
+    ctx.fillStyle = '#2f76b2'; // hors-monde (eau)
     ctx.fillRect(0, 0, W, H);
 
-    // transformation caméra
     ctx.translate(-cam.x * zoom, -cam.y * zoom);
     ctx.scale(zoom, zoom);
 
@@ -87,30 +152,54 @@ export class Game {
     const viewR = Math.ceil((cam.x + W / zoom) / TILE) + 1;
     const viewB = Math.ceil((cam.y + H / zoom) / TILE) + 1;
 
-    // 1) tuiles de base
+    // 1) sols + blocs pleins (bois, pierre)
     for (let ty = viewT; ty <= viewB; ty++) {
       for (let tx = viewL; tx <= viewR; tx++) {
         if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) continue;
-        const key = this.world.grid[this.world.idx(tx, ty)];
-        ctx.drawImage(getTileCanvas(key), tx * TILE, ty * TILE);
+        const i = this.world.idx(tx, ty);
+        const floor = this.world.floor[i];
+        const block = this.world.blocks[i];
+
+        ctx.drawImage(getTileCanvas(floor), tx * TILE, ty * TILE);
+        // bloc plein posé (pas un objet avec hauteur)
+        if (block && BLOCK_DEFS[block].kind === 'block') {
+          ctx.drawImage(getTileCanvas(block), tx * TILE, ty * TILE);
+        }
       }
     }
 
-    // 2) objets triés par profondeur (décor + joueur)
-    const drawables = [];
-    for (const d of this.world.drawables) {
-      if (d.x < (viewL - 2) * TILE || d.x > (viewR + 2) * TILE) continue;
-      if (d.y < (viewT - 2) * TILE || d.y > (viewB + 2) * TILE) continue;
-      drawables.push({ sortY: d.sortY, draw: () => drawDecor(ctx, d) });
+    // 2) surbrillance de la tuile ciblée
+    if (this.inReach && this.world.inBounds(this.targetTx, this.targetTy)) {
+      const canAct = this.world.blocks[this.world.idx(this.targetTx, this.targetTy)] !== null ||
+        this.world.floor[this.world.idx(this.targetTx, this.targetTy)] === 'grass';
+      ctx.strokeStyle = canAct ? 'rgba(255,255,255,0.9)' : 'rgba(255,60,60,0.9)';
+      ctx.lineWidth = 2 / zoom;
+      ctx.strokeRect(this.targetTx * TILE + 1, this.targetTy * TILE + 1, TILE - 2, TILE - 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillRect(this.targetTx * TILE + 1, this.targetTy * TILE + 1, TILE - 2, TILE - 2);
     }
-    // joueur local
-    drawables.push({
-      sortY: this.player.y + 6,
-      draw: () => this.drawPlayer(ctx, this.player),
-    });
-    // futurs autres joueurs
+
+    // 3) objets (arbres, rochers) + joueurs, triés par profondeur
+    const drawables = [];
+    for (let ty = viewT; ty <= viewB; ty++) {
+      for (let tx = viewL; tx <= viewR; tx++) {
+        if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) continue;
+        const b = this.world.objectAt(tx, ty);
+        if (b) {
+          const cx = tx * TILE + TILE / 2;
+          const cy = ty * TILE + TILE / 2;
+          const isTree = b === 'tree';
+          drawables.push({
+            sortY: cy,
+            draw: () => isTree ? drawTreeObject(ctx, cx, cy) : drawRockObject(ctx, cx, cy),
+          });
+        }
+      }
+    }
+
+    drawables.push({ sortY: this.player.y, draw: () => this.drawPlayer(ctx, this.player) });
     for (const p of this.otherPlayers) {
-      drawables.push({ sortY: p.y + 6, draw: () => this.drawPlayer(ctx, p) });
+      drawables.push({ sortY: p.y, draw: () => this.drawPlayer(ctx, p) });
     }
 
     drawables.sort((a, b) => a.sortY - b.sortY);
@@ -125,7 +214,6 @@ export class Game {
       walkPhase: player.moving ? player.walkPhase : 0,
       scale: 1,
     });
-    // nom au-dessus du personnage
     this.drawNameTag(ctx, player);
   }
 
@@ -134,11 +222,10 @@ export class Game {
     ctx.font = 'bold 9px system-ui, sans-serif';
     const w = ctx.measureText(name).width + 8;
     ctx.fillStyle = 'rgba(20,25,20,0.72)';
-    ctx.beginPath();
     const bx = player.x - w / 2;
-    const by = player.y - 34;
-    ctx.roundRect ? ctx.roundRect(bx, by, w, 13, 6) : ctx.rect(bx, by, w, 13);
-    ctx.fill();
+    const by = player.y - 46;
+    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(bx, by, w, 13, 6); ctx.fill(); }
+    else ctx.fillRect(bx, by, w, 13);
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';

@@ -1,16 +1,15 @@
 // ============================================================
 //  AVANIA — Point d'entrée
-//  1. Affiche l'écran de création de personnage.
-//  2. Lance le jeu dans le village.
+//  1. Écran de création du personnage.
+//  2. Monde vide à bâtir : collecte de blocs + inventaire.
 // ============================================================
 
 import { Game } from './game.js';
-import { openCharacterCreation, HUD } from './ui.js';
+import { openCharacterCreation, HUD, Hotbar } from './ui.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
-// Ajuste le canvas à la taille de la fenêtre (et au pixel ratio)
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = window.innerWidth * dpr;
@@ -23,6 +22,7 @@ window.addEventListener('resize', resize);
 resize();
 
 const hud = new HUD(document.getElementById('hud'));
+const hotbar = new Hotbar(document.getElementById('hotbar'), null); // rempli après le lancement
 
 async function boot() {
   // 1. Création du personnage
@@ -33,18 +33,20 @@ async function boot() {
   game.start();
   hud.show();
 
-  // HUD : nom + monnaie + compteur de joueurs (préparé pour le multijoueur)
+  // 3. Barre rapide branchée sur l'inventaire du jeu
+  hotbar.inventory = game.inventory;
+  hotbar.build();
+  game.inventory.onChange = () => hotbar.update();
+
   function refreshHUD() {
     hud.update({
       name: appearance.name,
-      money: game.money,
       playerCount: game.otherPlayers.length + 1,
     });
   }
   refreshHUD();
   setInterval(refreshHUD, 500);
 
-  // garde une référence pour le débogage
   window.__game = game;
 }
 

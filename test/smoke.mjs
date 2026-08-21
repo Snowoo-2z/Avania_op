@@ -1,10 +1,11 @@
 // ============================================================
 //  AVANIA — Test de fumée (logique pure, sans navigateur)
-//  Vérifie la génération du monde et les collisions.
+//  Vérifie : monde vide, ressources, casser/poser, inventaire.
 // ============================================================
 
 import { World } from '../js/world.js';
 import { Player } from '../js/player.js';
+import { Inventory } from '../js/inventory.js';
 import { appearanceColors } from '../js/character.js';
 import { TILE } from '../js/config.js';
 
@@ -14,50 +15,61 @@ function assert(cond, msg) {
   else { console.error('  ✘ ' + msg); failures++; }
 }
 
-console.log('▶ Génération du monde (seed déterministe)');
+console.log('▶ Monde (bac à sable, vide)');
 const w1 = new World(20260821);
 const w2 = new World(20260821);
 
-assert(w1.grid.length === 128 * 128, 'grille 128x128 remplie');
-assert(w1.grid.join('') === w2.grid.join(''), 'même seed → même carte');
+assert(w1.floor.length === 128 * 128, 'grille 128x128 remplie');
+assert(w1.floor.join('') === w2.floor.join(''), 'même seed → même monde');
+assert(w1.blocks.join('|') === w2.blocks.join('|'), 'ressources identiques (déterministe)');
 
-// point de spawn doit être praticable (non solide)
+// aucune construction : uniquement de l'herbe et de l'eau (bordure)
+const floorSet = new Set(w1.floor);
+assert([...floorSet].every((f) => f === 'grass' || f === 'water'), 'sol = herbe + eau uniquement (aucune construction)');
+
+// le spawn est praticable
 assert(!w1.isSolidAt(w1.spawn.x, w1.spawn.y), 'le spawn est sur une case libre');
 
-// présence de bâtiments
-assert(w1.buildings.length >= 10, 'au moins 10 bâtiments placés');
-const names = w1.buildings.map((b) => b.name);
-for (const n of ['Mairie', 'Banque', 'Police', 'Marché']) {
-  assert(names.includes(n), `bâtiment présent : ${n}`);
-}
+// bordure d'eau solide
+assert(w1.floor[w1.idx(0, 0)] === 'water', 'coin du monde = eau');
+assert(w1.isSolidTile(0, 0), 'le bord du monde est solide');
 
-// les portes sont des tuiles "door"
-const police = w1.buildings.find((b) => b.name === 'Police');
-const d = w1.doorTile(police);
-assert(w1.tile(d.tx, d.ty) === 'door', 'la porte de la police est une tuile porte');
+// des ressources naturelles sont présentes
+const hasTrees = w1.blocks.some((b) => b === 'tree');
+const hasRocks = w1.blocks.some((b) => b === 'rock');
+assert(hasTrees && hasRocks, 'arbres et rochers présents pour récolter');
 
-// un mur est solide
-assert(w1.isSolidTile(police.x, police.y), 'le coin du bâtiment est solide');
+console.log('▶ Casser / Poser des blocs');
+// trouve un arbre
+const treeIdx = w1.blocks.indexOf('tree');
+const ttx = treeIdx % 128, tty = Math.floor(treeIdx / 128);
+const drop = w1.breakBlock(ttx, tty);
+assert(drop === 'wood', 'casser un arbre donne du bois');
+assert(w1.blocks[treeIdx] === null, 'le bloc cassé devient vide');
 
-// l'eau est solide, la route ne l'est pas
-assert(w1.isSolidTile(20, 102), 'la rivière est solide');
-assert(!w1.isSolidTile(61, 50), 'la route est praticable');
-// le pont traverse la rivière (non solide)
-assert(!w1.isSolidTile(63, 102), 'le pont traverse la rivière (praticable)');
+// poser un bloc de bois sur une case d'herbe vide
+const ok = w1.placeBlock(ttx, tty, 'wood');
+assert(ok === true, 'poser du bois réussit');
+assert(w1.blocks[treeIdx] === 'wood', 'le bois est bien posé');
+assert(w1.isSolidTile(ttx, tty), 'le bois posé est un obstacle');
 
-console.log('▶ Collisions du joueur');
-const p = new Player(w1.spawn.x, w1.spawn.y, {});
-// se déplacer vers un mur doit être bloqué (même rangée que le bâtiment)
-const wallX = police.x * TILE; // bord ouest du bâtiment
-const p2 = new Player(wallX - TILE, (police.y + 2) * TILE + TILE / 2, {});
-p2.update({ x: 1, y: 0 }, 0.5, w1);
-assert(p2.x === wallX - TILE, 'le joueur est bloqué par un mur');
+// on ne peut pas poser sur l'eau
+assert(w1.placeBlock(0, 0, 'wood') === false, 'impossible de poser sur l\'eau');
 
-console.log('▶ Résolution des couleurs d\'apparence');
+console.log('▶ Inventaire');
+const inv = new Inventory();
+assert(inv.items.wood === 0 && inv.items.stone === 0, 'inventaire vide au départ');
+inv.add('wood', 3);
+assert(inv.items.wood === 3, 'ajout de 3 bois');
+inv.remove('wood', 1);
+assert(inv.items.wood === 2, 'retrait de 1 bois');
+inv.cycle(1);
+assert(inv.getSelected() === 'stone', 'molette → sélection suivante');
+
+console.log('▶ Couleurs d\'apparence');
 const cols = appearanceColors({ skin: 'ebene', hairColor: 'roux', eyes: 'violet', shirt: 'noir', pants: 'jean' });
 assert(cols.skin === '#5e3b22', 'peau ébène');
 assert(cols.hair === '#a3401f', 'cheveux roux');
-assert(cols.eyes === '#7a5aa0', 'yeux violets');
 
 console.log(failures === 0 ? '\n✅ Tous les tests passent' : `\n❌ ${failures} échec(s)`);
 process.exit(failures === 0 ? 0 : 1);

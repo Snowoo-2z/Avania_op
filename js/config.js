@@ -1,6 +1,6 @@
 // ============================================================
 //  AVANIA — Configuration globale & constantes
-//  Un monde RP en ligne, vue top-down.
+//  Un monde RP en ligne, vue top-down, à bâtir soi-même.
 // ============================================================
 
 export const TILE = 32; // taille d'une tuile en pixels (monde)
@@ -11,29 +11,12 @@ export const WORLD_H = 128;
 
 // Vitesse de déplacement du joueur (px / seconde)
 export const PLAYER_SPEED = 190;
-export const PLAYER_RADIUS = 11; // rayon de collision du joueur
+export const PLAYER_RADIUS = 10; // rayon de collision du joueur
 
-// --- Couleurs globales (palette "village chaleureux") ---
-export const COLORS = {
-  grass: '#6faf4b',
-  grassDark: '#62993f',
-  grassLight: '#84c25c',
-  path: '#c8a35a',
-  pathDark: '#b28c47',
-  road: '#9a9a96',
-  roadEdge: '#7d7d7a',
-  plaza: '#a8a8a2',
-  water: '#3d8fd1',
-  waterDeep: '#2f76b2',
-  sand: '#e7d3a0',
-  wood: '#8a5a34',
-  woodDark: '#6e4426',
-  wall: '#c9b58f',
-  wallDark: '#a18a63',
-  shadow: 'rgba(20, 30, 20, 0.18)',
-};
+// Distance max (en pixels) pour interagir avec un bloc
+export const REACH = TILE * 3;
 
-// --- Options de personnalisation du personnage ---
+// --- Options de personnalisation du personnage (carré) ---
 export const SKIN_TONES = [
   { id: 'clair',   label: 'Clair',   color: '#f7d7b5' },
   { id: 'peche',   label: 'Pêche',   color: '#f1c27d' },
@@ -44,12 +27,12 @@ export const SKIN_TONES = [
 ];
 
 export const HAIR_STYLES = [
-  { id: 'chauve',  label: 'Chauve' },
-  { id: 'court',   label: 'Court' },
-  { id: 'mi-long', label: 'Mi-long' },
-  { id: 'long',    label: 'Long' },
-  { id: 'mohawk',  label: 'Crête' },
-  { id: 'chignon', label: 'Chignon' },
+  { id: 'chauve',   label: 'Chauve' },
+  { id: 'court',    label: 'Court' },
+  { id: 'mi-long',  label: 'Mi-long' },
+  { id: 'long',     label: 'Long' },
+  { id: 'mohawk',   label: 'Crête' },
+  { id: 'chignon',  label: 'Chignon' },
   { id: 'casquette', label: 'Casquette' },
 ];
 
@@ -66,12 +49,12 @@ export const HAIR_COLORS = [
 ];
 
 export const EYE_COLORS = [
-  { id: 'marron',  label: 'Marron', color: '#3b2b1f' },
+  { id: 'marron',  label: 'Marron',   color: '#3b2b1f' },
   { id: 'noisette',label: 'Noisette', color: '#6a4a2a' },
-  { id: 'bleu',    label: 'Bleu',   color: '#3f7fb8' },
-  { id: 'vert',    label: 'Vert',   color: '#4e8a4a' },
-  { id: 'gris',    label: 'Gris',   color: '#8a8a8a' },
-  { id: 'violet',  label: 'Violet', color: '#7a5aa0' },
+  { id: 'bleu',    label: 'Bleu',     color: '#3f7fb8' },
+  { id: 'vert',    label: 'Vert',     color: '#4e8a4a' },
+  { id: 'gris',    label: 'Gris',     color: '#8a8a8a' },
+  { id: 'violet',  label: 'Violet',   color: '#7a5aa0' },
 ];
 
 export const SHIRT_COLORS = [
@@ -97,6 +80,21 @@ export const PANTS_COLORS = [
   { id: 'blanc',   label: 'Blanc',   color: '#e8e8e8' },
 ];
 
+export const HATS = [
+  { id: 'none',        label: 'Aucun' },
+  { id: 'casquette',   label: 'Casquette' },
+  { id: 'bonnet',      label: 'Bonnet' },
+  { id: 'haut-de-forme', label: 'Haut-de-forme' },
+  { id: 'couronne',    label: 'Couronne' },
+];
+
+export const GLASSES = [
+  { id: 'none',    label: 'Aucune' },
+  { id: 'rondes',  label: 'Rondes' },
+  { id: 'carrees', label: 'Carrées' },
+  { id: 'soleil',  label: 'Soleil' },
+];
+
 // Aspect par défaut d'un nouveau personnage
 export const DEFAULT_APPEARANCE = {
   name: 'Aventurier',
@@ -106,6 +104,8 @@ export const DEFAULT_APPEARANCE = {
   eyes: 'marron',
   shirt: 'rouge',
   pants: 'jean',
+  hat: 'none',
+  glasses: 'none',
 };
 
 // Petit répertoire de noms génériques pour l'inspiration

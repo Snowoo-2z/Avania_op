@@ -1,24 +1,24 @@
 // ============================================================
-//  AVANIA — Interface : création de personnage + HUD
+//  AVANIA — Interface : création de personnage + HUD + barre rapide
 // ============================================================
 
 import {
   SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS,
-  SHIRT_COLORS, PANTS_COLORS, DEFAULT_APPEARANCE, NAME_IDEAS,
+  SHIRT_COLORS, PANTS_COLORS, HATS, GLASSES,
+  DEFAULT_APPEARANCE, NAME_IDEAS,
 } from './config.js';
+import { ITEM_DEFS } from './blocks.js';
 import { drawCharacter } from './character.js';
 import { pick } from './utils.js';
 
 // ------------------------------------------------------------
 //  Écran de création de personnage
-//  Retourne une Promise résolue avec l'apparence choisie.
 // ------------------------------------------------------------
 export function openCharacterCreation() {
   return new Promise((resolve) => {
     const overlay = document.getElementById('customization');
     overlay.style.display = 'flex';
 
-    // état d'aperçu
     const app = { ...DEFAULT_APPEARANCE };
     let facing = 'down';
     const nameInput = document.getElementById('char-name');
@@ -26,39 +26,38 @@ export function openCharacterCreation() {
     const pctx = preview.getContext('2d');
     nameInput.value = app.name;
 
-    // bouton nom aléatoire
     document.getElementById('name-random').onclick = () => {
       nameInput.value = pick(Math.random, NAME_IDEAS);
     };
 
     function renderPreview() {
       pctx.clearRect(0, 0, preview.width, preview.height);
-      // petit plateau d'herbe
       pctx.fillStyle = '#6faf4b';
       pctx.beginPath();
-      pctx.ellipse(preview.width / 2, preview.height / 2 + 24, 70, 22, 0, 0, Math.PI * 2);
+      pctx.ellipse(preview.width / 2, preview.height / 2 + 40, 80, 26, 0, 0, Math.PI * 2);
       pctx.fill();
-      drawCharacter(pctx, app, preview.width / 2, preview.height / 2 + 26, {
+      drawCharacter(pctx, app, preview.width / 2, preview.height / 2 + 42, {
         facing, walkPhase: 0, scale: 3,
       });
     }
 
     function setFacing(f) { facing = f; renderPreview(); }
 
-    // construction des sections de choix
     const sections = [
-      { id: 'skin',      title: 'Peau',           options: SKIN_TONES,   key: 'skin' },
-      { id: 'hairstyle', title: 'Coiffure',       options: HAIR_STYLES,   key: 'hairStyle' },
-      { id: 'haircolor', title: 'Couleur cheveux', options: HAIR_COLORS,  key: 'hairColor' },
-      { id: 'eyes',      title: 'Yeux',           options: EYE_COLORS,    key: 'eyes' },
-      { id: 'shirt',     title: 'Haut',           options: SHIRT_COLORS,  key: 'shirt' },
-      { id: 'pants',     title: 'Pantalon',       options: PANTS_COLORS,  key: 'pants' },
+      { id: 'skin',       title: 'Peau',            options: SKIN_TONES,   key: 'skin',      swatch: 'color' },
+      { id: 'hairstyle',  title: 'Coiffure',        options: HAIR_STYLES,  key: 'hairStyle', swatch: 'text' },
+      { id: 'haircolor',  title: 'Couleur cheveux', options: HAIR_COLORS,  key: 'hairColor', swatch: 'color' },
+      { id: 'eyes',       title: 'Yeux',            options: EYE_COLORS,   key: 'eyes',      swatch: 'color' },
+      { id: 'hat',        title: 'Chapeau',         options: HATS,         key: 'hat',       swatch: 'text' },
+      { id: 'glasses',    title: 'Lunettes',        options: GLASSES,      key: 'glasses',   swatch: 'text' },
+      { id: 'shirt',      title: 'Haut',            options: SHIRT_COLORS, key: 'shirt',     swatch: 'color' },
+      { id: 'pants',      title: 'Pantalon',        options: PANTS_COLORS, key: 'pants',     swatch: 'color' },
     ];
 
     const container = document.getElementById('char-sections');
     container.innerHTML = '';
 
-    const selected = {}; // sectionId -> element sélectionné
+    const buttonsBySection = {};
     for (const sec of sections) {
       const wrap = document.createElement('div');
       wrap.className = 'section';
@@ -70,14 +69,13 @@ export function openCharacterCreation() {
 
       const row = document.createElement('div');
       row.className = 'swatches';
+      const btns = [];
 
       sec.options.forEach((opt) => {
         const btn = document.createElement('button');
         btn.className = 'swatch';
         btn.title = opt.label;
-
-        if (sec.id === 'hairstyle') {
-          // icône texte pour les coiffures
+        if (sec.swatch === 'text') {
           btn.classList.add('swatch-text');
           btn.textContent = opt.label.charAt(0).toUpperCase();
         } else {
@@ -85,21 +83,30 @@ export function openCharacterCreation() {
         }
         btn.onclick = () => {
           app[sec.key] = opt.id;
-          // mise en évidence
-          if (selected[sec.id]) selected[sec.id].classList.remove('active');
-          btn.classList.add('active');
-          selected[sec.id] = btn;
+          selectOnly(sec.id, btn);
           renderPreview();
         };
         row.appendChild(btn);
-        if (opt.id === app[sec.key]) { btn.classList.add('active'); selected[sec.id] = btn; }
+        btns.push(btn);
       });
+      buttonsBySection[sec.id] = btns;
 
       wrap.appendChild(row);
       container.appendChild(wrap);
     }
 
-    // rotation automatique douce de l'aperçu
+    function selectOnly(sectionId, btn) {
+      buttonsBySection[sectionId].forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    // sélection initiale
+    for (const sec of sections) {
+      const idx = sec.options.findIndex((o) => o.id === app[sec.key]);
+      if (idx >= 0) selectOnly(sec.id, buttonsBySection[sec.id][idx]);
+    }
+
+    // rotation automatique
     let autoRotate = true;
     const faces = ['down', 'left', 'up', 'right'];
     let faceIdx = 0;
@@ -107,37 +114,28 @@ export function openCharacterCreation() {
       if (autoRotate) { faceIdx = (faceIdx + 1) % 4; setFacing(faces[faceIdx]); }
     }, 900);
 
-    // boutons d'orientation
-    const dirBtns = document.querySelectorAll('[data-facing]');
-    dirBtns.forEach((b) => {
+    document.querySelectorAll('[data-facing]').forEach((b) => {
       b.onclick = () => { autoRotate = false; setFacing(b.dataset.facing); };
     });
 
-    // bouton surprise (aléatoire)
+    // bouton surprise
     document.getElementById('char-random').onclick = () => {
-      const rng = Math.random;
-      app.skin = pick(rng, SKIN_TONES).id;
-      app.hairStyle = pick(rng, HAIR_STYLES).id;
-      app.hairColor = pick(rng, HAIR_COLORS).id;
-      app.eyes = pick(rng, EYE_COLORS).id;
-      app.shirt = pick(rng, SHIRT_COLORS).id;
-      app.pants = pick(rng, PANTS_COLORS).id;
-      // re-sélectionner visuellement
-      refreshSelection();
+      const r = Math.random;
+      app.skin = pick(r, SKIN_TONES).id;
+      app.hairStyle = pick(r, HAIR_STYLES).id;
+      app.hairColor = pick(r, HAIR_COLORS).id;
+      app.eyes = pick(r, EYE_COLORS).id;
+      app.hat = pick(r, HATS).id;
+      app.glasses = pick(r, GLASSES).id;
+      app.shirt = pick(r, SHIRT_COLORS).id;
+      app.pants = pick(r, PANTS_COLORS).id;
+      for (const sec of sections) {
+        const idx = sec.options.findIndex((o) => o.id === app[sec.key]);
+        if (idx >= 0) selectOnly(sec.id, buttonsBySection[sec.id][idx]);
+      }
       renderPreview();
     };
 
-    function refreshSelection() {
-      const opts = { skin: SKIN_TONES, hairstyle: HAIR_STYLES, haircolor: HAIR_COLORS, eyes: EYE_COLORS, shirt: SHIRT_COLORS, pants: PANTS_COLORS };
-      for (const [sid, list] of Object.entries(opts)) {
-        const key = { skin: 'skin', hairstyle: 'hairStyle', haircolor: 'hairColor', eyes: 'eyes', shirt: 'shirt', pants: 'pants' }[sid];
-        const idx = list.findIndex((o) => o.id === app[key]);
-        const buttons = container.querySelectorAll('.section')[Object.keys(opts).indexOf(sid)].querySelectorAll('.swatch');
-        buttons.forEach((b, i) => b.classList.toggle('active', i === idx));
-      }
-    }
-
-    // validation
     document.getElementById('char-start').onclick = () => {
       const name = nameInput.value.trim() || 'Aventurier';
       clearInterval(rotTimer);
@@ -156,16 +154,59 @@ export class HUD {
   constructor(root) {
     this.el = root;
     this.nameEl = root.querySelector('#hud-name');
-    this.moneyEl = root.querySelector('#hud-money');
     this.playersEl = root.querySelector('#hud-players');
   }
 
   show() { this.el.style.display = 'flex'; }
   hide() { this.el.style.display = 'none'; }
 
-  update({ name, money, playerCount }) {
+  update({ name, playerCount }) {
     this.nameEl.textContent = name;
-    this.moneyEl.textContent = money.toLocaleString('fr-FR');
     this.playersEl.textContent = playerCount;
+  }
+}
+
+// ------------------------------------------------------------
+//  Barre rapide (inventaire)
+// ------------------------------------------------------------
+export class Hotbar {
+  constructor(root, inventory) {
+    this.root = root;
+    this.inventory = inventory;
+    this.slots = [];
+    this.build();
+    inventory.onChange = () => this.update();
+  }
+
+  build() {
+    this.root.innerHTML = '';
+    this.inventory.order.forEach((item, i) => {
+      const def = ITEM_DEFS[item];
+      const el = document.createElement('div');
+      el.className = 'slot';
+      el.title = `${def.label} — touche ${i + 1}`;
+
+      const icon = document.createElement('div');
+      icon.className = 'slot-icon';
+      icon.style.background = def.color;
+
+      const count = document.createElement('div');
+      count.className = 'slot-count';
+
+      el.appendChild(icon);
+      el.appendChild(count);
+      el.onclick = () => this.inventory.select(i);
+
+      this.root.appendChild(el);
+      this.slots.push({ el, count, item });
+    });
+    this.update();
+  }
+
+  update() {
+    this.slots.forEach((s, i) => {
+      s.count.textContent = this.inventory.items[s.item];
+      s.el.classList.toggle('selected', this.inventory.selected === i);
+    });
   }
 }

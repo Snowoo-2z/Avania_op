@@ -1,86 +1,47 @@
 // ============================================================
-//  AVANIA — Tileset procédural
-//  Chaque tuile est dessinée une seule fois dans un canvas hors-écran,
-//  puis "blittée" pour un rendu très rapide.
+//  AVANIA — Tileset procédural (style "carré"/blocs)
+//  Chaque tuile est pré-rendue dans un canvas hors-écran.
+//  Les arbres et rochers sont des objets dessinés avec hauteur
+//  (triés par profondeur avec le joueur).
 // ============================================================
 
-import { TILE, COLORS } from './config.js';
-import { makeCanvas, mulberry32, circle } from './utils.js';
-
-// Définition des types de tuiles : { solid, label }
-export const TILE_DEFS = {
-  grass:    { solid: false, label: 'Herbe' },
-  grass2:   { solid: false, label: 'Herbe' },
-  path:     { solid: false, label: 'Chemin' },
-  road:     { solid: false, label: 'Route' },
-  plaza:    { solid: false, label: 'Place' },
-  water:    { solid: true,  label: 'Eau' },
-  sand:     { solid: false, label: 'Sable' },
-  wall:     { solid: true,  label: 'Mur' },
-  door:     { solid: false, label: 'Porte' },
-  fence:    { solid: true,  label: 'Barrière' },
-  rock:     { solid: true,  label: 'Rocher' },
-  flower:   { solid: false, label: 'Fleurs' },
-  crop:     { solid: false, label: 'Champ' },
-  wood:     { solid: false, label: 'Plancher' },
-};
+import { TILE } from './config.js';
+import { BLOCK_DEFS } from './blocks.js';
+import { makeCanvas, mulberry32 } from './utils.js';
 
 const S = TILE;
 
-// --- Dessine de l'herbe avec de petites brins aléatoires ---
-function drawGrass(ctx, rng, base, dark, light) {
-  ctx.fillStyle = base;
-  ctx.fillRect(0, 0, S, S);
-  for (let i = 0; i < 14; i++) {
-    const x = rng() * S, y = rng() * S;
-    ctx.fillStyle = rng() > 0.5 ? dark : light;
-    ctx.fillRect(x, y, 1.5, 3);
+function hashStr(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
   }
-  // quelques taches plus claires
-  ctx.fillStyle = light;
-  for (let i = 0; i < 5; i++) {
+  return h >>> 0;
+}
+
+// --- Herbe : base verte avec petits brins ---
+function drawGrass(ctx, rng) {
+  ctx.fillStyle = BLOCK_DEFS.grass.color;
+  ctx.fillRect(0, 0, S, S);
+  ctx.fillStyle = '#62993f';
+  for (let i = 0; i < 16; i++) {
+    ctx.fillRect(rng() * S, rng() * S, 1.5, 3);
+  }
+  ctx.fillStyle = '#84c25c';
+  for (let i = 0; i < 6; i++) {
     ctx.fillRect(rng() * S, rng() * S, 3, 2);
   }
 }
 
-// --- Dessine un chemin de terre ---
-function drawPath(ctx, rng) {
-  ctx.fillStyle = COLORS.path;
-  ctx.fillRect(0, 0, S, S);
-  ctx.fillStyle = COLORS.pathDark;
-  for (let i = 0; i < 12; i++) {
-    ctx.beginPath();
-    ctx.arc(rng() * S, rng() * S, rng() * 2 + 1, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-// --- Dessine de la route pavée / place ---
-function drawRoad(ctx, rng, base, edge) {
-  ctx.fillStyle = base;
-  ctx.fillRect(0, 0, S, S);
-  ctx.strokeStyle = edge;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(0.5, 0.5, S - 1, S - 1);
-  ctx.fillStyle = edge;
-  // quelques pavés
-  for (let i = 0; i < 4; i++) {
-    const x = rng() * S, y = rng() * S;
-    ctx.globalAlpha = 0.5;
-    ctx.fillRect(x, y, 3, 3);
-    ctx.globalAlpha = 1;
-  }
-}
-
-// --- Dessine l'eau avec de petites vagues ---
+// --- Eau : bleu avec vagues ---
 function drawWater(ctx, rng) {
-  ctx.fillStyle = COLORS.water;
+  ctx.fillStyle = BLOCK_DEFS.water.color;
   ctx.fillRect(0, 0, S, S);
-  ctx.fillStyle = COLORS.waterDeep;
+  ctx.fillStyle = '#2f76b2';
   for (let i = 0; i < 5; i++) {
-    const y = rng() * S;
     ctx.beginPath();
-    ctx.arc(rng() * S, y, rng() * 3 + 1, 0, Math.PI * 2);
+    ctx.arc(rng() * S, rng() * S, rng() * 3 + 1, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.strokeStyle = 'rgba(255,255,255,0.35)';
@@ -94,140 +55,53 @@ function drawWater(ctx, rng) {
   }
 }
 
-// --- Dessine du sable ---
-function drawSand(ctx, rng) {
-  ctx.fillStyle = COLORS.sand;
+// --- Bloc "plein" posé (bois, pierre) : face dessus + côtés ---
+function drawBlockTile(ctx, color) {
+  const top = shade(color, 1.15);
+  const side = shade(color, 0.75);
+  const sideDark = shade(color, 0.6);
+  // fond
+  ctx.fillStyle = side;
   ctx.fillRect(0, 0, S, S);
-  ctx.fillStyle = 'rgba(160,130,80,0.4)';
-  for (let i = 0; i < 8; i++) {
-    ctx.fillRect(rng() * S, rng() * S, 2, 1.5);
+  // face supérieure
+  ctx.fillStyle = top;
+  ctx.fillRect(3, 3, S - 6, S - 6);
+  // ombre des bords
+  ctx.fillStyle = sideDark;
+  ctx.fillRect(3, S - 7, S - 6, 4);
+  ctx.fillRect(S - 7, 3, 4, S - 6);
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(3, 3, S - 6, 3);
+  ctx.fillRect(3, 3, 3, S - 6);
+  // petits détails (grain)
+  ctx.fillStyle = shade(color, 0.9);
+  for (let i = 0; i < 4; i++) {
+    ctx.fillRect(8 + ((i * 13) % (S - 12)), 8 + ((i * 7) % (S - 12)), 2, 2);
   }
 }
 
-// --- Dessine un mur de bâtiment ---
-function drawWall(ctx) {
-  ctx.fillStyle = COLORS.wall;
-  ctx.fillRect(0, 0, S, S);
-  ctx.fillStyle = COLORS.wallDark;
-  ctx.fillRect(0, 0, S, 3);
-  ctx.fillRect(0, S - 3, S, 3);
-  ctx.fillRect(0, 0, 3, S);
-  ctx.fillRect(S - 3, 0, 3, S);
-  // texture brique légère
-  ctx.strokeStyle = 'rgba(0,0,0,0.06)';
-  ctx.lineWidth = 1;
-  for (let y = 6; y < S; y += 8) {
-    ctx.beginPath(); ctx.moveTo(4, y); ctx.lineTo(S - 4, y); ctx.stroke();
-  }
-}
-
-// --- Dessine une porte ---
-function drawDoor(ctx) {
-  drawWall(ctx);
-  ctx.fillStyle = COLORS.woodDark;
-  ctx.fillRect(S * 0.2, S * 0.15, S * 0.6, S * 0.7);
-  ctx.fillStyle = COLORS.wood;
-  ctx.fillRect(S * 0.28, S * 0.22, S * 0.44, S * 0.56);
-  ctx.fillStyle = '#e0c060';
-  ctx.beginPath(); ctx.arc(S * 0.62, S * 0.5, 2, 0, Math.PI * 2); ctx.fill();
-}
-
-// --- Dessine une barrière en bois ---
-function drawFence(ctx) {
-  drawGrass(ctx, mulberry32(7), COLORS.grass, COLORS.grassDark, COLORS.grassLight);
-  ctx.fillStyle = COLORS.wood;
-  ctx.fillRect(2, 10, S - 4, 4);
-  ctx.fillRect(2, 18, S - 4, 4);
-  ctx.fillStyle = COLORS.woodDark;
-  for (let x = 4; x < S; x += 7) {
-    ctx.fillRect(x, 8, 3, 16);
-  }
-}
-
-// --- Dessine un rocher ---
-function drawRock(ctx, rng) {
-  drawGrass(ctx, rng, COLORS.grass, COLORS.grassDark, COLORS.grassLight);
-  ctx.fillStyle = '#8d8d8d';
-  ctx.beginPath();
-  ctx.ellipse(S / 2, S / 2 + 3, 10, 8, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#a5a5a5';
-  ctx.beginPath();
-  ctx.ellipse(S / 2 - 2, S / 2 + 1, 7, 5.5, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#bdbdbd';
-  ctx.beginPath();
-  ctx.ellipse(S / 2 - 3, S / 2 - 1, 3, 2, 0, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-// --- Dessine des fleurs sur herbe ---
-function drawFlower(ctx, rng) {
-  drawGrass(ctx, rng, COLORS.grass, COLORS.grassDark, COLORS.grassLight);
-  const cols = ['#e05a5a', '#e0b03c', '#d07ad0', '#ffffff', '#5aa0e0'];
-  for (let i = 0; i < 3; i++) {
-    const x = 6 + rng() * (S - 12), y = 6 + rng() * (S - 12);
-    const c = cols[Math.floor(rng() * cols.length)];
-    ctx.fillStyle = c;
-    ctx.beginPath();
-    for (let p = 0; p < 5; p++) {
-      const a = (p / 5) * Math.PI * 2;
-      ctx.arc(x + Math.cos(a) * 2.5, y + Math.sin(a) * 2.5, 2, 0, Math.PI * 2);
-    }
-    ctx.fill();
-    ctx.fillStyle = '#f5d24a';
-    ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2); ctx.fill();
-  }
-}
-
-// --- Dessine un champ de culture ---
-function drawCrop(ctx, rng) {
-  ctx.fillStyle = COLORS.pathDark;
-  ctx.fillRect(0, 0, S, S);
-  ctx.fillStyle = COLORS.path;
-  ctx.fillRect(2, 2, S - 4, S - 4);
-  ctx.fillStyle = '#7aaf3c';
-  for (let x = 6; x < S - 4; x += 8) {
-    ctx.fillRect(x, 6, 3, S - 12);
-  }
-}
-
-// --- Plancher bois ---
-function drawWood(ctx) {
-  ctx.fillStyle = COLORS.wood;
-  ctx.fillRect(0, 0, S, S);
-  ctx.strokeStyle = COLORS.woodDark;
-  ctx.lineWidth = 1;
-  for (let y = 0; y < S; y += 8) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(S, y); ctx.stroke();
-  }
+function shade(hex, f) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  r = Math.min(255, Math.round(r * f));
+  g = Math.min(255, Math.round(g * f));
+  b = Math.min(255, Math.round(b * f));
+  return `rgb(${r},${g},${b})`;
 }
 
 const DRAWERS = {
-  grass:  (c, r) => drawGrass(c, r, COLORS.grass, COLORS.grassDark, COLORS.grassLight),
-  grass2: (c, r) => drawGrass(c, r, COLORS.grassDark, '#4f7d31', COLORS.grassLight),
-  path:   drawPath,
-  road:   (c, r) => drawRoad(c, r, COLORS.road, COLORS.roadEdge),
-  plaza:  (c, r) => drawRoad(c, r, COLORS.plaza, '#8b8b85'),
-  water:  drawWater,
-  sand:   drawSand,
-  wall:   drawWall,
-  door:   drawDoor,
-  fence:  drawFence,
-  rock:   drawRock,
-  flower: drawFlower,
-  crop:   drawCrop,
-  wood:   drawWood,
+  grass: drawGrass,
+  water: drawWater,
+  wood:  (c, r) => drawBlockTile(c, BLOCK_DEFS.wood.color),
+  stone: (c, r) => drawBlockTile(c, BLOCK_DEFS.stone.color),
 };
 
-// Pré-rendu de toutes les tuiles
 const cache = {};
 
 export function buildTileset() {
-  for (const key of Object.keys(TILE_DEFS)) {
+  for (const key of Object.keys(DRAWERS)) {
     const c = makeCanvas(S, S);
-    const ctx = c.getContext('2d');
-    DRAWERS[key](ctx, mulberry32(hashStr(key)));
+    DRAWERS[key](c.getContext('2d'), mulberry32(hashStr(key)));
     cache[key] = c;
   }
   return cache;
@@ -237,45 +111,49 @@ export function getTileCanvas(key) {
   return cache[key] || cache.grass;
 }
 
-function hashStr(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
+// ------------------------------------------------------------
+//  Objets (arbres, rochers) — dessinés avec une hauteur,
+//  triés par profondeur avec le joueur. Style carré.
+// ------------------------------------------------------------
 
-// --- Dessins "décor" dessinés par-dessus le sol (arbres, fontaine...) ---
-// Un arbre : tronc + feuillage (utilisé aussi en tuile plein)
-export function drawTreeOverlay(ctx, x, y, rng) {
-  // ombre
-  ctx.fillStyle = 'rgba(20,30,20,0.15)';
-  ctx.beginPath(); ctx.ellipse(x, y + 8, 16, 8, 0, 0, Math.PI * 2); ctx.fill();
-  // feuillage (derrière)
+export function drawTreeObject(ctx, x, y) {
+  // ombre au sol
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillRect(x - 14, y - 2, 28, 8);
+  // tronc (carré)
+  ctx.fillStyle = '#6e4426';
+  ctx.fillRect(x - 4, y - 14, 8, 16);
+  ctx.fillStyle = '#8a5a34';
+  ctx.fillRect(x - 4, y - 14, 4, 16);
+  // feuillage (cube)
   ctx.fillStyle = '#3e7d2c';
-  circle(ctx, x, y, 15);
-  ctx.fill();
+  ctx.fillRect(x - 15, y - 30, 30, 20);
   ctx.fillStyle = '#4f9337';
-  circle(ctx, x - 5, y - 4, 12);
-  ctx.fill();
-  circle(ctx, x + 6, y - 3, 11);
-  ctx.fill();
+  ctx.fillRect(x - 11, y - 33, 22, 20);
   ctx.fillStyle = '#63a845';
-  circle(ctx, x - 1, y - 7, 8);
-  ctx.fill();
-  ctx.fillStyle = '#7fbf5c';
-  circle(ctx, x - 3, y - 9, 4);
-  ctx.fill();
+  ctx.fillRect(x - 6, y - 36, 12, 6);
+  // contour feuillage
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x - 15, y - 30, 30, 20);
 }
 
-export function drawBushOverlay(ctx, x, y, rng) {
-  ctx.fillStyle = 'rgba(20,30,20,0.12)';
-  ctx.beginPath(); ctx.ellipse(x, y + 5, 11, 5, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#4f9337';
-  circle(ctx, x, y, 9);
-  ctx.fill();
-  ctx.fillStyle = '#63a845';
-  circle(ctx, x - 3, y - 3, 6);
-  ctx.fill();
+export function drawRockObject(ctx, x, y) {
+  // ombre
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillRect(x - 13, y - 2, 26, 8);
+  // rocher (cube de pierre)
+  ctx.fillStyle = '#7a7a82';
+  ctx.fillRect(x - 13, y - 20, 26, 20);
+  ctx.fillStyle = '#8d8d94';
+  ctx.fillRect(x - 11, y - 24, 22, 18);
+  ctx.fillStyle = '#a5a5ac';
+  ctx.fillRect(x - 8, y - 27, 16, 6);
+  // facettes
+  ctx.fillStyle = '#6a6a72';
+  ctx.fillRect(x - 13, y - 8, 5, 6);
+  ctx.fillRect(x + 8, y - 14, 5, 10);
+  ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x - 13, y - 20, 26, 20);
 }
