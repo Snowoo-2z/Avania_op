@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AVANIA — Le village à construire</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- HUD en jeu -->
+  <div id="hud" class="hud hidden">
+    <div class="hud-card">
+      <span class="hud-label">👤</span>
+      <span id="hud-name">—</span>
+    </div>
+    <div class="hud-card hud-card--ghost">
+      <span class="hud-dot"></span>
+      <span id="hud-players">1</span>
+    </div>
+  </div>
+
+  <!-- Aide des commandes -->
+  <div id="controls-hint" class="controls-hint hidden">
+    <div class="ctrl"><kbd>ZQSD</kbd><span>Se déplacer</span></div>
+    <div class="ctrl"><kbd>Clic G</kbd><span>Casser</span></div>
+    <div class="ctrl"><kbd>Clic D</kbd><span>Poser</span></div>
+    <div class="ctrl"><kbd>1·2</kbd><span>Bloc</span></div>
+  </div>
+
+  <!-- Barre rapide (inventaire) -->
+  <div id="hotbar" class="hotbar"></div>
+
+  <!-- Écran de création du personnage -->
+  <div id="customization" class="overlay">
+    <div class="panel">
+      <header class="panel-header">
+        <div class="logo-mark">◼</div>
+        <h1>AVANIA</h1>
+        <p class="tagline">Un monde vide. <span>À toi de tout construire.</span></p>
+      </header>
+
+      <div class="creator">
+        <!-- Aperçu -->
+        <div class="preview-col">
+          <canvas id="char-preview" width="260" height="320"></canvas>
+          <div class="facing-controls">
+            <button data-facing="up" title="Vue de dos">▲</button>
+            <button data-facing="left" title="Gauche">◀</button>
+            <button data-facing="down" title="Vue de face">▼</button>
+            <button data-facing="right" title="Droite">▶</button>
+          </div>
+        </div>
+
+        <!-- Options -->
+        <div class="options-col">
+          <div class="name-row">
+            <input id="char-name" type="text" maxlength="16" placeholder="Ton nom…" />
+            <button id="name-random" class="btn-icon" title="Nom aléatoire">🎲</button>
+          </div>
+
+          <div id="char-sections" class="sections"></div>
+
+          <div class="actions">
+            <button id="char-random" class="btn btn-secondary">🎲 Surprise !</button>
+            <button id="char-start" class="btn btn-primary">Entrer dans le monde →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
