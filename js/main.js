@@ -49,7 +49,6 @@ async function boot() {
   game.start();
   hud.show();
   document.getElementById('controls-hint').classList.remove('hidden');
-  document.getElementById('inventory-btn').classList.remove('hidden');
   document.getElementById('craft-btn').classList.remove('hidden');
 
   // 3. Barre rapide, inventaire complet et fabrication branchés sur
@@ -80,7 +79,6 @@ async function boot() {
     },
   );
 
-  document.getElementById('inventory-btn').onclick = () => inventoryPanel.toggle();
   document.getElementById('inventory-close').onclick = () => inventoryPanel.close();
   document.getElementById('craft-btn').onclick = () => crafting.toggle();
   document.getElementById('craft-close').onclick = () => crafting.close();

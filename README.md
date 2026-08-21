@@ -54,7 +54,7 @@ node server.js
 | Pelleter (sable, terre) | Clic gauche sur la plage / la terre |
 | Poser le bloc sélectionné | Clic droit |
 | Changer d'objet | Touches 1..9 / molette |
-| Ouvrir l'inventaire | Touche `E` ou bouton 🎒 |
+| Ouvrir l'inventaire | Touche `E` |
 | Fabriquer (matériaux & outils) | Touche `C` ou bouton 🛠️ |
 | Déplacer une pile | Glisser-déposer ou deux clics dans l'inventaire |
 

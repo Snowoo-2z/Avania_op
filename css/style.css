@@ -501,34 +501,12 @@ html.low-power .craft-btn:hover {
    Inventaire v2 — cases, piles et outils
    ============================================================ */
 
-.inventory-btn,
 .craft-btn {
   min-height: 44px;
   white-space: nowrap;
+  bottom: 76px;
 }
-.inventory-btn {
-  position: fixed;
-  right: 16px;
-  bottom: 20px;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 11px 14px;
-  font-family: var(--font);
-  font-size: 13.5px;
-  font-weight: 900;
-  color: var(--text);
-  background: rgba(16, 26, 19, 0.86);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  cursor: pointer;
-  box-shadow: 0 10px 26px rgba(0,0,0,0.3);
-}
-.inventory-btn:hover { transform: translateY(-2px); border-color: var(--accent); }
-.inventory-btn kbd,
 .craft-btn kbd { color: inherit; background: rgba(0,0,0,0.16); border-color: rgba(0,0,0,0.16); }
-.craft-btn { bottom: 76px; }
 
 .hotbar {
   width: min(96vw, 590px);
@@ -825,7 +803,6 @@ html.low-power .craft-btn:hover {
 }
 .game-toast.visible { opacity: 1; transform: translate(-50%, 0); }
 
-html.low-power .inventory-btn,
 html.low-power .inventory-panel,
 html.low-power .game-toast,
 html.low-power .craft-output.ready {
@@ -843,7 +820,6 @@ html.low-power .craft-output.ready {
   .inventory-grid .slot { height: 47px; }
   .inventory-grid .slot-icon { font-size: 18px; }
   .crafting { right: 8px; bottom: 122px; width: calc(100vw - 16px); }
-  .inventory-btn { right: 8px; bottom: 12px; }
   .craft-btn { right: 8px; bottom: 66px; }
   .craft-workbench { grid-template-columns: 1fr 22px 1fr; gap: 4px; padding: 12px; }
   .craft-grid { grid-template-columns: repeat(3, minmax(28px, 1fr)); width: 100%; }
@@ -868,14 +844,6 @@ html.low-power .craft-output.ready {
   --inventory-teal: #62d5b2;
 }
 
-.inventory-btn {
-  color: var(--inventory-ink);
-  background: linear-gradient(145deg, rgba(31, 61, 43, 0.95), rgba(12, 27, 18, 0.96));
-  border-color: rgba(125, 207, 142, 0.3);
-  box-shadow: 0 12px 30px rgba(3, 12, 7, 0.42), inset 0 1px 0 rgba(255,255,255,0.08);
-}
-.inventory-btn:hover { border-color: var(--inventory-teal); box-shadow: 0 14px 32px rgba(3, 12, 7, 0.5), 0 0 0 3px rgba(98,213,178,0.12); }
-.inventory-btn kbd,
 .craft-btn kbd {
   min-width: 22px;
   padding: 3px 6px;
@@ -1081,3 +1049,185 @@ html.low-power .craft-output.ready {
 }
 .swatch-hair:hover { background: linear-gradient(145deg, #4d8554, #254b30) !important; }
 .swatch-hair.active { border-color: var(--inventory-gold, #f2c14e); }
+
+/* ============================================================
+   Inventaire style Minecraft — interface grise, carrée et lisible
+   ============================================================ */
+:root {
+  --inventory-ink: #f1f1f1;
+  --inventory-subtle: #c2c5c7;
+  --inventory-line: rgba(24, 26, 28, 0.5);
+  --inventory-line-bright: rgba(235, 235, 235, 0.34);
+  --inventory-deep: #242629;
+  --inventory-card: #505459;
+  --inventory-card-2: #696d71;
+  --inventory-gold: #f3d36a;
+  --inventory-teal: #8fbe5d;
+}
+
+/* Un panneau de menu Minecraft-like : gris pierre, bevels et peu de rondeur. */
+.inventory-panel {
+  width: min(930px, calc(100vw - 28px));
+  padding: 23px 25px 22px;
+  border: 2px solid #1e2022;
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgba(106, 110, 114, 0.99), rgba(70, 73, 77, 0.99) 52%, rgba(52, 55, 59, 0.99)),
+    #55595d;
+  box-shadow:
+    0 30px 90px rgba(0,0,0,0.78),
+    0 0 0 1px #a1a5a8,
+    0 0 0 4px #36393d,
+    inset 0 1px 0 rgba(255,255,255,0.36),
+    inset 0 -3px 0 rgba(0,0,0,0.28);
+}
+.inventory-panel::before {
+  border-radius: 5px;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.045) 25%, transparent 25%) 0 0 / 6px 6px,
+    linear-gradient(315deg, rgba(0,0,0,0.035) 25%, transparent 25%) 0 0 / 6px 6px;
+  opacity: 0.75;
+}
+.inventory-panel::after {
+  inset: 6px;
+  border: 1px solid rgba(235,235,235,0.18);
+  border-radius: 3px;
+}
+.inventory-ornament { display: none !important; }
+.inventory-header {
+  min-height: 63px;
+  padding: 0 3px 16px;
+  border-bottom: 2px solid rgba(25,27,29,0.55);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.2);
+}
+.inventory-brand { gap: 12px; }
+.inventory-emblem {
+  width: 47px;
+  height: 47px;
+  border: 2px solid #2a2c2f;
+  border-radius: 5px;
+  background: linear-gradient(145deg, #8e9397, #53575b);
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.28), inset -2px -2px 0 rgba(0,0,0,0.34), 0 2px 0 rgba(0,0,0,0.35);
+  transform: none;
+  filter: grayscale(0.55);
+}
+.inventory-header h2 { color: #fff; font-size: 25px; text-shadow: 2px 2px 0 rgba(0,0,0,0.35); }
+.inventory-header p { color: #d2d4d5; text-shadow: 1px 1px 0 rgba(0,0,0,0.3); }
+.panel-eyebrow { color: #e0e2e3; letter-spacing: 1.7px; text-shadow: 1px 1px 0 rgba(0,0,0,0.32); }
+.inventory-head-actions { gap: 14px; }
+.capacity-line { color: #e2e3e4; text-shadow: 1px 1px 0 rgba(0,0,0,0.35); }
+.capacity-line b { color: #fff; text-shadow: 1px 1px 0 rgba(0,0,0,0.4); }
+.capacity-line small { color: #c9ccce; }
+.capacity-meter { border: 2px solid #292b2d; border-radius: 2px; background: #3b3e41; box-shadow: inset 1px 1px 0 rgba(0,0,0,0.45), inset -1px -1px 0 rgba(255,255,255,0.1); }
+.capacity-meter i { border-radius: 0; background: #82ad52; box-shadow: none; }
+.capacity-meter i.near-full { background: #c8924a; box-shadow: none; }
+.inventory-header .craft-close { width: 33px; height: 33px; border: 2px solid #282a2d; border-radius: 4px; background: #61666a; color: #f2f2f2; box-shadow: inset 1px 1px 0 rgba(255,255,255,0.27), inset -1px -1px 0 rgba(0,0,0,0.35); }
+.inventory-header .craft-close:hover { border-color: #fff; background: #777c80; box-shadow: inset 1px 1px 0 rgba(255,255,255,0.36), inset -1px -1px 0 rgba(0,0,0,0.36); }
+.inventory-rule { margin: 13px 3px 16px; color: #d3d5d7; }
+.inventory-rule i { background: linear-gradient(90deg, transparent, rgba(28,30,32,0.55)); }
+.inventory-rule i:nth-of-type(2) { background: linear-gradient(90deg, rgba(28,30,32,0.55), transparent); }
+.inventory-rule-dot { color: #f5d66e; text-shadow: 1px 1px 0 rgba(0,0,0,0.45); }
+.inventory-section-head { margin-bottom: 8px; }
+.inventory-section-head strong { color: #fff; text-shadow: 1px 1px 0 rgba(0,0,0,0.35); }
+.section-kicker { color: #e5e6e7; text-shadow: 1px 1px 0 rgba(0,0,0,0.35); }
+.section-badge { color: #eceeef; border: 2px solid #383b3e; border-radius: 3px; background: #5c6064; box-shadow: inset 1px 1px 0 rgba(255,255,255,0.2), inset -1px -1px 0 rgba(0,0,0,0.25); }
+.inventory-grid-shell,
+.inventory-hotbar-shell {
+  padding: 9px;
+  border: 2px solid #25282a;
+  border-radius: 4px;
+  background: #35383b;
+  box-shadow: inset 2px 2px 0 rgba(0,0,0,0.32), inset -1px -1px 0 rgba(255,255,255,0.12);
+}
+.inventory-grid { gap: 5px; }
+.inventory-grid .slot {
+  height: 52px;
+  border: 2px solid #222426;
+  border-radius: 3px;
+  background: #555a5e;
+  box-shadow:
+    inset 2px 2px 0 rgba(255,255,255,0.28),
+    inset -2px -2px 0 rgba(0,0,0,0.38),
+    0 1px 0 rgba(255,255,255,0.08);
+  transition: filter 0.12s, transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.inventory-grid .slot:hover {
+  transform: none;
+  filter: brightness(1.15);
+  border-color: #1b1d1f;
+  background: #656a6e;
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.35), inset -2px -2px 0 rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.25);
+}
+.inventory-grid .slot.selected,
+.inventory-grid .slot.focused {
+  transform: none;
+  border-color: #fff4a3;
+  background: #73787c;
+  box-shadow: 0 0 0 2px rgba(33,35,37,0.75), inset 2px 2px 0 rgba(255,255,255,0.45), inset -2px -2px 0 rgba(0,0,0,0.38);
+}
+.inventory-grid .slot::before { inset: 3px; border: 1px solid rgba(0,0,0,0.2); border-radius: 1px; }
+.inventory-grid .slot-icon {
+  inset: 7px;
+  border-radius: 2px;
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.38), inset -3px -3px 0 rgba(0,0,0,0.23), 0 2px 3px rgba(0,0,0,0.3);
+}
+.inventory-grid .slot-count { color: #fff; text-shadow: 2px 2px 0 rgba(0,0,0,0.78); }
+.inventory-grid .slot-durability { left: 7px; right: 7px; bottom: 5px; height: 4px; border-radius: 0; border: 1px solid rgba(0,0,0,0.65); }
+.inventory-divider { margin: 17px 2px 12px; }
+.inventory-divider span { background: rgba(28,30,32,0.55); }
+.inventory-divider b { color: #dadcde; text-shadow: 1px 1px 0 rgba(0,0,0,0.35); }
+.hotbar-hint { color: #dadcde; }
+.hotbar-hint kbd { border: 1px solid #292b2e; border-radius: 2px; color: #fff; background: #62676b; box-shadow: inset 1px 1px 0 rgba(255,255,255,0.22), inset -1px -1px 0 rgba(0,0,0,0.3); }
+.inventory-hotbar-shell { border-color: #202224; background: #44484c; }
+.inventory-help { color: #dbddde; text-shadow: 1px 1px 0 rgba(0,0,0,0.32); }
+.inventory-help span { color: #fff0a0; }
+.inventory-help b { color: #fff; }
+.inventory-detail {
+  padding: 15px;
+  border: 2px solid #292b2e;
+  border-radius: 4px;
+  background: linear-gradient(145deg, #64696d, #484c50);
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.24), inset -2px -2px 0 rgba(0,0,0,0.35), 0 2px 0 rgba(255,255,255,0.1);
+}
+.detail-kicker { color: #f0f1f2; text-shadow: 1px 1px 0 rgba(0,0,0,0.4); }
+.detail-slot { color: #d4d7d9; }
+.detail-icon { width: 70px; height: 70px; margin-bottom: 13px; border: 2px solid #242629; border-radius: 4px; background: #555a5e; box-shadow: inset 2px 2px 0 rgba(255,255,255,0.28), inset -2px -2px 0 rgba(0,0,0,0.38), 0 2px 0 rgba(255,255,255,0.12); }
+.inventory-detail h3 { color: #fff; text-shadow: 2px 2px 0 rgba(0,0,0,0.38); }
+.inventory-detail > p { color: #e0e2e3; text-shadow: 1px 1px 0 rgba(0,0,0,0.32); }
+.detail-stats { border-top-color: rgba(28,30,32,0.48); border-bottom-color: rgba(28,30,32,0.48); }
+.detail-stats span { color: #d0d3d5; }
+.detail-stats b { color: #fff; text-shadow: 1px 1px 0 rgba(0,0,0,0.32); }
+.detail-tip { border-color: rgba(255,255,255,0.18); border-radius: 3px; background: rgba(35,38,40,0.32); }
+.detail-tip span { color: #fff0a0; }
+.detail-tip p { color: #d9dcdd; }
+
+/* Le craft reprend exactement la même palette pierre. */
+.crafting {
+  border: 2px solid #1e2022;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #707579, #4b4f53 58%, #383b3f);
+  box-shadow: 0 28px 78px rgba(0,0,0,0.78), 0 0 0 1px #a1a5a8, 0 0 0 4px #36393d, inset 0 1px 0 rgba(255,255,255,0.34), inset 0 -3px 0 rgba(0,0,0,0.27);
+}
+.crafting-header { border-bottom: 2px solid rgba(25,27,29,0.55); box-shadow: 0 1px 0 rgba(255,255,255,0.18); }
+.craft-workbench { background: rgba(38,41,44,0.26); border-bottom-color: rgba(27,29,31,0.5); }
+.craft-grid { border: 2px solid #25282a; border-radius: 4px; background: #35383b; box-shadow: inset 2px 2px 0 rgba(0,0,0,0.32), inset -1px -1px 0 rgba(255,255,255,0.12); }
+.craft-slot { border: 2px solid #222426; border-radius: 3px; background: #555a5e; box-shadow: inset 2px 2px 0 rgba(255,255,255,0.28), inset -2px -2px 0 rgba(0,0,0,0.38); }
+.craft-output { border: 2px solid #222426; border-radius: 3px; background: #555a5e; box-shadow: inset 2px 2px 0 rgba(255,255,255,0.28), inset -2px -2px 0 rgba(0,0,0,0.38); }
+.craft-output.ready { border-color: #fff4a3; background: #73787c; box-shadow: 0 0 0 2px rgba(33,35,37,0.75), inset 2px 2px 0 rgba(255,255,255,0.45), inset -2px -2px 0 rgba(0,0,0,0.38); }
+.craft-status, .craft-footnote { color: #e0e2e3; text-shadow: 1px 1px 0 rgba(0,0,0,0.34); }
+.craft-book-title, .recipe-category { color: #fff0a0; text-shadow: 1px 1px 0 rgba(0,0,0,0.4); }
+.recipe { border: 2px solid #2b2e31; border-radius: 3px; background: #565b5f; box-shadow: inset 1px 1px 0 rgba(255,255,255,0.17), inset -1px -1px 0 rgba(0,0,0,0.3); }
+.recipe:hover { border-color: #f3d36a; }
+.recipe-cost { color: #e0e2e3; }
+.recipe-icon { border: 2px solid #25282a; border-radius: 2px; box-shadow: inset 1px 1px 0 rgba(255,255,255,0.28), inset -2px -2px 0 rgba(0,0,0,0.3); }
+.recipe .btn-primary { color: #182019; background: linear-gradient(180deg, #e4e5e6, #aeb2b5); border: 2px solid #323538; border-radius: 3px; box-shadow: inset 1px 1px 0 rgba(255,255,255,0.65), inset -1px -1px 0 rgba(0,0,0,0.28); }
+.recipe .btn-primary:hover { filter: brightness(1.1); }
+
+@media (max-width: 700px) {
+  .inventory-panel { width: calc(100vw - 14px); padding: 18px 13px 16px; border-radius: 5px; }
+  .inventory-emblem { width: 41px; height: 41px; font-size: 21px; }
+  .inventory-header h2 { font-size: 22px; }
+  .inventory-grid-shell, .inventory-hotbar-shell { padding: 7px; }
+  .inventory-grid .slot { height: 44px; }
+  .inventory-detail { border-radius: 3px; }
+}
