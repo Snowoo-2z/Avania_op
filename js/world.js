@@ -7,7 +7,7 @@
 
 import { TILE, WORLD_W, WORLD_H } from './config.js';
 import { mulberry32 } from './utils.js';
-import { BLOCK_DEFS } from './blocks.js';
+import { BLOCK_DEFS, ITEM_DEFS, DIGGABLE_FLOOR } from './blocks.js';
 
 const W = WORLD_W;
 const H = WORLD_H;
@@ -103,14 +103,30 @@ export class World {
   // ------------------------------------------------------------------
 
   // Casse le bloc (ou objet) en (tx,ty). Retourne l'objet récupéré, ou null.
+  // Si le sol est creusable (sable, terre), on le récolte aussi.
   breakBlock(tx, ty) {
     if (!this.inBounds(tx, ty)) return null;
-    const b = this.blocks[this.idx(tx, ty)];
-    if (!b) return null;
-    const def = BLOCK_DEFS[b];
-    if (!def.breakable) return null;
-    this.blocks[this.idx(tx, ty)] = null;
-    return def.drop;
+    const i = this.idx(tx, ty);
+    const b = this.blocks[i];
+    if (b) {
+      const def = BLOCK_DEFS[b];
+      if (!def.breakable) return null;
+      this.blocks[i] = null;
+      return def.drop;
+    }
+    // sol creusable à la pelle
+    const dig = DIGGABLE_FLOOR[this.floor[i]];
+    if (dig) {
+      this.floor[i] = dig.becomes;
+      return dig.drop;
+    }
+    return null;
+  }
+
+  // Le sol en (tx,ty) peut-il être creusé (récolté) ?
+  isDiggable(tx, ty) {
+    if (!this.inBounds(tx, ty)) return false;
+    return this.blocks[this.idx(tx, ty)] === null && !!DIGGABLE_FLOOR[this.floor[this.idx(tx, ty)]];
   }
 
   // Pose un bloc (à partir d'un objet de l'inventaire) en (tx,ty).
@@ -120,9 +136,9 @@ export class World {
     // on ne peut pas poser sur l'eau, ni sur un bloc déjà présent
     if (this.floor[this.idx(tx, ty)] === 'water') return false;
     if (this.blocks[this.idx(tx, ty)] !== null) return false;
-    const place = { wood: 'wood', stone: 'stone' }[itemId];
-    if (!place) return false;
-    this.blocks[this.idx(tx, ty)] = place;
+    const item = ITEM_DEFS[itemId];
+    if (!item || !item.place) return false;
+    this.blocks[this.idx(tx, ty)] = item.place;
     return true;
   }
 

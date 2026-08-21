@@ -45,12 +45,16 @@ export const SKIN_TONES = [
 ];
 
 export const HAIR_STYLES = [
-  { id: 'chauve',   label: 'Chauve' },
-  { id: 'court',    label: 'Court' },
-  { id: 'mi-long',  label: 'Mi-long' },
-  { id: 'long',     label: 'Long' },
-  { id: 'mohawk',   label: 'Crête' },
-  { id: 'chignon',  label: 'Chignon' },
+  { id: 'chauve',    label: 'Chauve' },
+  { id: 'court',     label: 'Court' },
+  { id: 'mi-long',   label: 'Mi-long' },
+  { id: 'long',      label: 'Long' },
+  { id: 'afro',      label: 'Afro' },
+  { id: 'degrades',  label: 'Dégradé' },
+  { id: 'mohawk',    label: 'Crête' },
+  { id: 'chignon',   label: 'Chignon' },
+  { id: 'queue',     label: 'Queue' },
+  { id: 'tresses',   label: 'Tresses' },
   { id: 'casquette', label: 'Casquette' },
 ];
 
@@ -61,18 +65,20 @@ export const HAIR_COLORS = [
   { id: 'blond',   label: 'Blond',    color: '#d9a441' },
   { id: 'roux',    label: 'Roux',     color: '#a3401f' },
   { id: 'blanc',   label: 'Blanc',    color: '#e8e4da' },
+  { id: 'gris',    label: 'Gris',     color: '#9a9aa0' },
   { id: 'bleu',    label: 'Bleu',     color: '#3b6fd1' },
   { id: 'rose',    label: 'Rose',     color: '#e06aa0' },
   { id: 'vert',    label: 'Vert',     color: '#3f9e5a' },
 ];
 
 export const EYE_COLORS = [
-  { id: 'marron',  label: 'Marron',   color: '#3b2b1f' },
-  { id: 'noisette',label: 'Noisette', color: '#6a4a2a' },
-  { id: 'bleu',    label: 'Bleu',     color: '#3f7fb8' },
-  { id: 'vert',    label: 'Vert',     color: '#4e8a4a' },
-  { id: 'gris',    label: 'Gris',     color: '#8a8a8a' },
-  { id: 'violet',  label: 'Violet',   color: '#7a5aa0' },
+  { id: 'marron',   label: 'Marron',   color: '#3b2b1f' },
+  { id: 'noisette', label: 'Noisette', color: '#6a4a2a' },
+  { id: 'bleu',     label: 'Bleu',     color: '#3f7fb8' },
+  { id: 'bleu-clair', label: 'Bleu clair', color: '#6fb8e8' },
+  { id: 'vert',     label: 'Vert',     color: '#4e8a4a' },
+  { id: 'gris',     label: 'Gris',     color: '#8a8a8a' },
+  { id: 'violet',   label: 'Violet',   color: '#7a5aa0' },
 ];
 
 export const SHIRT_COLORS = [
@@ -86,6 +92,8 @@ export const SHIRT_COLORS = [
   { id: 'noir',    label: 'Noir',    color: '#3a3a3a' },
   { id: 'rose',    label: 'Rose',    color: '#e07a9a' },
   { id: 'cyan',    label: 'Cyan',    color: '#4fc3c3' },
+  { id: 'kaki',    label: 'Kaki',    color: '#8a8a4a' },
+  { id: 'bordeaux', label: 'Bordeaux', color: '#7a2f3f' },
 ];
 
 export const PANTS_COLORS = [
@@ -96,21 +104,34 @@ export const PANTS_COLORS = [
   { id: 'marron',  label: 'Marron',  color: '#6a4a2a' },
   { id: 'rouge',   label: 'Rouge',   color: '#b03a3a' },
   { id: 'blanc',   label: 'Blanc',   color: '#e8e8e8' },
+  { id: 'vert',    label: 'Vert',    color: '#4a6a3a' },
+  { id: 'bordeaux', label: 'Bordeaux', color: '#6a2a3a' },
 ];
 
 export const HATS = [
-  { id: 'none',        label: 'Aucun' },
-  { id: 'casquette',   label: 'Casquette' },
-  { id: 'bonnet',      label: 'Bonnet' },
+  { id: 'none',          label: 'Aucun' },
+  { id: 'casquette',     label: 'Casquette' },
+  { id: 'bonnet',        label: 'Bonnet' },
+  { id: 'paille',        label: 'Paille' },
+  { id: 'casque',        label: 'Casque' },
   { id: 'haut-de-forme', label: 'Haut-de-forme' },
-  { id: 'couronne',    label: 'Couronne' },
+  { id: 'melon',         label: 'Melon' },
+  { id: 'couronne',      label: 'Couronne' },
 ];
 
 export const GLASSES = [
-  { id: 'none',    label: 'Aucune' },
-  { id: 'rondes',  label: 'Rondes' },
-  { id: 'carrees', label: 'Carrées' },
-  { id: 'soleil',  label: 'Soleil' },
+  { id: 'none',       label: 'Aucune' },
+  { id: 'rondes',     label: 'Rondes' },
+  { id: 'carrees',    label: 'Carrées' },
+  { id: 'demi-lune',  label: 'Demi-lune' },
+  { id: 'soleil',     label: 'Soleil' },
+];
+
+export const FACIAL_HAIR = [
+  { id: 'none',      label: 'Aucune' },
+  { id: 'moustache', label: 'Moustache' },
+  { id: 'bouc',      label: 'Bouc' },
+  { id: 'barbe',     label: 'Barbe' },
 ];
 
 // Aspect par défaut d'un nouveau personnage
@@ -124,6 +145,7 @@ export const DEFAULT_APPEARANCE = {
   pants: 'jean',
   hat: 'none',
   glasses: 'none',
+  facialHair: 'none',
 };
 
 // Petit répertoire de noms génériques pour l'inspiration

@@ -22,12 +22,15 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
 
 - **Monde vide** (aucune construction prédéfinie) : terrain plat d'herbe,
   bordure d'eau, arbres & rochers éparpillés comme ressources.
-- **Collecte de blocs** : clic gauche = casser (récolte), clic droit = poser.
-- **Inventaire / barre rapide** : touches 1..9 ou molette pour choisir le bloc.
-- **Personnage carré 100 % personnalisable** : peau, 7 coiffures, couleurs de
-  cheveux, yeux, chapeau (5), lunettes (4), haut, pantalon, nom — aperçu live.
-- **Déplacements** fluides (ZQSD / WASD / flèches), collisions, caméra,
-  profondeur réaliste (on passe derrière les arbres et rochers).
+- **Collecte de blocs** : clic gauche = casser (récolte) ou pelleter le
+  sable / la terre, clic droit = poser.
+- **Inventaire / barre rapide** : touches 1..7 ou molette pour choisir le bloc.
+- **Fabrication** (touche `C` ou bouton 🛠️) : 1 bois → 2 planches,
+  1 pierre → 2 briques, 2 sable → 1 verre.
+- **Plus de blocs** : bois, pierre, planche, brique, verre, sable, terre.
+- **Personnage carré 100 % personnalisable** : peau, 11 coiffures, couleurs
+  de cheveux, yeux, chapeau (8), lunettes (5), barbe (4), haut, pantalon,
+  nom — aperçu live animé (respiration, clignement), look sauvegardé.
 
 ## 🚀 Lancer le jeu
 
@@ -42,8 +45,10 @@ node server.js
 |---|---|
 | Se déplacer | ZQSD / WASD / flèches |
 | Casser un bloc (récolter) | Clic gauche sur l'arbre / le rocher |
+| Pelleter (sable, terre) | Clic gauche sur la plage / la terre |
 | Poser le bloc sélectionné | Clic droit |
-| Changer de bloc | Touches 1..2 / molette |
+| Changer de bloc | Touches 1..7 / molette |
+| Fabriquer (planches, briques, verre) | Touche `C` ou bouton 🛠️ |
 
 Astuce : casse les **arbres** (→ bois) et les **rochers** (→ pierre) autour de toi,
 puis construis ta première cabane.
@@ -51,7 +56,7 @@ puis construis ta première cabane.
 ## 🗺️ Feuille de route
 
 - [ ] **Multijoueur** — serveur WebSocket, positions & actions synchronisées.
-- [ ] **Plus de blocs** — planche, brique, sable, verre, terre… (+ craft).
+- [x] **Plus de blocs** — planche, brique, sable, verre, terre… (+ craft).
 - [ ] **Économie** — monnaie, banque, achats, salaires, taxes.
 - [ ] **Intérieurs** — entrer dans les bâtiments construits.
 - [ ] **Objets & coffres** — inventaire persistant, stockage, vols.

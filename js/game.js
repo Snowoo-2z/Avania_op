@@ -180,7 +180,8 @@ export class Game {
       const i = this.world.idx(this.targetTx, this.targetTy);
       const hasBlock = this.world.blocks[i] !== null;
       const onWater = this.world.floor[i] === 'water';
-      const canAct = hasBlock || !onWater;
+      const diggable = this.world.isDiggable(this.targetTx, this.targetTy);
+      const canAct = hasBlock || diggable || !onWater;
       const px = this.targetTx * TILE, py = this.targetTy * TILE;
 
       // halo animé

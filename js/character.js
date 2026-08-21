@@ -53,7 +53,7 @@ function voxel(ctx, x, y, w, h, color, o = {}) {
 
 // Dessine le personnage centré sur (x, y) — y = point de contact au sol.
 export function drawCharacter(ctx, app, x, y, opts = {}) {
-  const { facing = 'down', walkPhase = 0, scale = 1 } = opts;
+  const { facing = 'down', walkPhase = 0, scale = 1, blink = false } = opts;
   const c = appearanceColors(app);
   const bob = Math.sin(walkPhase) * 1.3;
   const step = Math.sin(walkPhase) * 3;
@@ -102,7 +102,10 @@ export function drawCharacter(ctx, app, x, y, opts = {}) {
   drawHair(ctx, app, c.hair, headY, facing);
 
   // ---- Visage selon l'orientation ----
-  drawFace(ctx, app, c, headY, facing);
+  drawFace(ctx, app, c, headY, facing, blink);
+
+  // ---- Pilosité faciale (barbe / moustache / bouc) ----
+  if (app.facialHair && app.facialHair !== 'none') drawFacialHair(ctx, app.facialHair, c.hair, headY, facing);
 
   // ---- Lunettes ----
   if (app.glasses && app.glasses !== 'none') drawGlasses(ctx, app.glasses, headY, facing);
@@ -162,22 +165,84 @@ function drawHair(ctx, app, hairColor, headY, facing) {
     else if (facing === 'left') ctx.fillRect(-13, headY - 1, 5, 6);
     else ctx.fillRect(8, headY - 1, 5, 6);
   }
+
+  if (style === 'afro') {
+    // grosse couronne de cheveux autour de la tête
+    ctx.fillRect(-9, headY - 8, 18, 8);
+    ctx.fillStyle = 'rgba(255,255,255,0.16)';
+    ctx.fillRect(-9, headY - 8, 18, 3);
+    ctx.fillStyle = hairColor;
+    ctx.fillRect(-11, headY - 3, 3, 13);
+    ctx.fillRect(8, headY - 3, 3, 13);
+    ctx.fillRect(-9, headY + 11, 18, 4);
+    if (facing === 'down') ctx.fillRect(-9, headY + 1, 3, 4);
+  }
+
+  if (style === 'degrades') {
+    // côtés rasés, dessus volumineux
+    ctx.fillRect(-8, headY - 6, 16, 8);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(-8, headY - 6, 16, 2);
+    ctx.fillStyle = hairColor;
+    if (facing === 'down') ctx.fillRect(-7, headY + 1, 14, 4);
+    else if (facing === 'left') ctx.fillRect(-11, headY + 1, 4, 14);
+    else if (facing === 'right') ctx.fillRect(7, headY + 1, 4, 14);
+    else ctx.fillRect(-8, headY + 1, 16, 4);
+  }
+
+  if (style === 'queue') {
+    // cheveux attachés en queue de cheval (visible de dos)
+    ctx.fillRect(-8, headY - 4, 16, 6);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(-8, headY - 4, 16, 2);
+    ctx.fillStyle = hairColor;
+    if (facing === 'down') ctx.fillRect(-8, headY + 1, 16, 3);
+    else if (facing === 'left') ctx.fillRect(-11, headY + 1, 4, 13);
+    else if (facing === 'right') ctx.fillRect(7, headY + 1, 4, 13);
+    if (facing === 'up') ctx.fillRect(-4, headY - 13, 8, 11);
+    else ctx.fillRect(-3, headY + 12, 6, 4);
+  }
+
+  if (style === 'tresses') {
+    // tresses longues de part et d'autre
+    ctx.fillRect(-8, headY - 4, 16, 6);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(-8, headY - 4, 16, 2);
+    ctx.fillStyle = hairColor;
+    ctx.fillRect(-8, headY + 1, 16, 3);
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(-12, headY + 1 + i * 4, 4, 3);
+      ctx.fillRect(8, headY + 1 + i * 4, 4, 3);
+    }
+  }
 }
 
-function drawFace(ctx, app, c, headY, facing) {
+function drawFace(ctx, app, c, headY, facing, blink = false) {
   if (facing === 'up') return; // dos de la tête
   let ox = 0, oy = 0;
   if (facing === 'down') { ox = 0; oy = 4; }
   else if (facing === 'left') { ox = -5; oy = 0; }
   else if (facing === 'right') { ox = 5; oy = 0; }
 
-  // yeux carrés + reflet
-  ctx.fillStyle = c.eyes;
-  ctx.fillRect(-5 + ox, headY + oy, 3.5, 3.5);
-  ctx.fillRect(3 + ox, headY + oy, 3.5, 3.5);
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  ctx.fillRect(-5 + ox, headY + oy, 1.5, 1.5);
-  ctx.fillRect(3 + ox, headY + oy, 1.5, 1.5);
+  // sourcils (couleur des cheveux)
+  ctx.fillStyle = c.hair;
+  ctx.fillRect(-5 + ox, headY + oy - 1.5, 3.5, 1.5);
+  ctx.fillRect(3 + ox, headY + oy - 1.5, 3.5, 1.5);
+
+  if (blink) {
+    // yeux fermés (clignement)
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(-5 + ox, headY + oy + 1, 3.5, 1.5);
+    ctx.fillRect(3 + ox, headY + oy + 1, 3.5, 1.5);
+  } else {
+    // yeux carrés + reflet
+    ctx.fillStyle = c.eyes;
+    ctx.fillRect(-5 + ox, headY + oy, 3.5, 3.5);
+    ctx.fillRect(3 + ox, headY + oy, 3.5, 3.5);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillRect(-5 + ox, headY + oy, 1.5, 1.5);
+    ctx.fillRect(3 + ox, headY + oy, 1.5, 1.5);
+  }
 
   // bouche
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
@@ -189,6 +254,29 @@ function drawFace(ctx, app, c, headY, facing) {
   if (facing === 'down') {
     ctx.fillRect(-8, headY + 6, 3, 3);
     ctx.fillRect(6, headY + 6, 3, 3);
+  }
+}
+
+function drawFacialHair(ctx, kind, hairColor, headY, facing) {
+  if (facing === 'up') return;
+  let ox = 0;
+  if (facing === 'left') ox = -5;
+  else if (facing === 'right') ox = 5;
+
+  ctx.fillStyle = hairColor;
+
+  if (kind === 'moustache') {
+    ctx.fillRect(-4 + ox, headY + 8, 4, 2);
+    ctx.fillRect(1 + ox, headY + 8, 4, 2);
+  } else if (kind === 'bouc') {
+    ctx.fillRect(-3 + ox, headY + 8, 3, 2); // moustache fine
+    ctx.fillRect(1 + ox, headY + 8, 3, 2);
+    ctx.fillRect(-3 + ox, headY + 11, 7, 4); // menton
+  } else if (kind === 'barbe') {
+    ctx.fillRect(-7 + ox, headY + 6, 3, 9);
+    ctx.fillRect(5 + ox, headY + 6, 3, 9);
+    ctx.fillRect(-6 + ox, headY + 10, 13, 2);
+    ctx.fillRect(-4 + ox, headY + 11, 9, 4);
   }
 }
 
@@ -215,6 +303,15 @@ function drawGlasses(ctx, kind, headY, facing) {
     ctx.fill();
     ctx.fillStyle = frame;
     ctx.fillRect(-1 + ox, headY + 1 + oy, 2, 3);
+  } else if (kind === 'demi-lune') {
+    ctx.fillStyle = frame;
+    ctx.fillRect(-7 + ox, headY + 3 + oy, 5, 3);
+    ctx.fillRect(3 + ox, headY + 3 + oy, 5, 3);
+    ctx.fillStyle = lens;
+    ctx.fillRect(-6 + ox, headY + 4 + oy, 3, 2);
+    ctx.fillRect(4 + ox, headY + 4 + oy, 3, 2);
+    ctx.fillStyle = frame;
+    ctx.fillRect(-1 + ox, headY + 3 + oy, 2, 3);
   } else {
     ctx.fillStyle = frame;
     ctx.fillRect(-7 + ox, headY + oy, 5, 6);
@@ -241,6 +338,21 @@ function drawHat(ctx, app, c, headY, facing) {
     voxel(ctx, -4, headY - 11, 8, 6, '#c94f4f');
     ctx.fillStyle = '#f0f0f0';
     ctx.fillRect(-8, headY - 6, 16, 2);
+  } else if (hat === 'paille') {
+    voxel(ctx, -9, headY - 5, 18, 4, '#ecd48a');
+    voxel(ctx, -6, headY - 10, 12, 6, '#d9b95f');
+    ctx.fillStyle = '#c94f3f';
+    ctx.fillRect(-6, headY - 7, 12, 2);
+  } else if (hat === 'casque') {
+    voxel(ctx, -8, headY - 7, 16, 6, '#f2c14e');
+    voxel(ctx, -5, headY - 10, 10, 3, '#f2c14e');
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(-6, headY - 9, 12, 2);
+  } else if (hat === 'melon') {
+    voxel(ctx, -8, headY - 5, 16, 4, '#2a2a2a');
+    voxel(ctx, -5, headY - 11, 10, 7, '#3a3a3a');
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.fillRect(-5, headY - 11, 10, 2);
   } else if (hat === 'haut-de-forme') {
     voxel(ctx, -8, headY - 5, 16, 4, '#2a2a2a');
     voxel(ctx, -5, headY - 15, 10, 11, '#3a3a3a');

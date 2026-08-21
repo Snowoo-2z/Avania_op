@@ -182,6 +182,57 @@ function stoneTexture(ctx, top, dark) {
   ctx.fillRect(18, 18, 4, 3);
 }
 
+function plankTexture(ctx, top, dark) {
+  ctx.strokeStyle = shade('#8a5a2e', 0.75);
+  ctx.lineWidth = 1.1;
+  for (let i = 0; i < 2; i++) {
+    const y = 9 + i * 7;
+    ctx.beginPath();
+    ctx.moveTo(6, y); ctx.lineTo(S - 6, y);
+    ctx.stroke();
+  }
+  ctx.fillStyle = shade('#5a3a1e', 0.85);
+  for (const [x, y] of [[7, 6], [S - 9, 6], [7, S - 8], [S - 9, S - 8]]) {
+    ctx.fillRect(x, y, 2, 2);
+  }
+}
+
+function brickTexture(ctx, top, dark) {
+  ctx.strokeStyle = shade('#7a2f26', 0.7);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(4, 6, 12, 7);
+  ctx.strokeRect(16, 6, 12, 7);
+  ctx.strokeRect(10, 14, 12, 7);
+  ctx.strokeRect(22, 14, 6, 7);
+}
+
+function glassTexture(ctx, top, dark) {
+  ctx.strokeStyle = withAlpha('#ffffff', 0.55);
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(8, 5); ctx.lineTo(13, 10); ctx.lineTo(8, 15);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(19, 7); ctx.lineTo(24, 12);
+  ctx.stroke();
+  ctx.fillStyle = withAlpha('#ffffff', 0.35);
+  ctx.fillRect(6, 6, 5, 5);
+}
+
+function sandBlockTexture(ctx, top, dark) {
+  ctx.fillStyle = withAlpha('#c0a25e', 0.5);
+  for (let i = 0; i < 10; i++) {
+    ctx.fillRect(5 + ((i * 13) % 18), 5 + ((i * 7) % 18), 2, 1.5);
+  }
+}
+
+function dirtBlockTexture(ctx, top, dark) {
+  ctx.fillStyle = withAlpha('#6a4f30', 0.5);
+  for (let i = 0; i < 8; i++) {
+    ctx.fillRect(5 + ((i * 11) % 18), 5 + ((i * 9) % 18), 3, 2.5);
+  }
+}
+
 const DRAWERS = {
   grass:     (c, r) => drawGrass(c, r, BLOCK_DEFS.grass.color),
   grassDark: (c, r) => drawGrass(c, r, BLOCK_DEFS.grassDark.color),
@@ -190,6 +241,11 @@ const DRAWERS = {
   sand:      (c, r) => drawSand(c, r),
   wood:      (c) => drawBlockTile(c, BLOCK_DEFS.wood.color, woodGrain),
   stone:     (c) => drawBlockTile(c, BLOCK_DEFS.stone.color, stoneTexture),
+  plank:     (c) => drawBlockTile(c, BLOCK_DEFS.plank.color, plankTexture),
+  brick:     (c) => drawBlockTile(c, BLOCK_DEFS.brick.color, brickTexture),
+  glass:     (c) => drawBlockTile(c, BLOCK_DEFS.glass.color, glassTexture),
+  sandBlock: (c) => drawBlockTile(c, BLOCK_DEFS.sandBlock.color, sandBlockTexture),
+  dirtBlock: (c) => drawBlockTile(c, BLOCK_DEFS.dirtBlock.color, dirtBlockTexture),
 };
 
 const cache = {};
