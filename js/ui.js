@@ -1,15 +1,29 @@
 // ============================================================
 //  AVANIA — Interface : création de personnage + HUD + barre rapide
+//  + fabrication
 // ============================================================
 
 import {
   SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS,
-  SHIRT_COLORS, PANTS_COLORS, HATS, GLASSES,
+  SHIRT_COLORS, PANTS_COLORS, HATS, GLASSES, FACIAL_HAIR,
   DEFAULT_APPEARANCE, NAME_IDEAS,
 } from './config.js';
-import { ITEM_DEFS } from './blocks.js';
+import { ITEM_DEFS, RECIPES } from './blocks.js';
 import { drawCharacter } from './character.js';
 import { pick } from './utils.js';
+
+const SAVE_KEY = 'avania.personnage';
+
+function loadSaved() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function saveAppearance(data) {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch { /* ignore */ }
+}
 
 // ------------------------------------------------------------
 //  Écran de création de personnage
@@ -20,17 +34,19 @@ export function openCharacterCreation() {
     overlay.style.display = 'flex';
 
     const app = { ...DEFAULT_APPEARANCE };
+    const saved = loadSaved();
+    if (saved) Object.assign(app, saved);
     let facing = 'down';
     const nameInput = document.getElementById('char-name');
     const preview = document.getElementById('char-preview');
     const pctx = preview.getContext('2d');
-    nameInput.value = app.name;
+    nameInput.value = app.name || '';
 
     document.getElementById('name-random').onclick = () => {
       nameInput.value = pick(Math.random, NAME_IDEAS);
     };
 
-    function renderPreview() {
+    function renderPreview(time = 0) {
       const W = preview.width, H = preview.height;
       const cx = W / 2;
       pctx.clearRect(0, 0, W, H);
@@ -63,22 +79,26 @@ export function openCharacterCreation() {
       pctx.lineWidth = 2;
       pctx.stroke();
 
+      // respiration douce + clignement
+      const breathe = Math.sin(time * 2.2) * 0.8;
+      const blink = (time % 3.6) < 0.14;
       drawCharacter(pctx, app, cx, gy, {
-        facing, walkPhase: 0, scale: 3.2,
+        facing, walkPhase: breathe, scale: 3.2, blink,
       });
     }
 
-    function setFacing(f) { facing = f; renderPreview(); }
+    function setFacing(f) { facing = f; }
 
     const sections = [
-      { id: 'skin',       title: 'Peau',            options: SKIN_TONES,   key: 'skin',      swatch: 'color' },
-      { id: 'hairstyle',  title: 'Coiffure',        options: HAIR_STYLES,  key: 'hairStyle', swatch: 'text' },
-      { id: 'haircolor',  title: 'Couleur cheveux', options: HAIR_COLORS,  key: 'hairColor', swatch: 'color' },
-      { id: 'eyes',       title: 'Yeux',            options: EYE_COLORS,   key: 'eyes',      swatch: 'color' },
-      { id: 'hat',        title: 'Chapeau',         options: HATS,         key: 'hat',       swatch: 'text' },
-      { id: 'glasses',    title: 'Lunettes',        options: GLASSES,      key: 'glasses',   swatch: 'text' },
-      { id: 'shirt',      title: 'Haut',            options: SHIRT_COLORS, key: 'shirt',     swatch: 'color' },
-      { id: 'pants',      title: 'Pantalon',        options: PANTS_COLORS, key: 'pants',     swatch: 'color' },
+      { id: 'skin',       title: 'Peau',            options: SKIN_TONES,   key: 'skin',       swatch: 'color' },
+      { id: 'hairstyle',  title: 'Coiffure',        options: HAIR_STYLES,  key: 'hairStyle',  swatch: 'text' },
+      { id: 'haircolor',  title: 'Couleur cheveux', options: HAIR_COLORS,  key: 'hairColor',  swatch: 'color' },
+      { id: 'eyes',       title: 'Yeux',            options: EYE_COLORS,   key: 'eyes',       swatch: 'color' },
+      { id: 'hat',        title: 'Chapeau',         options: HATS,         key: 'hat',        swatch: 'text' },
+      { id: 'glasses',    title: 'Lunettes',        options: GLASSES,      key: 'glasses',    swatch: 'text' },
+      { id: 'facial',     title: 'Barbe',           options: FACIAL_HAIR,  key: 'facialHair', swatch: 'text' },
+      { id: 'shirt',      title: 'Haut',            options: SHIRT_COLORS, key: 'shirt',      swatch: 'color' },
+      { id: 'pants',      title: 'Pantalon',        options: PANTS_COLORS, key: 'pants',      swatch: 'color' },
     ];
 
     const container = document.getElementById('char-sections');
@@ -111,7 +131,6 @@ export function openCharacterCreation() {
         btn.onclick = () => {
           app[sec.key] = opt.id;
           selectOnly(sec.id, btn);
-          renderPreview();
         };
         row.appendChild(btn);
         btns.push(btn);
@@ -127,19 +146,29 @@ export function openCharacterCreation() {
       btn.classList.add('active');
     }
 
-    // sélection initiale
-    for (const sec of sections) {
-      const idx = sec.options.findIndex((o) => o.id === app[sec.key]);
-      if (idx >= 0) selectOnly(sec.id, buttonsBySection[sec.id][idx]);
+    function refreshSelection() {
+      for (const sec of sections) {
+        const idx = sec.options.findIndex((o) => o.id === app[sec.key]);
+        if (idx >= 0) selectOnly(sec.id, buttonsBySection[sec.id][idx]);
+      }
     }
+    refreshSelection();
 
-    // rotation automatique
+    // rotation automatique + respiration
     let autoRotate = true;
     const faces = ['down', 'left', 'up', 'right'];
     let faceIdx = 0;
     const rotTimer = setInterval(() => {
       if (autoRotate) { faceIdx = (faceIdx + 1) % 4; setFacing(faces[faceIdx]); }
-    }, 900);
+    }, 1000);
+
+    let raf = 0;
+    const t0 = performance.now();
+    function loop(now) {
+      renderPreview((now - t0) / 1000);
+      raf = requestAnimationFrame(loop);
+    }
+    raf = requestAnimationFrame(loop);
 
     document.querySelectorAll('[data-facing]').forEach((b) => {
       b.onclick = () => { autoRotate = false; setFacing(b.dataset.facing); };
@@ -154,23 +183,23 @@ export function openCharacterCreation() {
       app.eyes = pick(r, EYE_COLORS).id;
       app.hat = pick(r, HATS).id;
       app.glasses = pick(r, GLASSES).id;
+      app.facialHair = pick(r, FACIAL_HAIR).id;
       app.shirt = pick(r, SHIRT_COLORS).id;
       app.pants = pick(r, PANTS_COLORS).id;
-      for (const sec of sections) {
-        const idx = sec.options.findIndex((o) => o.id === app[sec.key]);
-        if (idx >= 0) selectOnly(sec.id, buttonsBySection[sec.id][idx]);
-      }
-      renderPreview();
+      refreshSelection();
     };
 
     document.getElementById('char-start').onclick = () => {
       const name = nameInput.value.trim() || 'Aventurier';
       clearInterval(rotTimer);
+      cancelAnimationFrame(raf);
       overlay.style.display = 'none';
-      resolve({ ...app, name });
+      const finalApp = { ...app, name };
+      saveAppearance(finalApp);
+      resolve(finalApp);
     };
 
-    renderPreview();
+    renderPreview(0);
   });
 }
 
@@ -199,14 +228,21 @@ export class HUD {
 export class Hotbar {
   constructor(root, inventory) {
     this.root = root;
-    this.inventory = inventory;
+    this.inventory = null;
     this.slots = [];
+    if (inventory) this.attach(inventory);
+  }
+
+  // branche la barre sur un inventaire (appelé une fois le jeu lancé)
+  attach(inventory) {
+    this.inventory = inventory;
     this.build();
-    inventory.onChange = () => this.update();
+    inventory.subscribe(() => this.update());
   }
 
   build() {
     this.root.innerHTML = '';
+    this.slots = [];
     this.inventory.order.forEach((item, i) => {
       const def = ITEM_DEFS[item];
       const el = document.createElement('div');
@@ -236,5 +272,67 @@ export class Hotbar {
       s.count.textContent = this.inventory.items[s.item];
       s.el.classList.toggle('selected', this.inventory.selected === i);
     });
+  }
+}
+
+// ------------------------------------------------------------
+//  Fabrication (recettes simples)
+// ------------------------------------------------------------
+export class Crafting {
+  constructor(root, listRoot, inventory) {
+    this.root = root;
+    this.listRoot = listRoot;
+    this.inventory = inventory;
+    this.build();
+    inventory.subscribe(() => this.update());
+  }
+
+  build() {
+    this.listRoot.innerHTML = '';
+    this.cards = RECIPES.map((recipe) => {
+      const out = ITEM_DEFS[recipe.out];
+      const cost = Object.entries(recipe.inputs)
+        .map(([id, n]) => `${n} ${ITEM_DEFS[id].label.toLowerCase()}`)
+        .join(' + ');
+
+      const card = document.createElement('div');
+      card.className = 'recipe';
+
+      const outEl = document.createElement('div');
+      outEl.className = 'recipe-out';
+      const icon = document.createElement('span');
+      icon.className = 'recipe-icon';
+      icon.style.background = out.color;
+      const name = document.createElement('b');
+      name.textContent = `${out.label} ×${recipe.outN}`;
+      outEl.appendChild(icon);
+      outEl.appendChild(name);
+
+      const costEl = document.createElement('div');
+      costEl.className = 'recipe-cost';
+      costEl.textContent = cost;
+
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-primary';
+      btn.textContent = 'Fabriquer';
+      btn.onclick = () => this.inventory.craft(recipe);
+
+      card.appendChild(outEl);
+      card.appendChild(costEl);
+      card.appendChild(btn);
+      this.listRoot.appendChild(card);
+      return { recipe, btn };
+    });
+    this.update();
+  }
+
+  toggle() {
+    this.root.classList.toggle('hidden');
+  }
+
+  update() {
+    for (const { recipe, btn } of this.cards) {
+      btn.disabled = !this.inventory.canCraft(recipe);
+    }
   }
 }

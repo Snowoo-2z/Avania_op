@@ -1,7 +1,9 @@
 // ============================================================
-//  AVANIA — Personnage CARRE, 100% personnalisable (vue top-down)
-//  Chaque élément est un "voxel" doux : couleur + contour +
-//  reflet haut + ombre basse, pour un rendu 3D mignon et lisible.
+//  AVANIA — Personnage CARRE : un vrai CUBE, 100% personnalisable
+//  Le personnage est un SEUL carré (un cube) avec un visage,
+//  des cheveux et des accessoires dessinés dessus.
+//  Chaque élément garde le style "voxel" doux : contour,
+//  reflet en haut, ombre en bas.
 // ============================================================
 
 import {
@@ -31,7 +33,7 @@ function withAlpha(hex, a) {
   return `rgba(${r},${g},${b},${a})`;
 }
 
-// Dessine un "voxel" (carré ombré + contour + reflet)
+// Dessine un "voxel" (carré ombré + contour + reflet) — pour les chapeaux.
 function voxel(ctx, x, y, w, h, color, o = {}) {
   const { outline = true, hl = true, sh = true, hlHeight } = o;
   ctx.fillStyle = color;
@@ -51,208 +53,335 @@ function voxel(ctx, x, y, w, h, color, o = {}) {
   }
 }
 
-// Dessine le personnage centré sur (x, y) — y = point de contact au sol.
+// Taille du cube (en unités monde, avant mise à l'échelle)
+const CUBE = 30;
+
+// Dessine le personnage — un cube unique posé sur (x, y).
+// y = point de contact au sol.
 export function drawCharacter(ctx, app, x, y, opts = {}) {
-  const { facing = 'down', walkPhase = 0, scale = 1 } = opts;
+  const { facing = 'down', walkPhase = 0, scale = 1, blink = false } = opts;
   const c = appearanceColors(app);
-  const bob = Math.sin(walkPhase) * 1.3;
-  const step = Math.sin(walkPhase) * 3;
+  const S = CUBE;
+  const bob = Math.sin(walkPhase) * 1.4;
+  const squash = 1 + Math.sin(walkPhase * 2) * 0.04;
 
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(scale, scale);
 
   // Ombre douce au sol
-  const sg = ctx.createRadialGradient(0, 1, 2, 0, 1, 11);
-  sg.addColorStop(0, 'rgba(0,0,0,0.30)');
+  const sg = ctx.createRadialGradient(0, 1, 2, 0, 1, 14);
+  sg.addColorStop(0, 'rgba(0,0,0,0.32)');
   sg.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = sg;
   ctx.beginPath();
-  ctx.ellipse(0, 1, 11, 5, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 1, 14, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // ---- Jambes (pantalon) ----
-  voxel(ctx, -9 + step, -7, 8, 8, c.pants);
-  voxel(ctx, 1 - step, -7, 8, 8, c.pants);
-  // ---- Chaussures ----
-  voxel(ctx, -9 + step, -4, 8, 4, '#3a3a3a', { hl: false });
-  voxel(ctx, 1 - step, -4, 8, 4, '#3a3a3a', { hl: false });
+  // Le cube : on le fait rebondir (bob) et respirer (squash) autour du sol.
+  ctx.save();
+  ctx.translate(0, -bob);
+  ctx.scale(1, squash);
 
-  // ---- Corps (haut) ----
-  const bodyY = -21 - bob;
-  voxel(ctx, -9, bodyY, 18, 14, c.shirt);
-  // détail : liseré bas de chemise
-  ctx.fillStyle = shade(c.shirt, 0.85);
-  ctx.fillRect(-9, bodyY + 12, 18, 2);
+  const x0 = -S / 2;
+  const y0 = -S; // haut du cube, bas = 0 (au sol)
 
-  // ---- Bras ----
-  const swing = Math.sin(walkPhase) * 2.5;
-  voxel(ctx, -14 - swing, bodyY + 2, 5, 10, c.shirt);
-  voxel(ctx, 9 + swing, bodyY + 2, 5, 10, c.shirt);
-  // ---- Mains (peau) ----
-  voxel(ctx, -14 - swing, bodyY + 9, 5, 3, c.skin, { outline: false });
+  drawCubeBody(ctx, x0, y0, S, c);
+  drawHair(ctx, app, c.hair, x0, y0, S, facing);
 
-  voxel(ctx, 9 + swing, bodyY + 9, 5, 3, c.skin, { outline: false });
+  if (facing !== 'up') {
+    drawFace(ctx, app, c, x0, y0, S, facing, blink);
+    if (app.facialHair && app.facialHair !== 'none') {
+      drawFacialHair(ctx, app.facialHair, c.hair, x0, y0, S, facing);
+    }
+    if (app.glasses && app.glasses !== 'none') {
+      drawGlasses(ctx, app.glasses, x0, y0, S, facing);
+    }
+  }
+  if (app.hat && app.hat !== 'none') {
+    drawHat(ctx, app, c, x0, y0, S, facing);
+  }
 
-  // ---- Tête (carré) ----
-  const headY = -37 - bob;
-  voxel(ctx, -8, headY, 16, 16, c.skin);
-
-  // ---- Cheveux ----
-  drawHair(ctx, app, c.hair, headY, facing);
-
-  // ---- Visage selon l'orientation ----
-  drawFace(ctx, app, c, headY, facing);
-
-  // ---- Lunettes ----
-  if (app.glasses && app.glasses !== 'none') drawGlasses(ctx, app.glasses, headY, facing);
-
-  // ---- Chapeau ----
-  if (app.hat && app.hat !== 'none') drawHat(ctx, app, c, headY, facing);
-
+  ctx.restore();
   ctx.restore();
 }
 
-function drawHair(ctx, app, hairColor, headY, facing) {
+// Le corps : un seul carré (visage en peau + bandes haut/pantalon en bas)
+function drawCubeBody(ctx, x0, y0, S, c) {
+  const pantsH = 4;
+  const shirtH = 6;
+  const shirtY = y0 + S - pantsH - shirtH;
+  const pantsY = y0 + S - pantsH;
+
+  // base = peau (le visage)
+  ctx.fillStyle = c.skin;
+  ctx.fillRect(x0, y0, S, S);
+
+  // bande "haut" (chemise)
+  ctx.fillStyle = c.shirt;
+  ctx.fillRect(x0, shirtY, S, shirtH);
+  ctx.fillStyle = shade(c.shirt, 0.8);
+  ctx.fillRect(x0, shirtY, S, 1.5);
+  ctx.fillRect(x0, shirtY + shirtH - 1.5, S, 1.5);
+
+  // bande "pantalon" (tout en bas)
+  ctx.fillStyle = c.pants;
+  ctx.fillRect(x0, pantsY, S, pantsH);
+  ctx.fillStyle = shade(c.pants, 0.78);
+  ctx.fillRect(x0, pantsY + pantsH - 1.5, S, 1.5);
+
+  // effet cube 3D : reflet en haut, ombre à droite et en bas
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.fillRect(x0 + 1, y0 + 1, S - 2, 4);
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  ctx.fillRect(x0 + S - 3, y0, 3, S);
+  ctx.fillRect(x0 + 1, y0 + S - 3, S - 2, 3);
+
+  // contour
+  ctx.strokeStyle = shade(c.skin, 0.55);
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x0 + 0.5, y0 + 0.5, S - 1, S - 1);
+}
+
+// ---- Cheveux (sur le dessus / les côtés du cube) ----
+function drawHair(ctx, app, color, x0, y0, S, facing) {
   const style = app.hairStyle;
   if (style === 'chauve') return;
-  ctx.fillStyle = hairColor;
-  ctx.strokeStyle = shade(hairColor, 0.72);
-  ctx.lineWidth = 1.1;
+  const cx = x0 + S / 2;
+  ctx.fillStyle = color;
 
-  if (style === 'court' || style === 'mi-long' || style === 'long') {
-    // dessus de tête
-    ctx.fillRect(-8, headY - 4, 16, 6);
+  // base "casquette" de cheveux sur le dessus (sauf crête / chignon)
+  if (style !== 'mohawk' && style !== 'chignon') {
+    ctx.fillRect(x0 - 2, y0 - 4, S + 4, 5);
     ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    ctx.fillRect(-8, headY - 4, 16, 2);
-    ctx.fillStyle = hairColor;
-    // frange selon l'orientation
-    if (facing === 'down') ctx.fillRect(-8, headY + 1, 16, 4);
-    else if (facing === 'left') ctx.fillRect(-11, headY + 1, 4, 14);
-    else if (facing === 'right') ctx.fillRect(7, headY + 1, 4, 14);
-    else ctx.fillRect(-8, headY + 1, 16, 4);
-
-    if (style === 'mi-long') {
-      ctx.fillRect(-11, headY + 2, 3, 12);
-      ctx.fillRect(8, headY + 2, 3, 12);
-    }
-    if (style === 'long') {
-      ctx.fillRect(-11, headY - 1, 3, 16);
-      ctx.fillRect(8, headY - 1, 3, 16);
-      ctx.fillRect(-8, headY + 13, 16, 4);
-    }
+    ctx.fillRect(x0 - 2, y0 - 4, S + 4, 2);
+    ctx.fillStyle = color;
   }
 
-  if (style === 'mohawk') {
-    ctx.fillRect(-8, headY - 3, 16, 5);
-    ctx.fillRect(-3, headY - 9, 6, 7);
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    ctx.fillRect(-3, headY - 9, 6, 2);
-  }
+  switch (style) {
+    case 'court':
+      if (facing === 'down' || facing === 'up') ctx.fillRect(x0, y0, S, 3);
+      else if (facing === 'left') ctx.fillRect(x0 - 4, y0, 4, 12);
+      else ctx.fillRect(x0 + S, y0, 4, 12);
+      break;
 
-  if (style === 'chignon') {
-    ctx.fillRect(-8, headY - 3, 16, 5);
-    voxel(ctx, -5, headY - 11, 10, 8, hairColor);
-  }
+    case 'mi-long':
+      ctx.fillRect(x0 - 4, y0 + 1, 4, 10);
+      ctx.fillRect(x0 + S, y0 + 1, 4, 10);
+      if (facing === 'down') ctx.fillRect(x0, y0, S, 3);
+      break;
 
-  if (style === 'casquette') {
-    ctx.fillRect(-8, headY - 4, 16, 6);
-    if (facing === 'down') ctx.fillRect(-5, headY + 1, 10, 4);
-    else if (facing === 'up') ctx.fillRect(-5, headY - 8, 10, 4);
-    else if (facing === 'left') ctx.fillRect(-13, headY - 1, 5, 6);
-    else ctx.fillRect(8, headY - 1, 5, 6);
+    case 'long':
+      ctx.fillRect(x0 - 4, y0, 4, 15);
+      ctx.fillRect(x0 + S, y0, 4, 15);
+      if (facing === 'up') ctx.fillRect(x0, y0, S, 13);
+      else ctx.fillRect(x0, y0, S, 3);
+      break;
+
+    case 'afro':
+      ctx.fillRect(x0 - 3, y0 - 7, S + 6, 8);
+      ctx.fillStyle = 'rgba(255,255,255,0.16)';
+      ctx.fillRect(x0 - 3, y0 - 7, S + 6, 3);
+      ctx.fillStyle = color;
+      ctx.fillRect(x0 - 4, y0 + 1, 4, 9);
+      ctx.fillRect(x0 + S, y0 + 1, 4, 9);
+      if (facing === 'down') ctx.fillRect(x0, y0, S, 3);
+      break;
+
+    case 'degrades':
+      ctx.fillRect(x0 - 2, y0 - 6, S + 4, 7);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(x0 - 2, y0 - 6, S + 4, 2);
+      ctx.fillStyle = color;
+      if (facing === 'down' || facing === 'up') ctx.fillRect(x0, y0, S, 3);
+      else if (facing === 'left') ctx.fillRect(x0 - 4, y0, 4, 10);
+      else ctx.fillRect(x0 + S, y0, 4, 10);
+      break;
+
+    case 'mohawk':
+      ctx.fillRect(x0 - 2, y0 - 3, S + 4, 4);
+      ctx.fillRect(cx - 4, y0 - 9, 8, 7);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(cx - 4, y0 - 9, 8, 2);
+      break;
+
+    case 'chignon':
+      ctx.fillRect(x0 - 2, y0 - 3, S + 4, 4);
+      voxel(ctx, cx - 5, y0 - 11, 10, 8, color);
+      break;
+
+    case 'queue':
+      ctx.fillRect(x0 - 2, y0 - 4, S + 4, 5);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(x0 - 2, y0 - 4, S + 4, 2);
+      ctx.fillStyle = color;
+      if (facing === 'up') ctx.fillRect(cx - 3, y0 - 13, 6, 10);
+      else ctx.fillRect(cx - 3, y0 + 1, 6, 5);
+      if (facing === 'down') ctx.fillRect(x0, y0, S, 3);
+      break;
+
+    case 'tresses':
+      ctx.fillRect(x0 - 2, y0 - 4, S + 4, 5);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(x0 - 2, y0 - 4, S + 4, 2);
+      ctx.fillStyle = color;
+      ctx.fillRect(x0, y0, S, 3);
+      for (let i = 0; i < 4; i++) {
+        ctx.fillRect(x0 - 6, y0 + 2 + i * 4, 4, 3);
+        ctx.fillRect(x0 + S + 2, y0 + 2 + i * 4, 4, 3);
+      }
+      break;
+
+    case 'casquette':
+      ctx.fillRect(x0 - 2, y0 - 4, S + 4, 5);
+      if (facing === 'down') ctx.fillRect(x0, y0, S, 3);
+      else if (facing === 'up') ctx.fillRect(x0, y0 - 7, S, 4);
+      break;
   }
 }
 
-function drawFace(ctx, app, c, headY, facing) {
-  if (facing === 'up') return; // dos de la tête
-  let ox = 0, oy = 0;
-  if (facing === 'down') { ox = 0; oy = 4; }
-  else if (facing === 'left') { ox = -5; oy = 0; }
-  else if (facing === 'right') { ox = 5; oy = 0; }
+// ---- Visage (sur la face avant du cube) ----
+function drawFace(ctx, app, c, x0, y0, S, facing, blink = false) {
+  let ox = 0;
+  if (facing === 'left') ox = -3;
+  else if (facing === 'right') ox = 3;
 
-  // yeux carrés + reflet
-  ctx.fillStyle = c.eyes;
-  ctx.fillRect(-5 + ox, headY + oy, 3.5, 3.5);
-  ctx.fillRect(3 + ox, headY + oy, 3.5, 3.5);
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  ctx.fillRect(-5 + ox, headY + oy, 1.5, 1.5);
-  ctx.fillRect(3 + ox, headY + oy, 1.5, 1.5);
+  const eyeY = y0 + 9;
+  const lx = x0 + 10; // œil gauche (absolu -5)
+  const rx = x0 + 16; // œil droit  (absolu +1)
+
+  // sourcils (couleur des cheveux)
+  ctx.fillStyle = c.hair;
+  ctx.fillRect(lx + ox, eyeY - 2.5, 4, 1.5);
+  ctx.fillRect(rx + ox, eyeY - 2.5, 4, 1.5);
+
+  if (blink) {
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(lx + ox, eyeY + 1, 4, 1.5);
+    ctx.fillRect(rx + ox, eyeY + 1, 4, 1.5);
+  } else {
+    ctx.fillStyle = c.eyes;
+    ctx.fillRect(lx + ox, eyeY, 4, 4);
+    ctx.fillRect(rx + ox, eyeY, 4, 4);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillRect(lx + ox, eyeY, 1.8, 1.8);
+    ctx.fillRect(rx + ox, eyeY, 1.8, 1.8);
+  }
 
   // bouche
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  if (facing === 'down') ctx.fillRect(-2, headY + 10, 5, 2);
-  else ctx.fillRect(ox - 2, headY + 7, 5, 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(x0 + 13 + ox, y0 + 16, 4, 2);
 
   // joues rosées
   ctx.fillStyle = withAlpha('#f2a6a6', 0.5);
-  if (facing === 'down') {
-    ctx.fillRect(-8, headY + 6, 3, 3);
-    ctx.fillRect(6, headY + 6, 3, 3);
+  ctx.fillRect(x0 + 7 + ox, y0 + 12, 3, 3);
+  ctx.fillRect(x0 + 20 + ox, y0 + 12, 3, 3);
+}
+
+// ---- Pilosité faciale ----
+function drawFacialHair(ctx, kind, color, x0, y0, S, facing) {
+  let ox = 0;
+  if (facing === 'left') ox = -3;
+  else if (facing === 'right') ox = 3;
+  ctx.fillStyle = color;
+
+  if (kind === 'moustache') {
+    ctx.fillRect(x0 + 10 + ox, y0 + 14, 4, 2);
+    ctx.fillRect(x0 + 16 + ox, y0 + 14, 4, 2);
+  } else if (kind === 'bouc') {
+    ctx.fillRect(x0 + 10 + ox, y0 + 14, 4, 2);
+    ctx.fillRect(x0 + 16 + ox, y0 + 14, 4, 2);
+    ctx.fillRect(x0 + 12 + ox, y0 + 18, 6, 3);
+  } else if (kind === 'barbe') {
+    ctx.fillRect(x0 + 7 + ox, y0 + 12, 3, 8);
+    ctx.fillRect(x0 + 20 + ox, y0 + 12, 3, 8);
+    ctx.fillRect(x0 + 9 + ox, y0 + 17, 12, 2);
+    ctx.fillRect(x0 + 11 + ox, y0 + 19, 8, 2);
   }
 }
 
-function drawGlasses(ctx, kind, headY, facing) {
-  if (facing === 'up') return;
-  let ox = 0, oy = 0;
-  if (facing === 'down') { ox = 0; oy = 4; }
-  else if (facing === 'left') { ox = -5; oy = 0; }
-  else if (facing === 'right') { ox = 5; oy = 0; }
+// ---- Lunettes ----
+function drawGlasses(ctx, kind, x0, y0, S, facing) {
+  let ox = 0;
+  if (facing === 'left') ox = -3;
+  else if (facing === 'right') ox = 3;
 
+  const eyeY = y0 + 9;
   const lens = kind === 'soleil' ? 'rgba(25,25,35,0.9)' : 'rgba(190,230,250,0.45)';
   const frame = '#2a2a2a';
 
   if (kind === 'rondes') {
     ctx.fillStyle = frame;
-    ctx.beginPath();
-    ctx.arc(-4 + ox, headY + 2 + oy, 3.2, 0, Math.PI * 2);
-    ctx.arc(4 + ox, headY + 2 + oy, 3.2, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(x0 + 12 + ox, eyeY + 2, 3.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x0 + 18 + ox, eyeY + 2, 3.4, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = lens;
-    ctx.beginPath();
-    ctx.arc(-4 + ox, headY + 2 + oy, 2.1, 0, Math.PI * 2);
-    ctx.arc(4 + ox, headY + 2 + oy, 2.1, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(x0 + 12 + ox, eyeY + 2, 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x0 + 18 + ox, eyeY + 2, 2.2, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = frame;
-    ctx.fillRect(-1 + ox, headY + 1 + oy, 2, 3);
+    ctx.fillRect(x0 + 14 + ox, eyeY + 1, 2, 3);
+  } else if (kind === 'demi-lune') {
+    ctx.fillStyle = frame;
+    ctx.fillRect(x0 + 8 + ox, eyeY + 3, 6, 3);
+    ctx.fillRect(x0 + 16 + ox, eyeY + 3, 6, 3);
+    ctx.fillStyle = lens;
+    ctx.fillRect(x0 + 9 + ox, eyeY + 4, 4, 2);
+    ctx.fillRect(x0 + 17 + ox, eyeY + 4, 4, 2);
+    ctx.fillStyle = frame;
+    ctx.fillRect(x0 + 13 + ox, eyeY + 3, 3, 2);
   } else {
     ctx.fillStyle = frame;
-    ctx.fillRect(-7 + ox, headY + oy, 5, 6);
-    ctx.fillRect(3 + ox, headY + oy, 5, 6);
+    ctx.fillRect(x0 + 8 + ox, eyeY - 1, 6, 6);
+    ctx.fillRect(x0 + 16 + ox, eyeY - 1, 6, 6);
     ctx.fillStyle = lens;
-    ctx.fillRect(-6 + ox, headY + 1 + oy, 3, 4);
-    ctx.fillRect(4 + ox, headY + 1 + oy, 3, 4);
+    ctx.fillRect(x0 + 9 + ox, eyeY, 4, 4);
+    ctx.fillRect(x0 + 17 + ox, eyeY, 4, 4);
     ctx.fillStyle = frame;
-    ctx.fillRect(-1 + ox, headY + 2 + oy, 3, 2);
+    ctx.fillRect(x0 + 13 + ox, eyeY + 1, 2, 2);
   }
 }
 
-function drawHat(ctx, app, c, headY, facing) {
+// ---- Chapeaux (posés sur le dessus du cube) ----
+function drawHat(ctx, app, c, x0, y0, S, facing) {
   const hat = app.hat;
+  const cx = x0 + S / 2;
+
   if (hat === 'casquette') {
-    voxel(ctx, -8, headY - 6, 16, 6, c.shirt);
+    voxel(ctx, x0 - 2, y0 - 7, S + 4, 6, c.shirt);
     ctx.fillStyle = shade(c.shirt, 0.75);
-    if (facing === 'down') ctx.fillRect(-6, headY, 12, 3);
-    else if (facing === 'up') ctx.fillRect(-6, headY - 9, 12, 3);
-    else if (facing === 'left') ctx.fillRect(-12, headY - 2, 4, 6);
-    else ctx.fillRect(8, headY - 2, 4, 6);
+    if (facing === 'down') ctx.fillRect(x0 + 2, y0 - 1, S - 4, 3);
+    else if (facing === 'up') ctx.fillRect(x0 + 2, y0 - 10, S - 4, 3);
+    else if (facing === 'left') ctx.fillRect(x0 - 6, y0 - 3, 5, 6);
+    else ctx.fillRect(x0 + S + 1, y0 - 3, 5, 6);
   } else if (hat === 'bonnet') {
-    voxel(ctx, -8, headY - 6, 16, 6, '#c94f4f');
-    voxel(ctx, -4, headY - 11, 8, 6, '#c94f4f');
+    voxel(ctx, x0 - 2, y0 - 7, S + 4, 6, '#c94f4f');
+    voxel(ctx, cx - 5, y0 - 12, 10, 6, '#c94f4f');
     ctx.fillStyle = '#f0f0f0';
-    ctx.fillRect(-8, headY - 6, 16, 2);
+    ctx.fillRect(x0 - 2, y0 - 7, S + 4, 2);
+  } else if (hat === 'paille') {
+    voxel(ctx, x0 - 4, y0 - 5, S + 8, 4, '#ecd48a');
+    voxel(ctx, cx - 6, y0 - 11, 12, 7, '#d9b95f');
+    ctx.fillStyle = '#c94f3f';
+    ctx.fillRect(cx - 6, y0 - 8, 12, 2);
+  } else if (hat === 'casque') {
+    voxel(ctx, x0 - 2, y0 - 8, S + 4, 7, '#f2c14e');
+    voxel(ctx, cx - 5, y0 - 11, 10, 3, '#f2c14e');
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(cx - 6, y0 - 10, 12, 2);
+  } else if (hat === 'melon') {
+    voxel(ctx, x0 - 2, y0 - 5, S + 4, 4, '#2a2a2a');
+    voxel(ctx, cx - 5, y0 - 11, 10, 7, '#3a3a3a');
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.fillRect(cx - 5, y0 - 11, 10, 2);
   } else if (hat === 'haut-de-forme') {
-    voxel(ctx, -8, headY - 5, 16, 4, '#2a2a2a');
-    voxel(ctx, -5, headY - 15, 10, 11, '#3a3a3a');
+    voxel(ctx, x0 - 2, y0 - 5, S + 4, 4, '#2a2a2a');
+    voxel(ctx, cx - 5, y0 - 16, 10, 12, '#3a3a3a');
     ctx.fillStyle = '#c94040';
-    ctx.fillRect(-5, headY - 8, 10, 2);
+    ctx.fillRect(cx - 5, y0 - 9, 10, 2);
   } else if (hat === 'couronne') {
-    voxel(ctx, -8, headY - 5, 16, 4, '#e6c23c');
-    for (let i = 0; i < 3; i++) {
-      voxel(ctx, -7 + i * 5, headY - 10, 4, 6, '#f2c14e');
-    }
+    voxel(ctx, x0 - 2, y0 - 5, S + 4, 4, '#e6c23c');
+    for (let i = 0; i < 3; i++) voxel(ctx, cx - 8 + i * 6, y0 - 10, 4, 6, '#f2c14e');
     ctx.fillStyle = '#e03a4e';
-    ctx.fillRect(-7, headY - 5, 4, 2);
-    ctx.fillRect(4, headY - 5, 4, 2);
+    ctx.fillRect(cx - 8, y0 - 5, 4, 2);
+    ctx.fillRect(cx + 4, y0 - 5, 4, 2);
   }
 }

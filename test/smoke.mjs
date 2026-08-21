@@ -66,6 +66,41 @@ inv.remove('wood', 1);
 assert(inv.items.wood === 2, 'retrait de 1 bois');
 inv.cycle(1);
 assert(inv.getSelected() === 'stone', 'molette → sélection suivante');
+assert(inv.order.length === 7, '7 types de blocs dans la barre rapide');
+
+console.log('▶ Fabrication');
+const { RECIPES } = await import('../js/blocks.js');
+const plank = RECIPES.find((r) => r.id === 'plank');
+const glass = RECIPES.find((r) => r.id === 'glass');
+assert(inv.canCraft(plank), '2 bois suffisent pour fabriquer des planches');
+assert(inv.craft(plank) === true, 'fabrication de planches réussit');
+assert(inv.count('plank') === 2, '1 bois → 2 planches');
+assert(inv.count('wood') === 1, 'le bois a été consommé');
+inv.add('sand', 3);
+assert(inv.canCraft(glass) && inv.craft(glass), '2 sable → 1 verre');
+assert(inv.count('glass') === 1, 'verre fabriqué');
+
+console.log('▶ Récolte du terrain (pelle)');
+const w3 = new World(20260821);
+// trouve une case de sable creusable
+let sandTx = -1, sandTy = -1;
+for (let ty = 2; ty < w3.h - 2 && sandTx < 0; ty++) {
+  for (let tx = 2; tx < w3.w - 2; tx++) {
+    if (w3.floor[w3.idx(tx, ty)] === 'sand') { sandTx = tx; sandTy = ty; break; }
+  }
+}
+assert(sandTx >= 0, 'une case de sable existe sur la plage');
+const sdrop = w3.breakBlock(sandTx, sandTy);
+assert(sdrop === 'sand', 'creuser le sable donne du sable');
+assert(w3.floor[w3.idx(sandTx, sandTy)] === 'dirt', 'le sable creusé devient de la terre');
+const ddrop = w3.breakBlock(sandTx, sandTy);
+assert(ddrop === 'dirt', 'creuser la terre donne de la terre');
+assert(w3.floor[w3.idx(sandTx, sandTy)] === 'grass', 'la terre creusée devient de l\'herbe');
+
+// poser les nouveaux blocs
+assert(w3.placeBlock(sandTx, sandTy, 'plank') === true, 'poser des planches réussit');
+assert(w3.blocks[w3.idx(sandTx, sandTy)] === 'plank', 'les planches sont posées');
+assert(w3.placeBlock(sandTx, sandTy, 'brick') === false, 'on ne pose pas sur un bloc occupé');
 
 console.log('▶ Couleurs d\'apparence');
 const cols = appearanceColors({ skin: 'ebene', hairColor: 'roux', eyes: 'violet', shirt: 'noir', pants: 'jean' });

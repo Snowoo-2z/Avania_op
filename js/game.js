@@ -180,7 +180,8 @@ export class Game {
       const i = this.world.idx(this.targetTx, this.targetTy);
       const hasBlock = this.world.blocks[i] !== null;
       const onWater = this.world.floor[i] === 'water';
-      const canAct = hasBlock || !onWater;
+      const diggable = this.world.isDiggable(this.targetTx, this.targetTy);
+      const canAct = hasBlock || diggable || !onWater;
       const px = this.targetTx * TILE, py = this.targetTy * TILE;
 
       // halo animé
@@ -248,8 +249,7 @@ export class Game {
     const w = ctx.measureText(name).width + 8;
     ctx.fillStyle = 'rgba(20,25,20,0.72)';
     const bx = player.x - w / 2;
-    const by = player.y - 46;
-    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(bx, by, w, 13, 6); ctx.fill(); }
+    const by = player.y - 50;    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(bx, by, w, 13, 6); ctx.fill(); }
     else ctx.fillRect(bx, by, w, 13);
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';

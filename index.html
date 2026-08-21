@@ -27,13 +27,26 @@
   <!-- Aide des commandes -->
   <div id="controls-hint" class="controls-hint hidden">
     <div class="ctrl"><kbd>ZQSD</kbd><span>Se déplacer</span></div>
-    <div class="ctrl"><kbd>Clic G</kbd><span>Casser</span></div>
+    <div class="ctrl"><kbd>Clic G</kbd><span>Casser / pelleter</span></div>
     <div class="ctrl"><kbd>Clic D</kbd><span>Poser</span></div>
-    <div class="ctrl"><kbd>1·2</kbd><span>Bloc</span></div>
+    <div class="ctrl"><kbd>1·7</kbd><span>Bloc</span></div>
+    <div class="ctrl"><kbd>C</kbd><span>Fabriquer</span></div>
   </div>
 
   <!-- Barre rapide (inventaire) -->
   <div id="hotbar" class="hotbar"></div>
+
+  <!-- Bouton fabrication -->
+  <button id="craft-btn" class="craft-btn hidden" title="Fabriquer (C)">🛠️ <span>Fabriquer</span></button>
+
+  <!-- Panneau de fabrication -->
+  <div id="crafting" class="crafting hidden">
+    <header class="crafting-header">
+      <span>🛠️ Fabrication</span>
+      <button id="craft-close" class="craft-close" title="Fermer">✕</button>
+    </header>
+    <div id="craft-list" class="craft-list"></div>
+  </div>
 
   <!-- Écran de création du personnage -->
   <div id="customization" class="overlay">
@@ -42,6 +55,12 @@
         <div class="logo-mark">◼</div>
         <h1>AVANIA</h1>
         <p class="tagline">Un monde vide. <span>À toi de tout construire.</span></p>
+        <div class="pills">
+          <span class="pill">🧍 Perso = un cube</span>
+          <span class="pill">💇 Coiffures & barbes</span>
+          <span class="pill">🧱 Monde à bâtir</span>
+          <span class="pill pill-v">v0.4</span>
+        </div>
       </header>
 
       <div class="creator">
@@ -74,6 +93,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/main.js"></script>
+  <script type="module" src="js/main.js?v=4"></script>
 </body>
 </html>

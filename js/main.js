@@ -1,11 +1,11 @@
 // ============================================================
 //  AVANIA — Point d'entrée
 //  1. Écran de création du personnage.
-//  2. Monde vide à bâtir : collecte de blocs + inventaire.
+//  2. Monde vide à bâtir : collecte de blocs + inventaire + fabrication.
 // ============================================================
 
 import { Game } from './game.js';
-import { openCharacterCreation, HUD, Hotbar } from './ui.js';
+import { openCharacterCreation, HUD, Hotbar, Crafting } from './ui.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -22,7 +22,7 @@ window.addEventListener('resize', resize);
 resize();
 
 const hud = new HUD(document.getElementById('hud'));
-const hotbar = new Hotbar(document.getElementById('hotbar'), null); // rempli après le lancement
+const hotbar = new Hotbar(document.getElementById('hotbar'), null); // branché après le lancement
 
 async function boot() {
   // 1. Création du personnage
@@ -33,11 +33,21 @@ async function boot() {
   game.start();
   hud.show();
   document.getElementById('controls-hint').classList.remove('hidden');
+  document.getElementById('craft-btn').classList.remove('hidden');
 
-  // 3. Barre rapide branchée sur l'inventaire du jeu
-  hotbar.inventory = game.inventory;
-  hotbar.build();
-  game.inventory.onChange = () => hotbar.update();
+  // 3. Barre rapide + fabrication branchées sur l'inventaire du jeu
+  hotbar.attach(game.inventory);
+  const crafting = new Crafting(
+    document.getElementById('crafting'),
+    document.getElementById('craft-list'),
+    game.inventory,
+  );
+  document.getElementById('craft-btn').onclick = () => crafting.toggle();
+  document.getElementById('craft-close').onclick = () => crafting.toggle();
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.key.toLowerCase() === 'c') crafting.toggle();
+  });
 
   function refreshHUD() {
     hud.update({

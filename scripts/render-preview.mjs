@@ -17,7 +17,7 @@ import { World } from '../js/world.js';
 import { buildTileset, getTileCanvas, getWaterFrame, drawTreeObject, drawRockObject } from '../js/tileset.js';
 import { drawCharacter } from '../js/character.js';
 import { BLOCK_DEFS } from '../js/blocks.js';
-import { TILE, DEFAULT_APPEARANCE, HAIR_STYLES } from '../js/config.js';
+import { TILE, DEFAULT_APPEARANCE, HAIR_STYLES, HATS, GLASSES, FACIAL_HAIR } from '../js/config.js';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
 mkdirSync('preview', { recursive: true });
@@ -67,28 +67,53 @@ function renderWorld() {
   console.log('✔ preview/monde.png');
 }
 
-// ---------- 2. Planche du personnage (4 orientations + coiffures) ----------
+// ---------- 2. Planche du personnage (orientations + toutes les options) ----------
 function renderCharacter() {
-  const canvas = createCanvas(760, 640);
+  const COLS = 5;
+  const CW = 165, CH = 165;
+  const pad = 20;
+
+  const rows = [
+    { title: 'Orientations', items: ['down', 'left', 'up', 'right'], draw: (ctx, it, x, y) => drawCharacter(ctx, DEFAULT_APPEARANCE, x, y - 8, { facing: it, scale: 2.2 }) },
+    { title: 'Coiffures', items: HAIR_STYLES, draw: (ctx, it, x, y) => drawCharacter(ctx, { ...DEFAULT_APPEARANCE, hairStyle: it.id }, x, y - 8, { facing: 'down', scale: 2.2 }) },
+    { title: 'Chapeaux', items: HATS, draw: (ctx, it, x, y) => drawCharacter(ctx, { ...DEFAULT_APPEARANCE, hat: it.id }, x, y - 8, { facing: 'down', scale: 2.2 }) },
+    { title: 'Lunettes', items: GLASSES, draw: (ctx, it, x, y) => drawCharacter(ctx, { ...DEFAULT_APPEARANCE, glasses: it.id }, x, y - 8, { facing: 'down', scale: 2.2 }) },
+    { title: 'Barbes', items: FACIAL_HAIR, draw: (ctx, it, x, y) => drawCharacter(ctx, { ...DEFAULT_APPEARANCE, facialHair: it.id }, x, y - 8, { facing: 'down', scale: 2.2 }) },
+  ];
+
+  let totalH = 0;
+  const layout = rows.map((r) => {
+    const nRows = Math.ceil(r.items.length / COLS);
+    const h = pad + 24 + nRows * CH + pad;
+    const seg = { ...r, y0: totalH, h };
+    totalH += h;
+    return seg;
+  });
+
+  const canvas = createCanvas(pad + COLS * CW + pad, totalH);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#1c2a20';
-  ctx.fillRect(0, 0, 760, 640);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const faces = ['down', 'left', 'up', 'right'];
-  faces.forEach((f, i) => drawCharacter(ctx, DEFAULT_APPEARANCE, 100 + i * 140, 180, { facing: f, scale: 2.4 }));
-  ctx.fillStyle = '#9fb6a5';
-  ctx.font = '14px sans-serif';
-  ctx.textAlign = 'center';
-  faces.forEach((f, i) => ctx.fillText(f, 100 + i * 140, 210));
-
-  HAIR_STYLES.forEach((h, i) => {
-    const x = 60 + (i % 4) * 180;
-    const y = 330 + Math.floor(i / 4) * 180;
-    drawCharacter(ctx, { ...DEFAULT_APPEARANCE, hairStyle: h.id }, x, y, { facing: 'down', scale: 2.6 });
+  for (const seg of layout) {
+    const ty = seg.y0 + pad;
     ctx.fillStyle = '#9fb6a5';
-    ctx.font = '13px sans-serif';
-    ctx.fillText(h.label, x, y + 46);
-  });
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(seg.title, pad, ty + 12);
+
+    seg.items.forEach((it, i) => {
+      const col = i % COLS;
+      const row = Math.floor(i / COLS);
+      const x = pad + col * CW + CW / 2;
+      const y = ty + 34 + row * CH + CH / 2;
+      seg.draw(ctx, it, x, y);
+      ctx.fillStyle = '#9fb6a5';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(typeof it === 'string' ? it : it.label, x, y + 44);
+    });
+  }
 
   writeFileSync('preview/personnages.png', canvas.toBuffer('image/png'));
   console.log('✔ preview/personnages.png');
@@ -97,8 +122,8 @@ function renderCharacter() {
 // ---------- 3. Planche des blocs ----------
 function renderBlocks() {
   buildTileset();
-  const keys = ['grass', 'water', 'wood', 'stone'];
-  const canvas = createCanvas(4 * 44, 48);
+  const keys = ['grass', 'water', 'wood', 'stone', 'plank', 'brick', 'glass', 'sandBlock', 'dirtBlock'];
+  const canvas = createCanvas(keys.length * 44, 48);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#0e1712';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
