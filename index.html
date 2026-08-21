@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AVANIA — Le village vivant</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- HUD en jeu -->
+  <div id="hud" class="hud hidden">
+    <div class="hud-card">
+      <span class="hud-label">👤</span>
+      <span id="hud-name">—</span>
+    </div>
+    <div class="hud-card">
+      <span class="hud-label">🪙</span>
+      <span id="hud-money">0</span>
+    </div>
+    <div class="hud-card">
+      <span class="hud-label">🟢</span>
+      <span id="hud-players">1</span>
+    </div>
+  </div>
+
+  <!-- Écran de création du personnage -->
+  <div id="customization" class="overlay">
+    <div class="panel">
+      <header class="panel-header">
+        <h1>AVANIA</h1>
+        <p class="tagline">Un village. Des milliers d'histoires. <span>Crée ton personnage.</span></p>
+      </header>
+
+      <div class="creator">
+        <!-- Aperçu -->
+        <div class="preview-col">
+          <canvas id="char-preview" width="240" height="300"></canvas>
+          <div class="facing-controls">
+            <button data-facing="up" title="Vue de dos">▲</button>
+            <button data-facing="left" title="Gauche">◀</button>
+            <button data-facing="down" title="Vue de face">▼</button>
+            <button data-facing="right" title="Droite">▶</button>
+          </div>
+        </div>
+
+        <!-- Options -->
+        <div class="options-col">
+          <div class="name-row">
+            <input id="char-name" type="text" maxlength="16" placeholder="Ton nom…" />
+            <button id="name-random" class="btn-icon" title="Nom aléatoire">🎲</button>
+          </div>
+
+          <div id="char-sections" class="sections"></div>
+
+          <div class="actions">
+            <button id="char-random" class="btn btn-secondary">🎲 Surprise !</button>
+            <button id="char-start" class="btn btn-primary">Entrer dans le village →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

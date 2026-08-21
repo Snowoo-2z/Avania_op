@@ -1,0 +1,14 @@
+{
+  "name": "avania",
+  "version": "0.1.0",
+  "description": "Avania — un monde RP multijoueur en ligne, vue top-down.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/smoke.mjs"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.7"
+  }
+}
