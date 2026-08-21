@@ -38,15 +38,28 @@ export class World {
   //  Génération : terrain vide + ressources naturelles
   // ------------------------------------------------------------------
   generate() {
-    // 1) bordure d'eau tout autour (limite du monde)
+    // 1) sol : herbe avec variations visuelles (déterministe)
+    for (let ty = 0; ty < H; ty++) {
+      for (let tx = 0; tx < W; tx++) {
+        const r = this.rng();
+        if (r < 0.10) this.floor[this.idx(tx, ty)] = 'grassDark';
+        else if (r < 0.16) this.floor[this.idx(tx, ty)] = 'flowers';
+        else if (r < 0.19) this.floor[this.idx(tx, ty)] = 'dirt';
+        // sinon 'grass' (défaut)
+      }
+    }
+
+    // 2) bordure d'eau tout autour + plage de sable
     for (let ty = 0; ty < H; ty++) {
       for (let tx = 0; tx < W; tx++) {
         const edge = tx < 2 || ty < 2 || tx >= W - 2 || ty >= H - 2;
         if (edge) this.floor[this.idx(tx, ty)] = 'water';
+        const shore = tx === 2 || ty === 2 || tx === W - 3 || ty === H - 3;
+        if (shore) this.floor[this.idx(tx, ty)] = 'sand';
       }
     }
 
-    // 2) ressources naturelles éparpillées (arbres + rochers)
+    // 3) ressources naturelles éparpillées (arbres + rochers)
     for (let ty = 3; ty < H - 3; ty++) {
       for (let tx = 3; tx < W - 3; tx++) {
         const r = this.rng();
@@ -55,7 +68,7 @@ export class World {
       }
     }
 
-    // 3) on garantit quelques ressources près du spawn pour démarrer
+    // 4) on garantit quelques ressources près du spawn pour démarrer
     const cx = Math.floor(this.spawn.x / TILE);
     const cy = Math.floor(this.spawn.y / TILE);
     this.setBlock(cx + 3, cy + 2, 'tree');

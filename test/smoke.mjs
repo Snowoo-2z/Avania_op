@@ -23,9 +23,10 @@ assert(w1.floor.length === 128 * 128, 'grille 128x128 remplie');
 assert(w1.floor.join('') === w2.floor.join(''), 'même seed → même monde');
 assert(w1.blocks.join('|') === w2.blocks.join('|'), 'ressources identiques (déterministe)');
 
-// aucune construction : uniquement de l'herbe et de l'eau (bordure)
+// aucune construction : uniquement des sols naturels (herbe, terre, fleurs, sable, eau)
 const floorSet = new Set(w1.floor);
-assert([...floorSet].every((f) => f === 'grass' || f === 'water'), 'sol = herbe + eau uniquement (aucune construction)');
+const natural = ['grass', 'grassDark', 'flowers', 'dirt', 'sand', 'water'];
+assert([...floorSet].every((f) => natural.includes(f)), 'sol = variantes naturelles uniquement (aucune construction)');
 
 // le spawn est praticable
 assert(!w1.isSolidAt(w1.spawn.x, w1.spawn.y), 'le spawn est sur une case libre');

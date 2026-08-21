@@ -14,7 +14,7 @@ globalThis.document = {
 globalThis.window = globalThis;
 
 import { World } from '../js/world.js';
-import { buildTileset, getTileCanvas, drawTreeObject, drawRockObject } from '../js/tileset.js';
+import { buildTileset, getTileCanvas, getWaterFrame, drawTreeObject, drawRockObject } from '../js/tileset.js';
 import { drawCharacter } from '../js/character.js';
 import { BLOCK_DEFS } from '../js/blocks.js';
 import { TILE, DEFAULT_APPEARANCE, HAIR_STYLES } from '../js/config.js';
@@ -38,7 +38,8 @@ function renderWorld() {
     for (let tx = cx - R; tx <= cx + R; tx++) {
       if (tx < 0 || ty < 0 || tx >= world.w || ty >= world.h) continue;
       const i = world.idx(tx, ty);
-      ctx.drawImage(getTileCanvas(world.floor[i]), (tx - cx + R) * TILE, (ty - cy + R) * TILE);
+      const floor = world.floor[i];
+      ctx.drawImage(floor === 'water' ? getWaterFrame(0) : getTileCanvas(floor), (tx - cx + R) * TILE, (ty - cy + R) * TILE);
       const b = world.blocks[i];
       if (b && BLOCK_DEFS[b].kind === 'block') {
         ctx.drawImage(getTileCanvas(b), (tx - cx + R) * TILE, (ty - cy + R) * TILE);

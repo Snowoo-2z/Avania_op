@@ -31,13 +31,40 @@ export function openCharacterCreation() {
     };
 
     function renderPreview() {
-      pctx.clearRect(0, 0, preview.width, preview.height);
-      pctx.fillStyle = '#6faf4b';
+      const W = preview.width, H = preview.height;
+      const cx = W / 2;
+      pctx.clearRect(0, 0, W, H);
+
+      // fond dégradé doux
+      const bg = pctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#27452f');
+      bg.addColorStop(1, '#15241a');
+      pctx.fillStyle = bg;
+      pctx.fillRect(0, 0, W, H);
+
+      // halo lumineux derrière le perso
+      const halo = pctx.createRadialGradient(cx, H / 2 - 10, 8, cx, H / 2 - 10, 90);
+      halo.addColorStop(0, 'rgba(255,240,190,0.25)');
+      halo.addColorStop(1, 'rgba(255,240,190,0)');
+      pctx.fillStyle = halo;
+      pctx.fillRect(0, 0, W, H);
+
+      // plateforme (îlot d'herbe)
+      const gy = H / 2 + 48;
+      const plat = pctx.createRadialGradient(cx, gy, 6, cx, gy, 88);
+      plat.addColorStop(0, '#8cc05e');
+      plat.addColorStop(0.75, '#6b9c42');
+      plat.addColorStop(1, '#4d7a2e');
+      pctx.fillStyle = plat;
       pctx.beginPath();
-      pctx.ellipse(preview.width / 2, preview.height / 2 + 40, 80, 26, 0, 0, Math.PI * 2);
+      pctx.ellipse(cx, gy, 88, 28, 0, 0, Math.PI * 2);
       pctx.fill();
-      drawCharacter(pctx, app, preview.width / 2, preview.height / 2 + 42, {
-        facing, walkPhase: 0, scale: 3,
+      pctx.strokeStyle = 'rgba(0,0,0,0.2)';
+      pctx.lineWidth = 2;
+      pctx.stroke();
+
+      drawCharacter(pctx, app, cx, gy, {
+        facing, walkPhase: 0, scale: 3.2,
       });
     }
 
@@ -184,6 +211,7 @@ export class Hotbar {
       const def = ITEM_DEFS[item];
       const el = document.createElement('div');
       el.className = 'slot';
+      el.dataset.key = i + 1;
       el.title = `${def.label} — touche ${i + 1}`;
 
       const icon = document.createElement('div');

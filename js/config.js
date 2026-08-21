@@ -16,6 +16,24 @@ export const PLAYER_RADIUS = 10; // rayon de collision du joueur
 // Distance max (en pixels) pour interagir avec un bloc
 export const REACH = TILE * 3;
 
+// --- Palette générale (ambiance chaleureuse) ---
+export const PALETTE = {
+  uiBg: '#0f1a13',
+  uiPanel: '#16261c',
+  uiPanel2: '#1e3025',
+  uiBorder: '#2c4634',
+  uiAccent: '#7ccf6a',
+  uiAccent2: '#f2c14e',
+  uiText: '#eef6ee',
+  uiMuted: '#9ab7a2',
+  grass: '#7cae4e',
+  grassDark: '#6b9c42',
+  grassLight: '#8cc05e',
+  water: '#4a9fd8',
+  waterDeep: '#3a86c0',
+  sky: '#2f76b2',
+};
+
 // --- Options de personnalisation du personnage (carré) ---
 export const SKIN_TONES = [
   { id: 'clair',   label: 'Clair',   color: '#f7d7b5' },

@@ -1,8 +1,7 @@
 // ============================================================
-//  AVANIA — Tileset procédural (style "carré"/blocs)
+//  AVANIA — Tileset procédural (style "voxel" doux)
 //  Chaque tuile est pré-rendue dans un canvas hors-écran.
-//  Les arbres et rochers sont des objets dessinés avec hauteur
-//  (triés par profondeur avec le joueur).
+//  L'eau possède plusieurs frames pour une animation douce.
 // ============================================================
 
 import { TILE } from './config.js';
@@ -10,6 +9,7 @@ import { BLOCK_DEFS } from './blocks.js';
 import { makeCanvas, mulberry32 } from './utils.js';
 
 const S = TILE;
+export const WATER_FRAMES = 4;
 
 function hashStr(s) {
   let h = 2166136261;
@@ -20,89 +20,192 @@ function hashStr(s) {
   return h >>> 0;
 }
 
-// --- Herbe : base verte avec petits brins ---
-function drawGrass(ctx, rng) {
-  ctx.fillStyle = BLOCK_DEFS.grass.color;
+// --- utilitaires de couleur ---
+function rgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+export function shade(hex, f) {
+  const [r, g, b] = rgb(hex);
+  const c = (v) => Math.max(0, Math.min(255, Math.round(v * f)));
+  return `rgb(${c(r)},${c(g)},${c(b)})`;
+}
+function withAlpha(hex, a) {
+  const [r, g, b] = rgb(hex);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// --- Herbe : base verte + brins + légère variation ---
+function drawGrass(ctx, rng, tint) {
+  ctx.fillStyle = tint;
   ctx.fillRect(0, 0, S, S);
-  ctx.fillStyle = '#62993f';
-  for (let i = 0; i < 16; i++) {
-    ctx.fillRect(rng() * S, rng() * S, 1.5, 3);
+  ctx.fillStyle = withAlpha('#000000', 0.05);
+  for (let i = 0; i < 22; i++) {
+    const x = rng() * S, y = rng() * S;
+    ctx.fillRect(x, y, 1.5, 3);
   }
-  ctx.fillStyle = '#84c25c';
-  for (let i = 0; i < 6; i++) {
-    ctx.fillRect(rng() * S, rng() * S, 3, 2);
+  // brins clairs
+  ctx.fillStyle = withAlpha('#c8e6a0', 0.5);
+  for (let i = 0; i < 9; i++) {
+    const x = rng() * S, y = rng() * S;
+    ctx.fillRect(x, y, 1.5, 3);
+  }
+  // petits points de lumière
+  ctx.fillStyle = withAlpha('#d8f0b0', 0.35);
+  for (let i = 0; i < 5; i++) {
+    ctx.fillRect(rng() * S, rng() * S, 2, 2);
   }
 }
 
-// --- Eau : bleu avec vagues ---
-function drawWater(ctx, rng) {
+// --- Fleurs : herbe + petites fleurs colorées ---
+function drawFlowers(ctx, rng) {
+  drawGrass(ctx, rng, BLOCK_DEFS.flowers.color);
+  const petals = ['#f2a6a6', '#f2c14e', '#b9a6f2', '#ffffff', '#7ccf8a'];
+  for (let i = 0; i < 4; i++) {
+    const x = 6 + rng() * (S - 12), y = 6 + rng() * (S - 12);
+    const c = petals[Math.floor(rng() * petals.length)];
+    ctx.fillStyle = c;
+    for (let p = 0; p < 4; p++) {
+      const a = (p / 4) * Math.PI * 2 + rng();
+      ctx.fillRect(x + Math.cos(a) * 2.5, y + Math.sin(a) * 2.5, 2.5, 2.5);
+    }
+    ctx.fillStyle = '#f5d24a';
+    ctx.fillRect(x - 1, y - 1, 2.5, 2.5);
+  }
+}
+
+// --- Terre : petites mottes ---
+function drawDirt(ctx, rng) {
+  ctx.fillStyle = BLOCK_DEFS.dirt.color;
+  ctx.fillRect(0, 0, S, S);
+  ctx.fillStyle = withAlpha('#6a4f30', 0.5);
+  for (let i = 0; i < 14; i++) {
+    ctx.fillRect(rng() * S, rng() * S, 3, 2.5);
+  }
+  ctx.fillStyle = withAlpha('#a8875c', 0.5);
+  for (let i = 0; i < 8; i++) {
+    ctx.fillRect(rng() * S, rng() * S, 2, 2);
+  }
+}
+
+// --- Sable : grains ---
+function drawSand(ctx, rng) {
+  ctx.fillStyle = BLOCK_DEFS.sand.color;
+  ctx.fillRect(0, 0, S, S);
+  ctx.fillStyle = withAlpha('#c0a25e', 0.5);
+  for (let i = 0; i < 12; i++) {
+    ctx.fillRect(rng() * S, rng() * S, 2, 1.5);
+  }
+  ctx.fillStyle = withAlpha('#f4e6b8', 0.5);
+  for (let i = 0; i < 6; i++) {
+    ctx.fillRect(rng() * S, rng() * S, 2, 1.5);
+  }
+}
+
+// --- Eau animée : frame selon la phase ---
+function drawWater(ctx, rng, phase) {
   ctx.fillStyle = BLOCK_DEFS.water.color;
   ctx.fillRect(0, 0, S, S);
-  ctx.fillStyle = '#2f76b2';
-  for (let i = 0; i < 5; i++) {
+  // profondeur en dégradé doux
+  const g = ctx.createLinearGradient(0, 0, S, S);
+  g.addColorStop(0, withAlpha('#2f6f9e', 0.25));
+  g.addColorStop(1, withAlpha('#2f6f9e', 0.05));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, S, S);
+  // vagues animées
+  ctx.strokeStyle = withAlpha('#ffffff', 0.35);
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i < 3; i++) {
+    const y = 6 + i * 9 + phase * 2;
     ctx.beginPath();
-    ctx.arc(rng() * S, rng() * S, rng() * 3 + 1, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-  ctx.lineWidth = 1.5;
-  for (let i = 0; i < 4; i++) {
-    const y = rng() * S;
-    ctx.beginPath();
-    ctx.moveTo(rng() * S * 0.5, y);
-    ctx.quadraticCurveTo(rng() * S * 0.5 + 6, y - 2, rng() * S * 0.5 + 12, y);
+    ctx.moveTo(2, y);
+    ctx.quadraticCurveTo(10, y - 3, 18, y);
+    ctx.quadraticCurveTo(26, y + 3, 30, y);
     ctx.stroke();
+  }
+  ctx.fillStyle = withAlpha('#8fd0f2', 0.3);
+  for (let i = 0; i < 3; i++) {
+    const x = 5 + ((i * 11 + phase * 5) % 22);
+    ctx.fillRect(x, 8 + i * 8, 4, 1.5);
   }
 }
 
-// --- Bloc "plein" posé (bois, pierre) : face dessus + côtés ---
-function drawBlockTile(ctx, color) {
-  const top = shade(color, 1.15);
-  const side = shade(color, 0.75);
-  const sideDark = shade(color, 0.6);
-  // fond
+// --- Bloc "plein" (bois, pierre) : face dessus + côtés, aspect voxel ---
+function drawBlockTile(ctx, color, texture) {
+  const top = shade(color, 1.12);
+  const side = shade(color, 0.82);
+  const sideDark = shade(color, 0.68);
+  // côtés (fond)
   ctx.fillStyle = side;
   ctx.fillRect(0, 0, S, S);
   // face supérieure
   ctx.fillStyle = top;
   ctx.fillRect(3, 3, S - 6, S - 6);
-  // ombre des bords
+  // ombre basse et droite
   ctx.fillStyle = sideDark;
-  ctx.fillRect(3, S - 7, S - 6, 4);
-  ctx.fillRect(S - 7, 3, 4, S - 6);
-  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(3, S - 8, S - 6, 5);
+  ctx.fillRect(S - 8, 3, 5, S - 6);
+  // reflet haut + gauche
+  ctx.fillStyle = withAlpha('#ffffff', 0.28);
   ctx.fillRect(3, 3, S - 6, 3);
   ctx.fillRect(3, 3, 3, S - 6);
-  // petits détails (grain)
-  ctx.fillStyle = shade(color, 0.9);
-  for (let i = 0; i < 4; i++) {
-    ctx.fillRect(8 + ((i * 13) % (S - 12)), 8 + ((i * 7) % (S - 12)), 2, 2);
-  }
+  // texture
+  texture(ctx, top, sideDark);
 }
 
-function shade(hex, f) {
-  const n = parseInt(hex.slice(1), 16);
-  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-  r = Math.min(255, Math.round(r * f));
-  g = Math.min(255, Math.round(g * f));
-  b = Math.min(255, Math.round(b * f));
-  return `rgb(${r},${g},${b})`;
+function woodGrain(ctx, top, dark) {
+  ctx.strokeStyle = shade('#b07a3c', 0.8);
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < 3; i++) {
+    const y = 8 + i * 8;
+    ctx.beginPath();
+    ctx.moveTo(6, y);
+    ctx.lineTo(S - 6, y + (i === 1 ? 1 : -1));
+    ctx.stroke();
+  }
+  // nœuds
+  ctx.fillStyle = shade('#8a5a2e', 0.9);
+  ctx.beginPath(); ctx.arc(10, 12, 2, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(22, 22, 1.5, 0, Math.PI * 2); ctx.fill();
+}
+
+function stoneTexture(ctx, top, dark) {
+  ctx.strokeStyle = withAlpha('#000000', 0.12);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(6, 14); ctx.lineTo(14, 12); ctx.lineTo(16, 22);
+  ctx.moveTo(16, 22); ctx.lineTo(24, 20);
+  ctx.stroke();
+  ctx.fillStyle = withAlpha('#ffffff', 0.14);
+  ctx.fillRect(7, 8, 5, 3);
+  ctx.fillStyle = withAlpha('#000000', 0.1);
+  ctx.fillRect(18, 18, 4, 3);
 }
 
 const DRAWERS = {
-  grass: drawGrass,
-  water: drawWater,
-  wood:  (c, r) => drawBlockTile(c, BLOCK_DEFS.wood.color),
-  stone: (c, r) => drawBlockTile(c, BLOCK_DEFS.stone.color),
+  grass:     (c, r) => drawGrass(c, r, BLOCK_DEFS.grass.color),
+  grassDark: (c, r) => drawGrass(c, r, BLOCK_DEFS.grassDark.color),
+  flowers:   (c, r) => drawFlowers(c, r),
+  dirt:      (c, r) => drawDirt(c, r),
+  sand:      (c, r) => drawSand(c, r),
+  wood:      (c) => drawBlockTile(c, BLOCK_DEFS.wood.color, woodGrain),
+  stone:     (c) => drawBlockTile(c, BLOCK_DEFS.stone.color, stoneTexture),
 };
 
 const cache = {};
+const waterCache = [];
 
 export function buildTileset() {
   for (const key of Object.keys(DRAWERS)) {
     const c = makeCanvas(S, S);
     DRAWERS[key](c.getContext('2d'), mulberry32(hashStr(key)));
     cache[key] = c;
+  }
+  // frames d'eau
+  for (let f = 0; f < WATER_FRAMES; f++) {
+    const c = makeCanvas(S, S);
+    drawWater(c.getContext('2d'), mulberry32(hashStr('water' + f)), f);
+    waterCache[f] = c;
   }
   return cache;
 }
@@ -111,49 +214,64 @@ export function getTileCanvas(key) {
   return cache[key] || cache.grass;
 }
 
+export function getWaterFrame(frame) {
+  return waterCache[frame % WATER_FRAMES];
+}
+
 // ------------------------------------------------------------
-//  Objets (arbres, rochers) — dessinés avec une hauteur,
-//  triés par profondeur avec le joueur. Style carré.
+//  Objets (arbres, rochers) — cubiques, avec ombre douce.
 // ------------------------------------------------------------
 
+export function softShadow(ctx, cx, cy, w, h) {
+  const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, w);
+  g.addColorStop(0, 'rgba(0,0,0,0.32)');
+  g.addColorStop(0.7, 'rgba(0,0,0,0.18)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, w, h, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function voxel(ctx, x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = shade(color, 0.72);
+  ctx.lineWidth = 1.2;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  ctx.fillStyle = withAlpha('#ffffff', 0.22);
+  ctx.fillRect(x + 1, y + 1, Math.max(0, w - 2), Math.max(1, h * 0.28));
+  ctx.fillStyle = withAlpha('#000000', 0.14);
+  ctx.fillRect(x + 1, y + h - 2, Math.max(0, w - 2), Math.min(2, h));
+}
+
 export function drawTreeObject(ctx, x, y) {
-  // ombre au sol
-  ctx.fillStyle = 'rgba(0,0,0,0.22)';
-  ctx.fillRect(x - 14, y - 2, 28, 8);
-  // tronc (carré)
-  ctx.fillStyle = '#6e4426';
-  ctx.fillRect(x - 4, y - 14, 8, 16);
+  softShadow(ctx, x, y + 1, 15, 6);
+  // tronc
+  voxel(ctx, x - 4, y - 14, 8, 16, '#6e4426');
   ctx.fillStyle = '#8a5a34';
-  ctx.fillRect(x - 4, y - 14, 4, 16);
+  ctx.fillRect(x - 4, y - 14, 3, 16);
   // feuillage (cube)
-  ctx.fillStyle = '#3e7d2c';
-  ctx.fillRect(x - 15, y - 30, 30, 20);
-  ctx.fillStyle = '#4f9337';
-  ctx.fillRect(x - 11, y - 33, 22, 20);
-  ctx.fillStyle = '#63a845';
-  ctx.fillRect(x - 6, y - 36, 12, 6);
-  // contour feuillage
-  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(x - 15, y - 30, 30, 20);
+  voxel(ctx, x - 15, y - 31, 30, 21, '#3f7d2c');
+  voxel(ctx, x - 11, y - 35, 22, 22, '#4f9337');
+  voxel(ctx, x - 6, y - 39, 12, 6, '#63a845');
+  // reflet sur le dessus du feuillage
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.fillRect(x - 6, y - 39, 12, 3);
 }
 
 export function drawRockObject(ctx, x, y) {
-  // ombre
-  ctx.fillStyle = 'rgba(0,0,0,0.22)';
-  ctx.fillRect(x - 13, y - 2, 26, 8);
-  // rocher (cube de pierre)
-  ctx.fillStyle = '#7a7a82';
-  ctx.fillRect(x - 13, y - 20, 26, 20);
-  ctx.fillStyle = '#8d8d94';
-  ctx.fillRect(x - 11, y - 24, 22, 18);
-  ctx.fillStyle = '#a5a5ac';
-  ctx.fillRect(x - 8, y - 27, 16, 6);
-  // facettes
-  ctx.fillStyle = '#6a6a72';
-  ctx.fillRect(x - 13, y - 8, 5, 6);
-  ctx.fillRect(x + 8, y - 14, 5, 10);
+  softShadow(ctx, x, y + 1, 14, 5);
+  voxel(ctx, x - 13, y - 20, 26, 21, '#7a7a82');
+  voxel(ctx, x - 11, y - 25, 22, 19, '#8d8d94');
+  voxel(ctx, x - 8, y - 29, 16, 6, '#a5a5ac');
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fillRect(x - 8, y - 29, 16, 3);
+  // fissures
   ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(x - 13, y - 20, 26, 20);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x - 9, y - 12); ctx.lineTo(x - 2, y - 16); ctx.lineTo(x - 5, y - 8);
+  ctx.moveTo(x + 4, y - 18); ctx.lineTo(x + 9, y - 12);
+  ctx.stroke();
 }

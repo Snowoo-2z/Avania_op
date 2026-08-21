@@ -9,7 +9,7 @@ import { Player } from './player.js';
 import { Camera } from './camera.js';
 import { Input } from './input.js';
 import { Inventory } from './inventory.js';
-import { buildTileset, getTileCanvas, drawTreeObject, drawRockObject } from './tileset.js';
+import { buildTileset, getTileCanvas, getWaterFrame, WATER_FRAMES, drawTreeObject, drawRockObject } from './tileset.js';
 import { drawCharacter } from './character.js';
 
 export class Game {
@@ -28,6 +28,7 @@ export class Game {
 
     this.otherPlayers = []; // futurs joueurs en ligne
     this.lastTime = performance.now();
+    this.time = 0;
     this.tileset = buildTileset();
 
     // cible visée par la souris
@@ -60,6 +61,7 @@ export class Game {
   }
 
   update(dt) {
+    this.time += dt;
     const dir = this.input.getDirection();
     this.player.update(dir, dt, this.world);
     this.camera.follow(this.player.x, this.player.y, dt);
@@ -153,6 +155,7 @@ export class Game {
     const viewB = Math.ceil((cam.y + H / zoom) / TILE) + 1;
 
     // 1) sols + blocs pleins (bois, pierre)
+    const waterFrame = Math.floor(this.time * 2.4) % WATER_FRAMES;
     for (let ty = viewT; ty <= viewB; ty++) {
       for (let tx = viewL; tx <= viewR; tx++) {
         if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) continue;
@@ -160,7 +163,11 @@ export class Game {
         const floor = this.world.floor[i];
         const block = this.world.blocks[i];
 
-        ctx.drawImage(getTileCanvas(floor), tx * TILE, ty * TILE);
+        if (floor === 'water') {
+          ctx.drawImage(getWaterFrame((waterFrame + tx + ty) % WATER_FRAMES), tx * TILE, ty * TILE);
+        } else {
+          ctx.drawImage(getTileCanvas(floor), tx * TILE, ty * TILE);
+        }
         // bloc plein posé (pas un objet avec hauteur)
         if (block && BLOCK_DEFS[block].kind === 'block') {
           ctx.drawImage(getTileCanvas(block), tx * TILE, ty * TILE);
@@ -170,13 +177,24 @@ export class Game {
 
     // 2) surbrillance de la tuile ciblée
     if (this.inReach && this.world.inBounds(this.targetTx, this.targetTy)) {
-      const canAct = this.world.blocks[this.world.idx(this.targetTx, this.targetTy)] !== null ||
-        this.world.floor[this.world.idx(this.targetTx, this.targetTy)] === 'grass';
-      ctx.strokeStyle = canAct ? 'rgba(255,255,255,0.9)' : 'rgba(255,60,60,0.9)';
-      ctx.lineWidth = 2 / zoom;
-      ctx.strokeRect(this.targetTx * TILE + 1, this.targetTy * TILE + 1, TILE - 2, TILE - 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.08)';
-      ctx.fillRect(this.targetTx * TILE + 1, this.targetTy * TILE + 1, TILE - 2, TILE - 2);
+      const i = this.world.idx(this.targetTx, this.targetTy);
+      const hasBlock = this.world.blocks[i] !== null;
+      const onWater = this.world.floor[i] === 'water';
+      const canAct = hasBlock || !onWater;
+      const px = this.targetTx * TILE, py = this.targetTy * TILE;
+
+      // halo animé
+      const pulse = 0.5 + Math.sin(this.time * 6) * 0.2;
+      ctx.save();
+      ctx.strokeStyle = canAct ? `rgba(255,255,255,${0.7 + pulse})` : 'rgba(255,80,80,0.85)';
+      ctx.lineWidth = 2.5 / zoom;
+      ctx.shadowColor = canAct ? 'rgba(255,255,255,0.6)' : 'rgba(255,80,80,0.6)';
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = canAct ? 'rgba(255,255,255,0.10)' : 'rgba(255,80,80,0.12)';
+      const r = 6;
+      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(px + 1, py + 1, TILE - 2, TILE - 2, r); ctx.fill(); ctx.stroke(); }
+      else { ctx.fillRect(px + 1, py + 1, TILE - 2, TILE - 2); ctx.strokeRect(px + 1, py + 1, TILE - 2, TILE - 2); }
+      ctx.restore();
     }
 
     // 3) objets (arbres, rochers) + joueurs, triés par profondeur
@@ -206,6 +224,13 @@ export class Game {
     for (const d of drawables) d.draw();
 
     ctx.restore();
+
+    // 4) vignette d'ambiance (coin légèrement assombris)
+    const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(10,18,12,0.28)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
   }
 
   drawPlayer(ctx, player) {

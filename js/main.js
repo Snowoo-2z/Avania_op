@@ -32,6 +32,7 @@ async function boot() {
   const game = new Game(canvas, appearance);
   game.start();
   hud.show();
+  document.getElementById('controls-hint').classList.remove('hidden');
 
   // 3. Barre rapide branchée sur l'inventaire du jeu
   hotbar.inventory = game.inventory;
