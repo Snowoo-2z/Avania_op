@@ -9,6 +9,8 @@ import { PERFORMANCE } from './config.js';
 import {
   openCharacterCreation, HUD, Hotbar, InventoryPanel, Crafting,
 } from './ui.js';
+import { initIcons } from './icons.js';
+import { Tutorial } from './tutorial.js';
 import { isLowPowerDevice } from './utils.js';
 
 const canvas = document.getElementById('game');
@@ -41,6 +43,9 @@ const hud = new HUD(document.getElementById('hud'));
 const hotbar = new Hotbar(document.getElementById('hotbar'), null); // branché après le lancement
 
 async function boot() {
+  // 0. Icônes d'objets (sprites PNG) générées une fois pour l'UI.
+  initIcons();
+
   // 1. Création du personnage
   const appearance = await openCharacterCreation();
 
@@ -50,6 +55,23 @@ async function boot() {
   hud.show();
   document.getElementById('controls-hint').classList.remove('hidden');
   document.getElementById('craft-btn').classList.remove('hidden');
+
+  // Tutoriel illustré : affiché au premier lancement.
+  const tutorial = new Tutorial(appearance);
+  const closeTutorial = () => {
+    tutorial.hide();
+    game.setPaused(false);
+  };
+  document.getElementById('tutorial-start').onclick = closeTutorial;
+  document.getElementById('tutorial-close').onclick = closeTutorial;
+
+  let tutorialSeen = false;
+  try { tutorialSeen = localStorage.getItem('avania.tutoriel') === '1'; } catch { /* ignore */ }
+  if (!tutorialSeen) {
+    tutorial.show();
+    game.setPaused(true);
+    try { localStorage.setItem('avania.tutoriel', '1'); } catch { /* ignore */ }
+  }
 
   // 3. Barre rapide, inventaire complet et fabrication branchés sur
   // l'inventaire réel du jeu.
@@ -94,6 +116,7 @@ async function boot() {
     } else if (key === 'escape') {
       inventoryPanel.close();
       crafting.close();
+      if (tutorial.isOpen) closeTutorial();
     }
   });
 

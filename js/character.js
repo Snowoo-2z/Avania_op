@@ -11,6 +11,7 @@ import {
   SHIRT_COLORS, PANTS_COLORS, HATS, GLASSES,
 } from './config.js';
 import { shade } from './tileset.js';
+import { makeCanvas } from './utils.js';
 
 export function resolveColor(list, id) {
   const found = list.find((e) => e.id === id);
@@ -57,12 +58,79 @@ function voxel(ctx, x, y, w, h, color, o = {}) {
 // Taille du cube (en unités monde, avant mise à l'échelle)
 const CUBE = 30;
 
+// ------------------------------------------------------------
+//  Pré-rendu du personnage (gros gain de performance)
+//  Le corps du cube est dessiné une seule fois par
+//  (apparence × orientation × clignement), puis réutilisé via
+//  un simple drawImage à chaque frame. Seuls le rebond (bob),
+//  la respiration (squash) et l'ombre restent calculés en direct.
+//  Le rendu vectoriel initial (~50 opérations + 3 dégradés par
+//  frame) devient un unique blit.
+// ------------------------------------------------------------
+const SPRITE_W = 64; // largeur en unités monde (marge incluse)
+const SPRITE_H = 64;
+const SPRITE_ANCHOR_X = 32; // position de l'origine (sol, centre)
+const SPRITE_ANCHOR_Y = 48;
+
+const bodyCache = new Map();
+
+function bodyCacheKey(app, facing, blink, detail) {
+  return [
+    app.skin, app.hairStyle, app.hairColor, app.eyes, app.shirt, app.pants,
+    app.hat, app.glasses, app.facialHair, facing, blink ? 1 : 0, detail,
+  ].join('|');
+}
+
+function getBodySprite(app, facing, blink, detail) {
+  const key = bodyCacheKey(app, facing, blink, detail);
+  let sprite = bodyCache.get(key);
+  if (sprite) return sprite;
+
+  const c = appearanceColors(app);
+  const canvas = makeCanvas(SPRITE_W * detail, SPRITE_H * detail);
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(SPRITE_ANCHOR_X * detail, SPRITE_ANCHOR_Y * detail);
+  ctx.scale(detail, detail);
+
+  const x0 = -CUBE / 2;
+  const y0 = -CUBE; // haut du cube, bas = 0 (au sol)
+
+  drawCubeBody(ctx, x0, y0, CUBE, c);
+  drawHair(ctx, app, c.hair, x0, y0, CUBE, facing);
+
+  if (facing !== 'up') {
+    drawFace(ctx, app, c, x0, y0, CUBE, facing, blink);
+    if (app.facialHair && app.facialHair !== 'none') {
+      drawFacialHair(ctx, app.facialHair, c.hair, x0, y0, CUBE, facing);
+    }
+    if (app.glasses && app.glasses !== 'none') {
+      drawGlasses(ctx, app.glasses, x0, y0, CUBE, facing);
+    }
+  }
+  if (app.hat && app.hat !== 'none') {
+    drawHat(ctx, app, c, x0, y0, CUBE, facing);
+  }
+
+  sprite = {
+    canvas,
+    w: SPRITE_W,
+    h: SPRITE_H,
+    anchorX: SPRITE_ANCHOR_X,
+    anchorY: SPRITE_ANCHOR_Y,
+  };
+  bodyCache.set(key, sprite);
+  return sprite;
+}
+
 // Dessine le personnage — un cube unique posé sur (x, y).
 // y = point de contact au sol.
 export function drawCharacter(ctx, app, x, y, opts = {}) {
   const { facing = 'down', walkPhase = 0, scale = 1, blink = false, shadow = true } = opts;
-  const c = appearanceColors(app);
-  const S = CUBE;
+  // Résolution interne du sprite, calée sur le zoom cible : 1 pour le
+  // rendu en jeu (léger sous-échantillonnage), plus haute pour l'aperçu
+  // agrandi afin de rester net.
+  const detail = opts.detail || Math.max(1, Math.round(scale));
   const bob = Math.sin(walkPhase) * 1.4;
   const squash = 1 + Math.sin(walkPhase * 2) * 0.04;
 
@@ -83,29 +151,11 @@ export function drawCharacter(ctx, app, x, y, opts = {}) {
   }
 
   // Le cube : on le fait rebondir (bob) et respirer (squash) autour du sol.
+  const sprite = getBodySprite(app, facing, blink, detail);
   ctx.save();
   ctx.translate(0, -bob);
   ctx.scale(1, squash);
-
-  const x0 = -S / 2;
-  const y0 = -S; // haut du cube, bas = 0 (au sol)
-
-  drawCubeBody(ctx, x0, y0, S, c);
-  drawHair(ctx, app, c.hair, x0, y0, S, facing);
-
-  if (facing !== 'up') {
-    drawFace(ctx, app, c, x0, y0, S, facing, blink);
-    if (app.facialHair && app.facialHair !== 'none') {
-      drawFacialHair(ctx, app.facialHair, c.hair, x0, y0, S, facing);
-    }
-    if (app.glasses && app.glasses !== 'none') {
-      drawGlasses(ctx, app.glasses, x0, y0, S, facing);
-    }
-  }
-  if (app.hat && app.hat !== 'none') {
-    drawHat(ctx, app, c, x0, y0, S, facing);
-  }
-
+  ctx.drawImage(sprite.canvas, -sprite.anchorX, -sprite.anchorY, sprite.w, sprite.h);
   ctx.restore();
   ctx.restore();
 }

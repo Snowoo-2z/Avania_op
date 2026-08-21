@@ -261,6 +261,13 @@ export class Inventory {
     return this.getSlot(this.selectedSlotIndex());
   }
 
+  // Accès en lecture seule à la case sélectionnée, sans clonage.
+  // Utilisé dans la boucle de jeu (miner / poser) pour éviter d'allouer
+  // un objet à chaque frame.
+  getSelectedStackRef() {
+    return this.slots[this.selectedSlotIndex()];
+  }
+
   getSelected() {
     // Fallback historique : les scripts qui utilisaient l'ancien inventaire
     // peuvent toujours demander un nom d'objet, même sur une case vide.

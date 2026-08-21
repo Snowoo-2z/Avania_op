@@ -10,6 +10,7 @@ import {
 } from './config.js';
 import { ITEM_DEFS, RECIPES } from './blocks.js';
 import { drawCharacter } from './character.js';
+import { getItemIconURL } from './icons.js';
 import { isLowPowerDevice, pick } from './utils.js';
 
 const SAVE_KEY = 'avania.personnage';
@@ -234,6 +235,16 @@ export class HUD {
 // ------------------------------------------------------------
 //  Barre rapide (9 cases)
 // ------------------------------------------------------------
+// Applique l'icône PNG d'un objet (ou vide) sur un élément `.slot-icon`.
+function applyItemIcon(el, id) {
+  const url = id ? getItemIconURL(id) : null;
+  el.textContent = '';
+  el.style.backgroundImage = url ? `url("${url}")` : '';
+  el.style.backgroundSize = url ? 'contain' : '';
+  el.style.backgroundRepeat = url ? 'no-repeat' : '';
+  el.style.backgroundPosition = url ? 'center' : '';
+}
+
 function updateSlotVisual(el, stack, inventory = null, index = -1) {
   const icon = el.querySelector('.slot-icon');
   const count = el.querySelector('.slot-count');
@@ -243,16 +254,14 @@ function updateSlotVisual(el, stack, inventory = null, index = -1) {
   el.classList.toggle('tool-slot', Boolean(def?.type === 'tool'));
 
   if (!stack || !def) {
-    icon.textContent = '';
-    icon.style.background = 'transparent';
+    applyItemIcon(icon, null);
     count.textContent = '';
     durability.style.width = '0%';
     el.title = index >= 0 ? `Case ${index + 1} — vide` : 'Case vide';
     return;
   }
 
-  icon.textContent = def.icon || '';
-  icon.style.background = def.color;
+  applyItemIcon(icon, stack.id);
   count.textContent = def.type === 'tool' ? '' : (stack.count > 1 ? stack.count : '');
   if (def.type === 'tool') {
     const max = def.durability || 1;
@@ -407,6 +416,9 @@ export class InventoryPanel {
   }
 
   update() {
+    // Panneau fermé : inutile de réécrire le DOM à chaque changement
+    // d'inventaire (minage, pose…). On rafraîchit à l'ouverture.
+    if (this.root.classList.contains('hidden')) return;
     this.slots.forEach(({ el, index }) => {
       updateSlotVisual(el, this.inventory.getSlot(index), this.inventory, index);
       el.classList.toggle('focused', this.focused === index);
@@ -435,8 +447,7 @@ export class InventoryPanel {
     const selected = this.inventory.getSelectedStack();
     const def = selected && ITEM_DEFS[selected.id];
     if (detailIcon) {
-      detailIcon.textContent = def?.icon || '＋';
-      detailIcon.style.background = def?.color || 'rgba(255,255,255,0.06)';
+      applyItemIcon(detailIcon, def ? selected.id : null);
     }
     if (detailSlot) detailSlot.textContent = `CASE ${this.inventory.selected + 1}`;
     if (detailName) detailName.textContent = def ? def.label : 'Case sélectionnée vide';
@@ -458,6 +469,7 @@ export class InventoryPanel {
   open() {
     if (!this.root.classList.contains('hidden')) return;
     this.root.classList.remove('hidden');
+    this.update();
     this.onVisibilityChange(true);
   }
 
@@ -532,8 +544,7 @@ export class Crafting {
       outEl.className = 'recipe-out';
       const icon = document.createElement('span');
       icon.className = 'recipe-icon';
-      icon.textContent = out.icon || '';
-      icon.style.background = out.color;
+      applyItemIcon(icon, out.id);
       const name = document.createElement('b');
       name.textContent = `${out.label} ×${recipe.outN}`;
       outEl.append(icon, name);
@@ -576,6 +587,9 @@ export class Crafting {
   }
 
   update() {
+    // Panneau fermé : on évite de recalculer recettes et DOM à chaque
+    // changement d'inventaire. Rafraîchi à l'ouverture.
+    if (this.root.classList.contains('hidden')) return;
     this.gridSlots.forEach((el, i) => {
       updateSlotVisual(el, this.inventory.craftingGrid[i]);
     });
@@ -585,13 +599,11 @@ export class Crafting {
     this.outputEl.classList.toggle('ready', Boolean(out));
     this.outputEl.disabled = !out;
     if (out) {
-      this.outputIcon.textContent = out.icon || '';
-      this.outputIcon.style.background = out.color;
+      applyItemIcon(this.outputIcon, out.id);
       this.outputName.textContent = `${out.label} ×${recipe.outN}`;
       this.outputEl.title = `Récupérer ${out.label}`;
     } else {
-      this.outputIcon.textContent = '?';
-      this.outputIcon.style.background = 'rgba(255,255,255,0.06)';
+      applyItemIcon(this.outputIcon, null);
       this.outputName.textContent = 'Résultat';
       this.outputEl.title = 'Prépare une recette pour voir le résultat';
     }
@@ -614,6 +626,7 @@ export class Crafting {
   open() {
     if (!this.root.classList.contains('hidden')) return;
     this.root.classList.remove('hidden');
+    this.update();
     this.onVisibilityChange(true);
   }
 

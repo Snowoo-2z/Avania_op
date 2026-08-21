@@ -5,23 +5,46 @@
 import {
   TILE, WORLD_W, WORLD_H, REACH, PERFORMANCE, PLAYER_RENDER_SCALE,
 } from './config.js';
-import { BLOCK_DEFS, DIGGABLE_FLOOR, ITEM_DEFS } from './blocks.js';
+import { BLOCK_DEFS, ITEM_DEFS } from './blocks.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { Camera } from './camera.js';
 import { Input } from './input.js';
 import { Inventory } from './inventory.js';
-import { buildTileset, getTileCanvas, getWaterFrame, drawTreeObject, drawRockObject } from './tileset.js';
+import {
+  buildTileset, getTileCanvas, getWaterFrame, drawTreeObject, drawRockObject, getObjectSpriteInfo,
+} from './tileset.js';
 import { drawCharacter } from './character.js';
+import { getItemSprite } from './icons.js';
 import { isLowPowerDevice, makeCanvas } from './utils.js';
 
 const REACH_SQ = REACH * REACH;
 const SORT_BY_Y = (a, b) => a.sortY - b.sortY;
 const MINING_CRACK_STAGES = 9;
 
+// Couleurs des particules de casse, par ressource. Des carrés pixelisés
+// de la même palette que la ressource, pour un débris cohérent.
+const BREAK_PARTICLE_COLORS = {
+  tree: ['#4f9337', '#63a845', '#8a5a34', '#6e4426'],
+  rock: ['#8d8d94', '#a5a5ac', '#7a7a82', '#96969c'],
+  wood: ['#b07a3c', '#c89a5e', '#8a5a2e'],
+  stone: ['#9a9aa3', '#8d8d94', '#6a6a72'],
+  plank: ['#c89a5e', '#b07a3c', '#8a5a2e'],
+  brick: ['#b4553f', '#c96a55', '#8a3f2f'],
+  glass: ['#bfe3ea', '#9fd0d8', '#d8f0f4'],
+  sand: ['#e2c88a', '#c0a25e', '#f4e6b8'],
+  sandBlock: ['#e2c88a', '#c0a25e', '#f4e6b8'],
+  dirt: ['#8a6a46', '#6a4f30', '#a8875c'],
+  dirtBlock: ['#8a6a46', '#6a4f30', '#a8875c'],
+};
+const MAX_PARTICLES = 240; // plafond anti-abus (spam de casses)
+
 // Fissures pixelisées pré-rendues une seule fois. En plus d'être plus
 // propres que des traits recalculés chaque frame, ces sprites allègent
 // le rendu pendant que le joueur maintient le bouton de minage.
+// Les coordonnées sont définies dans une grille 32×32 puis mises à
+// l'échelle : on peut ainsi couvrir TOUT le corps d'un arbre ou d'un
+// rocher (pas seulement le bas de sa tuile).
 const CRACK_SEGMENTS = [
   { stage: 0, points: [[16, 16], [12, 12], [8, 13]] },
   { stage: 1, points: [[12, 12], [11, 7], [7, 4]] },
@@ -34,15 +57,18 @@ const CRACK_SEGMENTS = [
   { stage: 8, points: [[8, 13], [5, 15], [3, 13]] },
 ];
 
-function buildMiningCrackSprites() {
+function buildMiningCrackSprites(w = TILE, h = TILE) {
+  const sx = w / TILE; // échelle (grille de référence = 32 px)
+  const sy = h / TILE;
+  const lineW = 1.35 * Math.max(sx, sy);
   return Array.from({ length: MINING_CRACK_STAGES }, (_, stage) => {
-    const canvas = makeCanvas(TILE, TILE);
+    const canvas = makeCanvas(w, h);
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = `rgba(12,14,15,${0.025 + stage * 0.012})`;
-    ctx.fillRect(1, 1, TILE - 2, TILE - 2);
+    ctx.fillRect(1, 1, w - 2, h - 2);
     ctx.strokeStyle = `rgba(17,19,20,${0.72 + stage * 0.025})`;
-    ctx.lineWidth = 1.35;
+    ctx.lineWidth = lineW;
     ctx.lineCap = 'butt';
     ctx.lineJoin = 'miter';
 
@@ -50,8 +76,10 @@ function buildMiningCrackSprites() {
       if (segment.stage > stage) continue;
       ctx.beginPath();
       segment.points.forEach(([x, y], index) => {
-        if (index === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        const px = x * sx;
+        const py = y * sy;
+        if (index === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
       });
       ctx.stroke();
     }
@@ -75,10 +103,27 @@ export class Game {
     this.camera.snapTo(this.player.x, this.player.y);
 
     this.otherPlayers = []; // futurs joueurs en ligne
+    // Objets posés au sol (ramassables en marchant dessus).
+    this.droppedItems = [];
+    this.pickupFullCooldown = 0;
+    // Particules de casse (débris légers, courte durée de vie).
+    this.particles = [];
     this.lastTime = performance.now();
     this.time = 0;
     this.tileset = buildTileset();
-    this.miningCrackSprites = buildMiningCrackSprites();
+    this.miningCrackSprites = buildMiningCrackSprites(TILE, TILE);
+    // Fissures à la taille exacte des arbres / rochers (couvrent tout le corps).
+    this.objectCrackSprites = {};
+    for (const kind of ['tree', 'rock']) {
+      const info = getObjectSpriteInfo(kind);
+      if (info) {
+        this.objectCrackSprites[kind] = {
+          sprites: buildMiningCrackSprites(info.w, info.h),
+          anchorX: info.anchorX,
+          anchorY: info.anchorY,
+        };
+      }
+    }
     this.staticObjects = [];
     this.staticObjectMap = new Map();
     this.rebuildStaticObjects();
@@ -204,7 +249,6 @@ export class Game {
   }
 
   update(dt) {
-    this.resizeView();
     this.time += dt;
     this.actionCooldown = Math.max(0, this.actionCooldown - dt);
     if (this.paused) return;
@@ -212,6 +256,8 @@ export class Game {
     const dir = this.input.getDirection();
     this.player.update(dir, dt, this.world);
     this.camera.follow(this.player.x, this.player.y, dt);
+    this.updateDroppedItems(dt);
+    this.updateParticles(dt);
 
     this.updateTarget();
     this.handleHotbarKeys();
@@ -294,7 +340,7 @@ export class Game {
       this.mining.progress = 0;
     }
 
-    const selected = this.inventory.getSelectedStack();
+    const selected = this.inventory.getSelectedStackRef();
     const selectedDef = selected ? ITEM_DEFS[selected.id] : null;
     const requiredTool = this.world.requiredToolAt(this.targetTx, this.targetTy);
     const effectiveTool = selectedDef?.toolType === requiredTool;
@@ -310,17 +356,6 @@ export class Game {
     if (this.mining.progress < 1) return;
 
     const existingBlock = this.world.blockAt(this.targetTx, this.targetTy);
-    const possibleDrop = existingBlock
-      ? BLOCK_DEFS[existingBlock]?.drop
-      : DIGGABLE_FLOOR[this.world.floorAt(this.targetTx, this.targetTy)]?.drop;
-
-    // Ne détruit pas une ressource si toutes les cases sont pleines.
-    if (possibleDrop && !this.inventory.canAdd(possibleDrop, 1)) {
-      this.notify('Inventaire plein : libère une case avant de récolter.');
-      this.resetMining();
-      return;
-    }
-
     const i = this.world.idx(this.targetTx, this.targetTy);
     const oldFloor = this.world.floor[i];
     const drop = this.world.breakBlock(this.targetTx, this.targetTy);
@@ -328,7 +363,17 @@ export class Game {
       if (existingBlock && BLOCK_DEFS[existingBlock]?.kind === 'object') {
         this.removeStaticObjectAt(this.targetTx, this.targetTy);
       }
-      this.inventory.add(drop);
+      // L'objet tombe au sol : on le ramasse en marchant dessus.
+      const dropN = (existingBlock && BLOCK_DEFS[existingBlock]?.dropN) || 1;
+      // Plusieurs ressources : on les disperse en éventail pour un joli
+      // effet "éclaboussure" dans des directions différentes.
+      const baseAngle = Math.random() * Math.PI * 2;
+      for (let k = 0; k < dropN; k++) {
+        const angle = dropN > 1 ? baseAngle + (k / dropN) * Math.PI * 2 : null;
+        this.spawnDrop(this.targetTx, this.targetTy, drop, 1, angle);
+      }
+      // Petit jet de débris pixelisés à l'endroit de la casse.
+      this.spawnBreakParticles(this.targetTx, this.targetTy, existingBlock || drop);
       if (selectedDef?.type === 'tool') {
         const result = this.inventory.damageSelectedTool(1);
         if (result.broken) this.notify(`${selectedDef.label} s'est cassé.`);
@@ -338,9 +383,139 @@ export class Game {
     this.resetMining();
   }
 
+  // ------------------------------------------------------------
+  //  Objets au sol (ramassage en marchant dessus)
+  // ------------------------------------------------------------
+  spawnDrop(tx, ty, id, count = 1, angle = null) {
+    const cx = tx * TILE + TILE / 2;
+    const cy = ty * TILE + TILE / 2;
+    const a = angle === null ? Math.random() * Math.PI * 2 : angle;
+    const speed = 26 + Math.random() * 38;
+    this.droppedItems.push({
+      id,
+      count,
+      x: cx,
+      y: cy,
+      vx: Math.cos(a) * speed,
+      vy: Math.sin(a) * speed,
+      sortY: cy,
+      born: this.time,
+    });
+  }
+
+  updateDroppedItems(dt) {
+    if (this.droppedItems.length === 0) return;
+    this.pickupFullCooldown = Math.max(0, this.pickupFullCooldown - dt);
+
+    const px = this.player.x;
+    const py = this.player.y;
+    // Rayon de ramassage généreux : il suffit d'être « sur » la tuile
+    // de l'objet pour le récupérer, même sans être pile au centre.
+    const PICKUP_SQ = 28 * 28;
+    const friction = 1 - Math.min(1, dt * 7);
+
+    for (let n = this.droppedItems.length - 1; n >= 0; n--) {
+      const d = this.droppedItems[n];
+
+      // léger élan au lâcher, amorti par friction
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.vx *= friction;
+      d.vy *= friction;
+
+      const dx = px - d.x;
+      const dy = py - d.y;
+      const distSq = dx * dx + dy * dy;
+
+      // Ramassage direct dès qu'on marche dessus.
+      if (distSq < PICKUP_SQ) {
+        const added = this.inventory.add(d.id, d.count);
+        if (added >= d.count) {
+          this.droppedItems.splice(n, 1);
+        } else {
+          d.count -= added;
+          if (added === 0 && this.pickupFullCooldown <= 0) {
+            this.notify('Inventaire plein : libère une case pour ramasser.');
+            this.pickupFullCooldown = 1.6;
+          }
+        }
+        continue;
+      }
+
+      d.sortY = d.y;
+    }
+  }
+
+  // ------------------------------------------------------------
+  //  Particules de casse (débris légers)
+  //  Des petits carrés pixelisés projetés autour du bloc cassé,
+  //  soumis à la gravité, qui s'estompent rapidement. Coût négligeable :
+  //  quelques dizaines d'objets éphémères, un simple fillRect chacun.
+  // ------------------------------------------------------------
+  spawnBreakParticles(tx, ty, blockId) {
+    if (this.particles.length > MAX_PARTICLES) return;
+    const colors = BREAK_PARTICLE_COLORS[blockId]
+      || [BLOCK_DEFS[blockId]?.color || '#cfcfcf'];
+    const cx = tx * TILE + TILE / 2;
+    const cy = ty * TILE + TILE / 2;
+    const count = this.performanceMode ? 6 : 12;
+
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 24 + Math.random() * 46;
+      this.particles.push({
+        x: cx,
+        y: cy,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 42,
+        life: 1,
+        decay: 2.2 + Math.random() * 1.8,
+        size: 1 + Math.random() * 1.8,
+        color: colors[(Math.random() * colors.length) | 0],
+      });
+    }
+  }
+
+  updateParticles(dt) {
+    const particles = this.particles;
+    if (particles.length === 0) return;
+    const gravity = 260 * dt;
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life -= p.decay * dt;
+      if (p.life <= 0) {
+        // suppression O(1) sans allocation (swap-and-pop)
+        particles[i] = particles[particles.length - 1];
+        particles.pop();
+        continue;
+      }
+      p.vy += gravity;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+  }
+
+  drawParticles(ctx) {
+    const particles = this.particles;
+    const n = particles.length;
+    if (n === 0) return;
+
+    for (let i = 0; i < n; i++) {
+      const p = particles[i];
+      const s = p.size;
+      const x = (p.x + 0.5) | 0;
+      const y = (p.y + 0.5) | 0;
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(x - s, y - s, s * 2, s * 2);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   placeSelectedBlock() {
     if (this.actionCooldown > 0 || !this.inReach) return;
-    const selected = this.inventory.getSelectedStack();
+    const selected = this.inventory.getSelectedStackRef();
     const item = selected?.id;
     if (!item || !ITEM_DEFS[item]?.place) return;
     if (this.isPlayerOnTile(this.targetTx, this.targetTy)) return;
@@ -369,7 +544,8 @@ export class Game {
 
     ctx.save();
     ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, W, H);
+    // Le fond couvre tout le canvas : inutile d'appeler clearRect en plus
+    // (une opération plein-écran de moins par frame).
     ctx.fillStyle = '#2f76b2'; // hors-monde (eau)
     ctx.fillRect(0, 0, W, H);
 
@@ -397,6 +573,9 @@ export class Game {
 
     // 4) fissures de minage par-dessus la ressource ciblée, comme dans Minecraft
     this.drawMiningCracks(ctx);
+
+    // 5) débris de casse par-dessus le tout
+    this.drawParticles(ctx);
 
     ctx.restore();
 
@@ -518,10 +697,50 @@ export class Game {
       MINING_CRACK_STAGES - 1,
       Math.floor(this.mining.progress * MINING_CRACK_STAGES),
     );
+
+    // Arbre / rocher : on couvre l'ensemble du corps (sprite complet).
+    const block = this.world.blockAt(this.targetTx, this.targetTy);
+    if (block && BLOCK_DEFS[block]?.kind === 'object') {
+      const crack = this.objectCrackSprites[block];
+      if (crack) {
+        const sprite = crack.sprites[stage];
+        const cx = this.targetTx * TILE + TILE / 2;
+        const cy = this.targetTy * TILE + TILE / 2;
+        if (sprite) ctx.drawImage(sprite, cx - crack.anchorX, cy - crack.anchorY);
+        return;
+      }
+    }
+
     const px = this.targetTx * TILE;
     const py = this.targetTy * TILE;
     const sprite = this.miningCrackSprites[stage];
     if (sprite) ctx.drawImage(sprite, px, py);
+  }
+
+  // Objet posé au sol : ombre douce + sprite qui rebondit légèrement.
+  // Un petit "pop" d'apparition adoucit le lâcher.
+  drawDrop(ctx, drop) {
+    const sprite = getItemSprite(drop.id);
+    const base = 0.42; // un peu plus petit que l'original
+    const age = this.time - drop.born;
+    const pop = Math.min(1, age / 0.16);
+    const scale = base * (0.6 + 0.4 * pop);
+    const size = 32 * scale;
+    const bob = Math.sin(this.time * 4 + drop.x * 0.13) * 1.6;
+    const y = drop.y - bob;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.beginPath();
+    ctx.ellipse(drop.x, drop.y + 5, size * 0.52, size * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (sprite) {
+      ctx.drawImage(sprite, drop.x - size / 2, y - size / 2, size, size);
+    } else {
+      // filet de sécurité si le sprite n'est pas prêt
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(drop.x - size / 2, y - size / 2, size, size);
+    }
   }
 
   rebuildStaticObjects() {
@@ -568,6 +787,10 @@ export class Game {
       ) drawables.push(object);
     }
 
+    for (const drop of this.droppedItems) {
+      drawables.push({ sortY: drop.sortY, kind: 'drop', drop });
+    }
+
     drawables.push({ sortY: this.player.y, kind: 'player', player: this.player });
     for (const p of this.otherPlayers) {
       drawables.push({ sortY: p.y, kind: 'player', player: p });
@@ -578,6 +801,7 @@ export class Game {
       const d = drawables[i];
       if (d.kind === 'tree') drawTreeObject(ctx, d.x, d.y);
       else if (d.kind === 'rock') drawRockObject(ctx, d.x, d.y);
+      else if (d.kind === 'drop') this.drawDrop(ctx, d.drop);
       else this.drawPlayer(ctx, d.player);
     }
   }
@@ -614,41 +838,47 @@ export class Game {
     this.drawNameTag(ctx, player);
   }
 
-  getNameTag(name) {
-    const key = name || 'Aventurier';
+  getNameTag(name, scale = 1) {
+    const key = `${name || 'Aventurier'}@${scale}`;
     const cached = this.nameTagCache.get(key);
     if (cached) return cached;
 
-    const font = 'bold 9px system-ui, sans-serif';
+    // Le pseudo est rendu en haute résolution (× le zoom de la caméra)
+    // puis affiché à sa vraie taille : le texte reste net au lieu d'être
+    // agrandi/pixélisé par le zoom.
+    const px = Math.max(1, Math.round(scale));
+    const font = `bold ${9 * px}px system-ui, sans-serif`;
     this.ctx.save();
     this.ctx.font = font;
-    const w = Math.ceil(this.ctx.measureText(key).width + 8);
+    const wPx = Math.ceil(this.ctx.measureText(key).width + 8 * px);
     this.ctx.restore();
 
-    const h = 13;
-    const c = makeCanvas(w, h);
+    const hPx = 13 * px;
+    const c = makeCanvas(wPx, hPx);
     const nctx = c.getContext('2d');
     nctx.font = font;
+    nctx.textAlign = 'center';
+    nctx.textBaseline = 'middle';
     nctx.fillStyle = 'rgba(20,25,20,0.72)';
     if (nctx.roundRect) {
       nctx.beginPath();
-      nctx.roundRect(0, 0, w, h, 6);
+      nctx.roundRect(0, 0, wPx, hPx, 6 * px);
       nctx.fill();
     } else {
-      nctx.fillRect(0, 0, w, h);
+      nctx.fillRect(0, 0, wPx, hPx);
     }
     nctx.fillStyle = '#fff';
-    nctx.textAlign = 'center';
-    nctx.textBaseline = 'middle';
-    nctx.fillText(key, w / 2, 7);
+    nctx.fillText(key, wPx / 2, hPx / 2);
 
-    const tag = { canvas: c, w, h };
+    const tag = { canvas: c, w: wPx / px, h: hPx / px };
     this.nameTagCache.set(key, tag);
     return tag;
   }
 
   drawNameTag(ctx, player) {
-    const tag = this.getNameTag(player.appearance.name);
-    ctx.drawImage(tag.canvas, player.x - tag.w / 2, player.y - 34);
+    const scale = Math.max(1, Math.round(this.camera.zoom));
+    const tag = this.getNameTag(player.appearance.name, scale);
+    // Dessiné à sa taille logique (monde) : le zoom redonne un texte net.
+    ctx.drawImage(tag.canvas, player.x - tag.w / 2, player.y - 34, tag.w, tag.h);
   }
 }

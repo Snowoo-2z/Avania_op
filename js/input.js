@@ -4,9 +4,14 @@
 //  viser et casser / poser des blocs.
 // ============================================================
 
+const INV_SQRT2 = 1 / Math.sqrt(2);
+
 export class Input {
   constructor() {
     this.keys = new Set();
+    // Vecteur direction réutilisé : évite d'allouer un objet {x, y}
+    // à chaque frame pour un simple déplacement.
+    this._dir = { x: 0, y: 0 };
     this.mouse = {
       x: 0, y: 0,
       leftClicked: false,
@@ -81,9 +86,10 @@ export class Input {
     if (this.isDown('q', 'a', 'arrowleft')) x -= 1;
     if (this.isDown('d', 'arrowright')) x += 1;
     if (x !== 0 && y !== 0) {
-      const inv = 1 / Math.sqrt(2);
-      x *= inv; y *= inv;
+      x *= INV_SQRT2; y *= INV_SQRT2;
     }
-    return { x, y };
+    this._dir.x = x;
+    this._dir.y = y;
+    return this._dir;
   }
 }

@@ -21,16 +21,16 @@ export const BLOCK_DEFS = {
   // --- ressources naturelles (objets à casser) ---
   tree: {
     id: 'tree', label: 'Arbre', kind: 'object', solid: true, breakable: true,
-    drop: 'wood', color: '#4f9337', requiredTool: 'axe', breakTime: 0.9,
+    drop: 'wood', dropN: 3, color: '#4f9337', requiredTool: 'axe', breakTime: 0.9,
   },
   rock: {
     id: 'rock', label: 'Rocher', kind: 'object', solid: true, breakable: true,
-    drop: 'stone', color: '#8d8d94', requiredTool: 'pickaxe', breakTime: 1.25,
+    drop: 'stone', color: '#8d8d94', requiredTool: 'pickaxe', breakTime: 2.2,
   },
 
   // --- blocs constructibles (posés puis cassables) ---
   wood:  { id: 'wood',  label: 'Bois',   kind: 'block', solid: true, breakable: true, drop: 'wood',  color: '#b07a3c', requiredTool: 'axe', breakTime: 0.9 },
-  stone: { id: 'stone', label: 'Pierre', kind: 'block', solid: true, breakable: true, drop: 'stone', color: '#9a9aa3', requiredTool: 'pickaxe', breakTime: 1.25 },
+  stone: { id: 'stone', label: 'Pierre', kind: 'block', solid: true, breakable: true, drop: 'stone', color: '#9a9aa3', requiredTool: 'pickaxe', breakTime: 2.2 },
 
   // --- blocs fabriqués ---
   plank:  { id: 'plank',  label: 'Planche', kind: 'block', solid: true, breakable: true, drop: 'plank',  color: '#c89a5e', requiredTool: 'axe', breakTime: 0.7 },
