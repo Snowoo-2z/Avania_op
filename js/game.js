@@ -2,8 +2,10 @@
 //  AVANIA — Boucle de jeu, rendu et interactions avec les blocs
 // ============================================================
 
-import { TILE, WORLD_W, WORLD_H, REACH, PERFORMANCE } from './config.js';
-import { BLOCK_DEFS } from './blocks.js';
+import {
+  TILE, WORLD_W, WORLD_H, REACH, PERFORMANCE, PLAYER_RENDER_SCALE,
+} from './config.js';
+import { BLOCK_DEFS, DIGGABLE_FLOOR, ITEM_DEFS } from './blocks.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { Camera } from './camera.js';
@@ -15,6 +17,47 @@ import { isLowPowerDevice, makeCanvas } from './utils.js';
 
 const REACH_SQ = REACH * REACH;
 const SORT_BY_Y = (a, b) => a.sortY - b.sortY;
+const MINING_CRACK_STAGES = 9;
+
+// Fissures pixelisées pré-rendues une seule fois. En plus d'être plus
+// propres que des traits recalculés chaque frame, ces sprites allègent
+// le rendu pendant que le joueur maintient le bouton de minage.
+const CRACK_SEGMENTS = [
+  { stage: 0, points: [[16, 16], [12, 12], [8, 13]] },
+  { stage: 1, points: [[12, 12], [11, 7], [7, 4]] },
+  { stage: 2, points: [[16, 16], [19, 13], [24, 12]] },
+  { stage: 3, points: [[19, 13], [23, 8], [28, 7]] },
+  { stage: 4, points: [[16, 16], [14, 20], [10, 25]] },
+  { stage: 5, points: [[14, 20], [7, 22], [4, 27]] },
+  { stage: 6, points: [[16, 16], [20, 19], [24, 24], [28, 26]] },
+  { stage: 7, points: [[20, 19], [21, 24], [19, 29]] },
+  { stage: 8, points: [[8, 13], [5, 15], [3, 13]] },
+];
+
+function buildMiningCrackSprites() {
+  return Array.from({ length: MINING_CRACK_STAGES }, (_, stage) => {
+    const canvas = makeCanvas(TILE, TILE);
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = `rgba(12,14,15,${0.025 + stage * 0.012})`;
+    ctx.fillRect(1, 1, TILE - 2, TILE - 2);
+    ctx.strokeStyle = `rgba(17,19,20,${0.72 + stage * 0.025})`;
+    ctx.lineWidth = 1.35;
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'miter';
+
+    for (const segment of CRACK_SEGMENTS) {
+      if (segment.stage > stage) continue;
+      ctx.beginPath();
+      segment.points.forEach(([x, y], index) => {
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+    return canvas;
+  });
+}
 
 export class Game {
   constructor(canvas, appearance) {
@@ -35,6 +78,10 @@ export class Game {
     this.lastTime = performance.now();
     this.time = 0;
     this.tileset = buildTileset();
+    this.miningCrackSprites = buildMiningCrackSprites();
+    this.staticObjects = [];
+    this.staticObjectMap = new Map();
+    this.rebuildStaticObjects();
 
     // Rendu optimisé : le sol est rendu par chunks statiques au lieu
     // d'être redessiné tuile par tuile à chaque frame.
@@ -59,6 +106,12 @@ export class Game {
     this.targetTx = -1;
     this.targetTy = -1;
     this.inReach = false;
+    this.actionCooldown = 0;
+    this.paused = false;
+    this.toastTimer = 0;
+    // Progression de minage : le bloc ne disparaît qu'après un maintien
+    // du clic gauche. Le bon outil réduit la durée nécessaire.
+    this.mining = { tx: -1, ty: -1, progress: 0, duration: 0 };
 
     this.running = false;
     this.onFrame = this.onFrame.bind(this);
@@ -72,6 +125,34 @@ export class Game {
 
   stop() {
     this.running = false;
+  }
+
+  setPaused(value) {
+    this.paused = Boolean(value);
+    if (this.paused) {
+      this.input.mouse.leftClicked = false;
+      this.input.mouse.rightClicked = false;
+      this.input.mouse.leftDown = false;
+      this.input.mouse.rightDown = false;
+      this.resetMining();
+    }
+  }
+
+  resetMining() {
+    this.mining.tx = -1;
+    this.mining.ty = -1;
+    this.mining.progress = 0;
+    this.mining.duration = 0;
+  }
+
+  notify(message) {
+    if (typeof document === 'undefined') return;
+    const toast = document.getElementById('game-toast');
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.add('visible');
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => toast.classList.remove('visible'), 2200);
   }
 
   onFrame(now) {
@@ -125,13 +206,16 @@ export class Game {
   update(dt) {
     this.resizeView();
     this.time += dt;
+    this.actionCooldown = Math.max(0, this.actionCooldown - dt);
+    if (this.paused) return;
+
     const dir = this.input.getDirection();
     this.player.update(dir, dt, this.world);
     this.camera.follow(this.player.x, this.player.y, dt);
 
     this.updateTarget();
     this.handleHotbarKeys();
-    this.handleClicks();
+    this.handleClicks(dt);
   }
 
   // ------------------------------------------------------------
@@ -159,7 +243,7 @@ export class Game {
   //  Sélection de la barre rapide (touches 1..9 + molette)
   // ------------------------------------------------------------
   handleHotbarKeys() {
-    const n = this.inventory.order.length;
+    const n = this.inventory.hotbarSize;
     for (let i = 0; i < n; i++) {
       if (this.input.isDown(String(i + 1))) {
         this.input.keys.delete(String(i + 1));
@@ -173,35 +257,98 @@ export class Game {
   }
 
   // ------------------------------------------------------------
-  //  Casser (clic gauche) / Poser (clic droit)
+  //  Casser (maintenir clic gauche) / Poser (clic droit)
   // ------------------------------------------------------------
-  handleClicks() {
-    const leftClicked = this.input.mouse.leftClicked;
-    const rightClicked = this.input.mouse.rightClicked;
-    if (!leftClicked && !rightClicked) return;
+  handleClicks(dt) {
+    const clickedLeft = this.input.mouse.leftClicked;
+    const clickedRight = this.input.mouse.rightClicked;
+    const holdingLeft = this.input.mouse.leftDown;
+    const holdingRight = this.input.mouse.rightDown;
 
-    // On consomme toujours les clics. Avant, un clic hors portée restait
-    // en attente et pouvait casser/poser plus tard sans que le joueur le veuille.
+    // Les clics ponctuels sont consommés ici. Pour miner, le joueur doit
+    // garder le bouton gauche enfoncé : le bloc se fissure progressivement.
     this.input.mouse.leftClicked = false;
     this.input.mouse.rightClicked = false;
 
-    if (!this.inReach) return;
+    if (holdingLeft) this.mineTarget(dt);
+    else if (clickedLeft || this.mining.progress > 0) this.resetMining();
 
-    if (leftClicked) {
-      const i = this.world.idx(this.targetTx, this.targetTy);
-      const oldFloor = this.world.floor[i];
-      const drop = this.world.breakBlock(this.targetTx, this.targetTy);
-      if (drop) this.inventory.add(drop);
-      if (this.world.floor[i] !== oldFloor) this.invalidateFloorChunk(this.targetTx, this.targetTy);
+    if (clickedRight || holdingRight) this.placeSelectedBlock();
+  }
+
+  mineTarget(dt) {
+    if (!this.inReach || !this.world.inBounds(this.targetTx, this.targetTy)) {
+      this.resetMining();
+      return;
     }
 
-    if (rightClicked) {
-      const item = this.inventory.getSelected();
-      if (this.inventory.count(item) <= 0) return;
-      if (this.isPlayerOnTile(this.targetTx, this.targetTy)) return;
+    const duration = this.world.breakDurationAt(this.targetTx, this.targetTy);
+    if (duration <= 0) {
+      this.resetMining();
+      return;
+    }
 
-      const placed = this.world.placeBlock(this.targetTx, this.targetTy, item);
-      if (placed) this.inventory.remove(item);
+    if (this.mining.tx !== this.targetTx || this.mining.ty !== this.targetTy) {
+      this.mining.tx = this.targetTx;
+      this.mining.ty = this.targetTy;
+      this.mining.progress = 0;
+    }
+
+    const selected = this.inventory.getSelectedStack();
+    const selectedDef = selected ? ITEM_DEFS[selected.id] : null;
+    const requiredTool = this.world.requiredToolAt(this.targetTx, this.targetTy);
+    const effectiveTool = selectedDef?.toolType === requiredTool;
+
+    // Une hache / pioche / pelle adaptée accélère réellement le minage.
+    // La main reste utilisable, mais demande davantage de temps.
+    const speed = effectiveTool
+      ? (selectedDef.efficiency || 1)
+      : selectedDef?.type === 'tool' ? 0.7 : 0.55;
+    this.mining.duration = duration / speed;
+    this.mining.progress += dt / this.mining.duration;
+
+    if (this.mining.progress < 1) return;
+
+    const existingBlock = this.world.blockAt(this.targetTx, this.targetTy);
+    const possibleDrop = existingBlock
+      ? BLOCK_DEFS[existingBlock]?.drop
+      : DIGGABLE_FLOOR[this.world.floorAt(this.targetTx, this.targetTy)]?.drop;
+
+    // Ne détruit pas une ressource si toutes les cases sont pleines.
+    if (possibleDrop && !this.inventory.canAdd(possibleDrop, 1)) {
+      this.notify('Inventaire plein : libère une case avant de récolter.');
+      this.resetMining();
+      return;
+    }
+
+    const i = this.world.idx(this.targetTx, this.targetTy);
+    const oldFloor = this.world.floor[i];
+    const drop = this.world.breakBlock(this.targetTx, this.targetTy);
+    if (drop) {
+      if (existingBlock && BLOCK_DEFS[existingBlock]?.kind === 'object') {
+        this.removeStaticObjectAt(this.targetTx, this.targetTy);
+      }
+      this.inventory.add(drop);
+      if (selectedDef?.type === 'tool') {
+        const result = this.inventory.damageSelectedTool(1);
+        if (result.broken) this.notify(`${selectedDef.label} s'est cassé.`);
+      }
+    }
+    if (this.world.floor[i] !== oldFloor) this.invalidateFloorChunk(this.targetTx, this.targetTy);
+    this.resetMining();
+  }
+
+  placeSelectedBlock() {
+    if (this.actionCooldown > 0 || !this.inReach) return;
+    const selected = this.inventory.getSelectedStack();
+    const item = selected?.id;
+    if (!item || !ITEM_DEFS[item]?.place) return;
+    if (this.isPlayerOnTile(this.targetTx, this.targetTy)) return;
+
+    const placed = this.world.placeBlock(this.targetTx, this.targetTy, item);
+    if (placed) {
+      this.inventory.takeSlot(this.inventory.selectedSlotIndex(), 1);
+      this.actionCooldown = 0.16;
     }
   }
 
@@ -247,6 +394,9 @@ export class Game {
 
     // 3) objets (arbres, rochers) + joueurs, triés par profondeur
     this.drawDepthSorted(ctx, minTx, minTy, maxTx, maxTy);
+
+    // 4) fissures de minage par-dessus la ressource ciblée, comme dans Minecraft
+    this.drawMiningCracks(ctx);
 
     ctx.restore();
 
@@ -355,23 +505,67 @@ export class Game {
     ctx.restore();
   }
 
+  // Animation de fissures inspirée du minage Minecraft. Les stages sont
+  // pré-rendus : à l'écran on ne fait qu'un drawImage très léger.
+  drawMiningCracks(ctx) {
+    if (
+      this.mining.progress <= 0
+      || this.mining.tx !== this.targetTx
+      || this.mining.ty !== this.targetTy
+    ) return;
+
+    const stage = Math.min(
+      MINING_CRACK_STAGES - 1,
+      Math.floor(this.mining.progress * MINING_CRACK_STAGES),
+    );
+    const px = this.targetTx * TILE;
+    const py = this.targetTy * TILE;
+    const sprite = this.miningCrackSprites[stage];
+    if (sprite) ctx.drawImage(sprite, px, py);
+  }
+
+  rebuildStaticObjects() {
+    this.staticObjects.length = 0;
+    this.staticObjectMap.clear();
+    for (let ty = 0; ty < WORLD_H; ty++) {
+      for (let tx = 0; tx < WORLD_W; tx++) {
+        const block = this.world.blockAt(tx, ty);
+        if (!block || BLOCK_DEFS[block]?.kind !== 'object') continue;
+        const drawable = {
+          tx,
+          ty,
+          sortY: ty * TILE + TILE / 2,
+          kind: block,
+          x: tx * TILE + TILE / 2,
+          y: ty * TILE + TILE / 2,
+          active: true,
+        };
+        this.staticObjects.push(drawable);
+        this.staticObjectMap.set(`${tx},${ty}`, drawable);
+      }
+    }
+  }
+
+  removeStaticObjectAt(tx, ty) {
+    const drawable = this.staticObjectMap.get(`${tx},${ty}`);
+    if (!drawable) return;
+    drawable.active = false;
+    this.staticObjectMap.delete(`${tx},${ty}`);
+  }
+
   drawDepthSorted(ctx, minTx, minTy, maxTx, maxTy) {
     const drawables = this.drawables;
     drawables.length = 0;
 
-    for (let ty = minTy; ty <= maxTy; ty++) {
-      let i = this.world.idx(minTx, ty);
-      for (let tx = minTx; tx <= maxTx; tx++, i++) {
-        const b = this.world.blocks[i];
-        if (b && BLOCK_DEFS[b].kind === 'object') {
-          drawables.push({
-            sortY: ty * TILE + TILE / 2,
-            kind: b,
-            x: tx * TILE + TILE / 2,
-            y: ty * TILE + TILE / 2,
-          });
-        }
-      }
+    // Les ressources naturelles sont statiques : on les indexe une fois,
+    // puis on ne parcourt que cette petite liste au lieu de rescanner toute
+    // la grille visible à chaque frame.
+    for (const object of this.staticObjects) {
+      if (
+        object.active
+        && object.tx >= minTx && object.tx <= maxTx
+        && object.ty >= minTy && object.ty <= maxTy
+      ) drawables.push(object);
     }
 
     drawables.push({ sortY: this.player.y, kind: 'player', player: this.player });
@@ -412,7 +606,9 @@ export class Game {
     drawCharacter(ctx, player.appearance, player.x, player.y, {
       facing: player.facing,
       walkPhase: player.moving ? player.walkPhase : 0,
-      scale: 1,
+      // Le joueur reste lisible, mais nettement plus petit que l'arbre :
+      // une tuile représente désormais un vrai espace autour de lui.
+      scale: PLAYER_RENDER_SCALE,
       shadow: !this.performanceMode,
     });
     this.drawNameTag(ctx, player);
@@ -453,6 +649,6 @@ export class Game {
 
   drawNameTag(ctx, player) {
     const tag = this.getNameTag(player.appearance.name);
-    ctx.drawImage(tag.canvas, player.x - tag.w / 2, player.y - 50);
+    ctx.drawImage(tag.canvas, player.x - tag.w / 2, player.y - 34);
   }
 }

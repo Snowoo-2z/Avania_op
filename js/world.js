@@ -102,6 +102,26 @@ export class World {
   //  Interactions (casser / poser)
   // ------------------------------------------------------------------
 
+  // Outil conseillé pour l'action en cours (informatif et utilisé par le
+  // joueur pour la vitesse / la durabilité, sans rendre le monde bloquant).
+  requiredToolAt(tx, ty) {
+    if (!this.inBounds(tx, ty)) return null;
+    const i = this.idx(tx, ty);
+    const block = this.blocks[i];
+    if (block && BLOCK_DEFS[block]) return BLOCK_DEFS[block].requiredTool || null;
+    return DIGGABLE_FLOOR[this.floor[i]]?.tool || null;
+  }
+
+  // Temps de minage de base, en secondes, avant application de l'efficacité
+  // de l'outil. La main reste possible mais nettement moins confortable.
+  breakDurationAt(tx, ty) {
+    if (!this.inBounds(tx, ty)) return 0;
+    const i = this.idx(tx, ty);
+    const block = this.blocks[i];
+    if (block && BLOCK_DEFS[block]) return BLOCK_DEFS[block].breakTime || 0.8;
+    return DIGGABLE_FLOOR[this.floor[i]]?.breakTime || 0;
+  }
+
   // Casse le bloc (ou objet) en (tx,ty). Retourne l'objet récupéré, ou null.
   // Si le sol est creusable (sable, terre), on le récolte aussi.
   breakBlock(tx, ty) {

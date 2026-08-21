@@ -126,7 +126,9 @@ export function openCharacterCreation() {
         btn.title = opt.label;
         if (sec.swatch === 'text') {
           btn.classList.add('swatch-text');
-          btn.textContent = opt.label.charAt(0).toUpperCase();
+          if (sec.id === 'hairstyle') btn.classList.add('swatch-hair');
+          btn.textContent = opt.label.slice(0, 2).toUpperCase();
+          btn.setAttribute('aria-label', opt.label);
         } else {
           btn.style.background = opt.color;
         }
@@ -230,8 +232,70 @@ export class HUD {
 }
 
 // ------------------------------------------------------------
-//  Barre rapide (inventaire)
+//  Barre rapide (9 cases)
 // ------------------------------------------------------------
+function updateSlotVisual(el, stack, inventory = null, index = -1) {
+  const icon = el.querySelector('.slot-icon');
+  const count = el.querySelector('.slot-count');
+  const durability = el.querySelector('.slot-durability');
+  const def = stack && ITEM_DEFS[stack.id];
+  el.classList.toggle('occupied', Boolean(stack));
+  el.classList.toggle('tool-slot', Boolean(def?.type === 'tool'));
+
+  if (!stack || !def) {
+    icon.textContent = '';
+    icon.style.background = 'transparent';
+    count.textContent = '';
+    durability.style.width = '0%';
+    el.title = index >= 0 ? `Case ${index + 1} — vide` : 'Case vide';
+    return;
+  }
+
+  icon.textContent = def.icon || '';
+  icon.style.background = def.color;
+  count.textContent = def.type === 'tool' ? '' : (stack.count > 1 ? stack.count : '');
+  if (def.type === 'tool') {
+    const max = def.durability || 1;
+    const current = Math.max(0, stack.durability ?? max);
+    durability.style.width = `${Math.max(0, Math.min(100, current / max * 100))}%`;
+    durability.style.background = current / max < 0.25 ? '#e65b4f' : '#7ccf6a';
+    el.title = `${def.label} — durabilité ${current}/${max}`;
+  } else {
+    durability.style.width = '0%';
+    el.title = `${def.label} — ${stack.count} en stock`;
+  }
+}
+
+function makeInventorySlot(index, clickHandler, dragHandler) {
+  const el = document.createElement('button');
+  el.type = 'button';
+  el.className = 'slot inventory-slot';
+  el.dataset.slot = index;
+  el.draggable = true;
+  const icon = document.createElement('span');
+  icon.className = 'slot-icon';
+  const count = document.createElement('span');
+  count.className = 'slot-count';
+  const durability = document.createElement('span');
+  durability.className = 'slot-durability';
+  el.append(icon, count, durability);
+  el.onclick = clickHandler;
+  el.ondragstart = (event) => {
+    event.dataTransfer?.setData('text/plain', String(index));
+    event.dataTransfer?.setData('application/x-avania-slot', String(index));
+    el.classList.add('dragging');
+  };
+  el.ondragend = () => el.classList.remove('dragging');
+  el.ondragover = (event) => event.preventDefault();
+  el.ondrop = (event) => {
+    event.preventDefault();
+    const from = Number(event.dataTransfer?.getData('application/x-avania-slot')
+      || event.dataTransfer?.getData('text/plain'));
+    if (Number.isInteger(from)) dragHandler(from, index);
+  };
+  return el;
+}
+
 export class Hotbar {
   constructor(root, inventory) {
     this.root = root;
@@ -240,7 +304,6 @@ export class Hotbar {
     if (inventory) this.attach(inventory);
   }
 
-  // branche la barre sur un inventaire (appelé une fois le jeu lancé)
   attach(inventory) {
     this.inventory = inventory;
     this.build();
@@ -250,58 +313,218 @@ export class Hotbar {
   build() {
     this.root.innerHTML = '';
     this.slots = [];
-    this.inventory.order.forEach((item, i) => {
-      const def = ITEM_DEFS[item];
-      const el = document.createElement('div');
-      el.className = 'slot';
+    for (let i = 0; i < this.inventory.hotbarSize; i++) {
+      const index = this.inventory.hotbarStart + i;
+      const el = makeInventorySlot(
+        index,
+        () => this.inventory.select(i),
+        (from, to) => this.inventory.moveSlot(from, to),
+      );
+      el.classList.add('hotbar-slot');
       el.dataset.key = i + 1;
-      el.title = `${def.label} — touche ${i + 1}`;
-
-      const icon = document.createElement('div');
-      icon.className = 'slot-icon';
-      icon.style.background = def.color;
-
-      const count = document.createElement('div');
-      count.className = 'slot-count';
-
-      el.appendChild(icon);
-      el.appendChild(count);
-      el.onclick = () => this.inventory.select(i);
-
       this.root.appendChild(el);
-      this.slots.push({ el, count, item });
-    });
+      this.slots.push({ el, index });
+    }
     this.update();
   }
 
   update() {
-    this.slots.forEach((s, i) => {
-      s.count.textContent = this.inventory.items[s.item];
-      s.el.classList.toggle('selected', this.inventory.selected === i);
+    this.slots.forEach(({ el, index }, i) => {
+      updateSlotVisual(el, this.inventory.getSlot(index), this.inventory, i);
+      el.classList.toggle('selected', this.inventory.selected === i);
     });
   }
 }
 
 // ------------------------------------------------------------
-//  Fabrication (recettes simples)
+//  Inventaire complet : 27 cases + barre rapide
 // ------------------------------------------------------------
-export class Crafting {
-  constructor(root, listRoot, inventory) {
+export class InventoryPanel {
+  constructor(root, gridRoot, hotbarRoot, inventory, onVisibilityChange = () => {}) {
     this.root = root;
-    this.listRoot = listRoot;
+    this.gridRoot = gridRoot;
+    this.hotbarRoot = hotbarRoot;
     this.inventory = inventory;
+    this.onVisibilityChange = onVisibilityChange;
+    this.slots = [];
+    this.focused = null;
     this.build();
     inventory.subscribe(() => this.update());
   }
 
   build() {
-    this.listRoot.innerHTML = '';
-    this.cards = RECIPES.map((recipe) => {
-      const out = ITEM_DEFS[recipe.out];
-      const cost = Object.entries(recipe.inputs)
-        .map(([id, n]) => `${n} ${ITEM_DEFS[id].label.toLowerCase()}`)
-        .join(' + ');
+    this.gridRoot.innerHTML = '';
+    this.hotbarRoot.innerHTML = '';
+    this.slots = [];
 
+    for (let index = 0; index < this.inventory.hotbarStart; index++) {
+      this.appendSlot(this.gridRoot, index, 'storage-slot');
+    }
+    for (let i = 0; i < this.inventory.hotbarSize; i++) {
+      this.appendSlot(this.hotbarRoot, this.inventory.hotbarStart + i, 'bag-hotbar-slot');
+    }
+    this.update();
+  }
+
+  appendSlot(parent, index, extraClass) {
+    const el = makeInventorySlot(
+      index,
+      (event) => this.handleClick(index, event),
+      (from, to) => {
+        this.focused = null;
+        this.inventory.moveSlot(from, to);
+      },
+    );
+    el.classList.add(extraClass);
+    parent.appendChild(el);
+    this.slots.push({ el, index });
+  }
+
+  handleClick(index, event) {
+    if (event.shiftKey) {
+      this.focused = null;
+      this.inventory.transferSlot(index);
+      return;
+    }
+
+    if (index >= this.inventory.hotbarStart) {
+      this.inventory.select(index - this.inventory.hotbarStart);
+      this.focused = null;
+      return;
+    }
+
+    // Deux clics sur deux cases déplacent ou regroupent une pile. Le
+    // glisser-déposer est aussi disponible pour un déplacement direct.
+    if (this.focused === null) {
+      this.focused = index;
+    } else if (this.focused === index) {
+      this.focused = null;
+    } else {
+      this.inventory.moveSlot(this.focused, index);
+      this.focused = null;
+    }
+    this.update();
+  }
+
+  update() {
+    this.slots.forEach(({ el, index }) => {
+      updateSlotVisual(el, this.inventory.getSlot(index), this.inventory, index);
+      el.classList.toggle('focused', this.focused === index);
+      if (index >= this.inventory.hotbarStart) {
+        el.classList.toggle('selected', this.inventory.selected === index - this.inventory.hotbarStart);
+      }
+    });
+
+    const used = document.getElementById('inventory-used');
+    const capacity = document.getElementById('inventory-capacity');
+    const capacityBar = document.getElementById('inventory-capacity-bar');
+    if (used) used.textContent = this.inventory.usedSlots;
+    if (capacity) capacity.textContent = this.inventory.slotCount;
+    if (capacityBar) {
+      capacityBar.style.width = `${Math.max(0, Math.min(100, this.inventory.usedSlots / this.inventory.slotCount * 100))}%`;
+      capacityBar.classList.toggle('near-full', this.inventory.usedSlots / this.inventory.slotCount > 0.8);
+    }
+
+    const detailIcon = document.getElementById('inventory-detail-icon');
+    const detailName = document.getElementById('inventory-detail-name');
+    const detailText = document.getElementById('inventory-detail-text');
+    const detailSlot = document.getElementById('inventory-detail-slot');
+    const detailType = document.getElementById('inventory-detail-type');
+    const detailStack = document.getElementById('inventory-detail-stack');
+    const detailDurability = document.getElementById('inventory-detail-durability');
+    const selected = this.inventory.getSelectedStack();
+    const def = selected && ITEM_DEFS[selected.id];
+    if (detailIcon) {
+      detailIcon.textContent = def?.icon || '＋';
+      detailIcon.style.background = def?.color || 'rgba(255,255,255,0.06)';
+    }
+    if (detailSlot) detailSlot.textContent = `CASE ${this.inventory.selected + 1}`;
+    if (detailName) detailName.textContent = def ? def.label : 'Case sélectionnée vide';
+    if (detailType) {
+      const types = { resource: 'Ressource', material: 'Matériau', tool: 'Outil', block: 'Bloc' };
+      detailType.textContent = def ? (types[def.type] || def.type) : '—';
+    }
+    if (detailStack) detailStack.textContent = def ? `${selected.count}/${def.maxStack || 64}` : '—';
+    if (detailDurability) detailDurability.textContent = def?.type === 'tool'
+      ? `${selected.durability ?? def.durability}/${def.durability}`
+      : '—';
+    if (detailText) {
+      if (!def) detailText.textContent = 'Choisis une case de la barre rapide ou déplace une pile par glisser-déposer.';
+      else if (def.type === 'tool') detailText.textContent = `Outil ${def.toolType} · plus efficace sur les ressources correspondantes.`;
+      else detailText.textContent = `${selected.count} objet${selected.count > 1 ? 's' : ''} prêt${selected.count > 1 ? 's' : ''} à être utilisé${selected.count > 1 ? 's' : ''}.`;
+    }
+  }
+
+  open() {
+    if (!this.root.classList.contains('hidden')) return;
+    this.root.classList.remove('hidden');
+    this.onVisibilityChange(true);
+  }
+
+  close() {
+    if (this.root.classList.contains('hidden')) return;
+    this.focused = null;
+    this.root.classList.add('hidden');
+    this.onVisibilityChange(false);
+  }
+
+  toggle() {
+    if (this.root.classList.contains('hidden')) this.open();
+    else this.close();
+  }
+
+  get isOpen() {
+    return !this.root.classList.contains('hidden');
+  }
+}
+
+// ------------------------------------------------------------
+//  Fabrication : grille 3x3 + livre de recettes
+// ------------------------------------------------------------
+export class Crafting {
+  constructor(root, listRoot, inventory, onVisibilityChange = () => {}) {
+    this.root = root;
+    this.listRoot = listRoot;
+    this.inventory = inventory;
+    this.onVisibilityChange = onVisibilityChange;
+    this.gridRoot = document.getElementById('craft-grid');
+    this.outputEl = document.getElementById('craft-output');
+    this.outputIcon = document.getElementById('craft-output-icon');
+    this.outputName = document.getElementById('craft-output-name');
+    this.statusEl = document.getElementById('craft-status');
+    this.recipeCountEl = document.getElementById('craft-recipe-count');
+    this.gridSlots = [];
+    this.cards = [];
+    this.build();
+    inventory.subscribe(() => this.update());
+  }
+
+  build() {
+    this.gridRoot.innerHTML = '';
+    for (let i = 0; i < 9; i++) {
+      const el = document.createElement('div');
+      el.className = 'craft-slot';
+      el.innerHTML = '<span class="slot-icon"></span><span class="slot-count"></span><span class="slot-durability"></span>';
+      this.gridRoot.appendChild(el);
+      this.gridSlots.push(el);
+    }
+    this.outputEl.onclick = () => {
+      if (this.inventory.craftFromGrid()) this.setStatus('Objet fabriqué !', 'success');
+      else this.setStatus('La recette ou la place disponible ne convient pas.', 'error');
+    };
+
+    this.listRoot.innerHTML = '';
+    let category = '';
+    for (const recipe of RECIPES) {
+      if (recipe.category !== category) {
+        category = recipe.category;
+        const heading = document.createElement('div');
+        heading.className = 'recipe-category';
+        heading.textContent = category.charAt(0).toUpperCase() + category.slice(1);
+        this.listRoot.appendChild(heading);
+      }
+
+      const out = ITEM_DEFS[recipe.out];
       const card = document.createElement('div');
       card.className = 'recipe';
 
@@ -309,37 +532,104 @@ export class Crafting {
       outEl.className = 'recipe-out';
       const icon = document.createElement('span');
       icon.className = 'recipe-icon';
+      icon.textContent = out.icon || '';
       icon.style.background = out.color;
       const name = document.createElement('b');
       name.textContent = `${out.label} ×${recipe.outN}`;
-      outEl.appendChild(icon);
-      outEl.appendChild(name);
+      outEl.append(icon, name);
 
       const costEl = document.createElement('div');
       costEl.className = 'recipe-cost';
-      costEl.textContent = cost;
+      costEl.textContent = Object.entries(recipe.inputs)
+        .map(([id, n]) => `${n} ${ITEM_DEFS[id].label.toLowerCase()}`)
+        .join(' + ');
+
+      const stateEl = document.createElement('span');
+      stateEl.className = 'recipe-state';
 
       const btn = document.createElement('button');
       btn.className = 'btn btn-primary';
-      btn.textContent = 'Fabriquer';
-      btn.onclick = () => this.inventory.craft(recipe);
+      btn.textContent = 'Préparer';
+      btn.onclick = () => {
+        if (this.inventory.prepareRecipe(recipe)) {
+          this.setStatus('Ingrédients placés dans la grille.', 'success');
+        } else {
+          const missing = Object.entries(recipe.inputs)
+            .filter(([id, n]) => this.inventory.count(id) < n)
+            .map(([id, n]) => `${ITEM_DEFS[id].label} ×${n - this.inventory.count(id)}`)
+            .join(', ');
+          this.setStatus(missing ? `Il manque : ${missing}.` : 'Vide la grille ou récupère son résultat.', 'error');
+        }
+      };
 
-      card.appendChild(outEl);
-      card.appendChild(costEl);
-      card.appendChild(btn);
+      card.append(outEl, costEl, stateEl, btn);
       this.listRoot.appendChild(card);
-      return { recipe, btn };
-    });
+      this.cards.push({ recipe, card, btn, stateEl });
+    }
     this.update();
   }
 
-  toggle() {
-    this.root.classList.toggle('hidden');
+  setStatus(message, kind = '') {
+    if (!this.statusEl) return;
+    this.statusEl.textContent = message;
+    this.statusEl.className = `craft-status ${kind}`;
   }
 
   update() {
-    for (const { recipe, btn } of this.cards) {
-      btn.disabled = !this.inventory.canCraft(recipe);
+    this.gridSlots.forEach((el, i) => {
+      updateSlotVisual(el, this.inventory.craftingGrid[i]);
+    });
+
+    const recipe = this.inventory.getMatchingRecipe();
+    const out = recipe && ITEM_DEFS[recipe.out];
+    this.outputEl.classList.toggle('ready', Boolean(out));
+    this.outputEl.disabled = !out;
+    if (out) {
+      this.outputIcon.textContent = out.icon || '';
+      this.outputIcon.style.background = out.color;
+      this.outputName.textContent = `${out.label} ×${recipe.outN}`;
+      this.outputEl.title = `Récupérer ${out.label}`;
+    } else {
+      this.outputIcon.textContent = '?';
+      this.outputIcon.style.background = 'rgba(255,255,255,0.06)';
+      this.outputName.textContent = 'Résultat';
+      this.outputEl.title = 'Prépare une recette pour voir le résultat';
     }
+
+    if (this.recipeCountEl) this.recipeCountEl.textContent = `${this.cards.length}`;
+    for (const { recipe: cardRecipe, card, btn, stateEl } of this.cards) {
+      const available = this.inventory.canCraft(cardRecipe);
+      const missing = Object.entries(cardRecipe.inputs)
+        .filter(([id, n]) => this.inventory.count(id) < n)
+        .map(([id, n]) => `${ITEM_DEFS[id].label} ×${n - this.inventory.count(id)}`)
+        .join(', ');
+      card.classList.toggle('recipe-locked', !available);
+      stateEl.textContent = available ? 'DISPONIBLE' : 'À DÉBLOQUER';
+      btn.disabled = false;
+      btn.textContent = available ? 'Préparer' : 'Voir';
+      btn.title = available ? 'Préparer cette recette' : `Il manque : ${missing}`;
+    }
+  }
+
+  open() {
+    if (!this.root.classList.contains('hidden')) return;
+    this.root.classList.remove('hidden');
+    this.onVisibilityChange(true);
+  }
+
+  close() {
+    if (this.root.classList.contains('hidden')) return;
+    this.inventory.returnCraftingGrid();
+    this.root.classList.add('hidden');
+    this.onVisibilityChange(false);
+  }
+
+  toggle() {
+    if (this.root.classList.contains('hidden')) this.open();
+    else this.close();
+  }
+
+  get isOpen() {
+    return !this.root.classList.contains('hidden');
   }
 }

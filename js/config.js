@@ -22,9 +22,17 @@ export const PERFORMANCE = {
   ADAPTIVE_FRAME_COST_MS: 24,
 };
 
-// Vitesse de déplacement du joueur (px / seconde)
-export const PLAYER_SPEED = 190;
-export const PLAYER_RADIUS = 10; // rayon de collision du joueur
+// Vitesse de déplacement du joueur (px / seconde). Le personnage étant
+// maintenant plus petit, une vitesse proportionnelle évite l'effet fusée.
+export const PLAYER_SPEED = 125;
+// Le cube est volontairement plus petit que les arbres et les rochers :
+// il occupe environ 2/3 d'une tuile, comme un personnage Minecraft.
+export const PLAYER_RADIUS = 7;
+export const PLAYER_RENDER_SCALE = 0.72;
+
+// Inventaire façon Minecraft : 27 cases de stockage + 9 cases de barre rapide.
+export const INVENTORY_SLOTS = 36;
+export const HOTBAR_SLOTS = 9;
 
 // Distance max (en pixels) pour interagir avec un bloc
 export const REACH = TILE * 3;
@@ -58,17 +66,24 @@ export const SKIN_TONES = [
 ];
 
 export const HAIR_STYLES = [
-  { id: 'chauve',    label: 'Chauve' },
-  { id: 'court',     label: 'Court' },
-  { id: 'mi-long',   label: 'Mi-long' },
-  { id: 'long',      label: 'Long' },
-  { id: 'afro',      label: 'Afro' },
-  { id: 'degrades',  label: 'Dégradé' },
-  { id: 'mohawk',    label: 'Crête' },
-  { id: 'chignon',   label: 'Chignon' },
-  { id: 'queue',     label: 'Queue' },
-  { id: 'tresses',   label: 'Tresses' },
-  { id: 'casquette', label: 'Casquette' },
+  { id: 'chauve',          label: 'Chauve' },
+  { id: 'court',           label: 'Court' },
+  { id: 'frange',          label: 'Frange' },
+  { id: 'mi-long',         label: 'Mi-long' },
+  { id: 'long',            label: 'Long' },
+  { id: 'boucles',         label: 'Boucles' },
+  { id: 'boucles-longues', label: 'Boucles longues' },
+  { id: 'afro',            label: 'Afro' },
+  { id: 'degrades',        label: 'Dégradé' },
+  { id: 'undercut',        label: 'Undercut' },
+  { id: 'raie',            label: 'Raie côté' },
+  { id: 'mohawk',          label: 'Crête' },
+  { id: 'chignon',         label: 'Chignon' },
+  { id: 'couettes',        label: 'Couettes' },
+  { id: 'queue',           label: 'Queue' },
+  { id: 'tresses',         label: 'Tresses' },
+  { id: 'nattes',          label: 'Nattes' },
+  { id: 'casquette',       label: 'Casquette' },
 ];
 
 export const HAIR_COLORS = [
