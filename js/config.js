@@ -24,7 +24,14 @@ export const PERFORMANCE = {
 
 // Vitesse de déplacement du joueur (px / seconde)
 export const PLAYER_SPEED = 190;
-export const PLAYER_RADIUS = 10; // rayon de collision du joueur
+// Le cube est volontairement plus petit que les arbres et les rochers :
+// il occupe environ 2/3 d'une tuile, comme un personnage Minecraft.
+export const PLAYER_RADIUS = 7;
+export const PLAYER_RENDER_SCALE = 0.72;
+
+// Inventaire façon Minecraft : 27 cases de stockage + 9 cases de barre rapide.
+export const INVENTORY_SLOTS = 36;
+export const HOTBAR_SLOTS = 9;
 
 // Distance max (en pixels) pour interagir avec un bloc
 export const REACH = TILE * 3;

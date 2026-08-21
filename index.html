@@ -29,24 +29,77 @@
     <div class="ctrl"><kbd>ZQSD</kbd><span>Se déplacer</span></div>
     <div class="ctrl"><kbd>Clic G</kbd><span>Casser / pelleter</span></div>
     <div class="ctrl"><kbd>Clic D</kbd><span>Poser</span></div>
-    <div class="ctrl"><kbd>1·7</kbd><span>Bloc</span></div>
+    <div class="ctrl"><kbd>1·9</kbd><span>Barre rapide</span></div>
+    <div class="ctrl"><kbd>E</kbd><span>Inventaire</span></div>
     <div class="ctrl"><kbd>C</kbd><span>Fabriquer</span></div>
   </div>
 
   <!-- Barre rapide (inventaire) -->
   <div id="hotbar" class="hotbar"></div>
 
-  <!-- Bouton fabrication -->
-  <button id="craft-btn" class="craft-btn hidden" title="Fabriquer (C)">🛠️ <span>Fabriquer</span></button>
+  <!-- Actions d'interface -->
+  <button id="inventory-btn" class="inventory-btn hidden" title="Inventaire (E)">🎒 <span>Inventaire</span><kbd>E</kbd></button>
+  <button id="craft-btn" class="craft-btn hidden" title="Fabriquer (C)">🛠️ <span>Fabriquer</span><kbd>C</kbd></button>
 
-  <!-- Panneau de fabrication -->
-  <div id="crafting" class="crafting hidden">
+  <!-- Inventaire complet : 27 cases + barre rapide -->
+  <section id="inventory-panel" class="inventory-panel hidden" aria-label="Inventaire">
+    <header class="inventory-header">
+      <div>
+        <span class="panel-eyebrow">AVANIA // SAC À DOS</span>
+        <h2>🎒 Inventaire</h2>
+      </div>
+      <div class="inventory-head-actions">
+        <span class="capacity"><b id="inventory-used">0</b>/<b id="inventory-capacity">36</b> cases</span>
+        <button id="inventory-close" class="craft-close" title="Fermer">✕</button>
+      </div>
+    </header>
+    <div class="inventory-content">
+      <div class="inventory-storage">
+        <div class="section-title">Stockage</div>
+        <div id="inventory-grid" class="inventory-grid"></div>
+        <div class="inventory-divider"></div>
+        <div class="section-title">Barre rapide · 1 à 9</div>
+        <div id="inventory-hotbar" class="inventory-grid inventory-hotbar-grid"></div>
+        <p class="inventory-help">Glisse-dépose une pile ou clique deux cases pour la déplacer. Shift-clic transfère vers l'autre zone.</p>
+      </div>
+      <aside class="inventory-detail">
+        <div id="inventory-detail-icon" class="detail-icon">＋</div>
+        <h3 id="inventory-detail-name">Case sélectionnée vide</h3>
+        <p id="inventory-detail-text">Choisis une case de la barre rapide ou déplace une pile par glisser-déposer.</p>
+      </aside>
+    </div>
+  </section>
+
+  <!-- Panneau de fabrication façon Minecraft -->
+  <section id="crafting" class="crafting hidden" aria-label="Fabrication">
     <header class="crafting-header">
-      <span>🛠️ Fabrication</span>
+      <div>
+        <span class="panel-eyebrow">ÉTABLI PORTATIF</span>
+        <strong>🛠️ Fabrication</strong>
+      </div>
       <button id="craft-close" class="craft-close" title="Fermer">✕</button>
     </header>
+    <div class="craft-workbench">
+      <div>
+        <div class="section-title">Grille 3 × 3</div>
+        <div id="craft-grid" class="craft-grid"></div>
+      </div>
+      <div class="craft-arrow">➜</div>
+      <div class="craft-result-wrap">
+        <div class="section-title">Résultat</div>
+        <button id="craft-output" class="craft-output" disabled>
+          <span id="craft-output-icon" class="slot-icon">?</span>
+          <span id="craft-output-name">Résultat</span>
+        </button>
+      </div>
+    </div>
+    <p id="craft-status" class="craft-status">Choisis une recette pour remplir la grille.</p>
+    <div class="craft-book-title">Livre de recettes</div>
     <div id="craft-list" class="craft-list"></div>
-  </div>
+    <p class="craft-footnote">Préparer place les ingrédients dans la grille. Clique ensuite sur le résultat pour les consommer.</p>
+  </section>
+
+  <div id="game-toast" class="game-toast" role="status"></div>
 
   <!-- Écran de création du personnage -->
   <div id="customization" class="overlay">
@@ -59,7 +112,8 @@
           <span class="pill">🧍 Perso = un cube</span>
           <span class="pill">💇 Coiffures & barbes</span>
           <span class="pill">🧱 Monde à bâtir</span>
-          <span class="pill pill-v">v0.4</span>
+          <span class="pill">🎒 Inventaire 36 cases</span>
+          <span class="pill pill-v">v0.5</span>
         </div>
       </header>
 
@@ -93,6 +147,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/main.js?v=5"></script>
+  <script type="module" src="js/main.js?v=6"></script>
 </body>
 </html>

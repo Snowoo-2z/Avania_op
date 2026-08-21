@@ -6,7 +6,9 @@
 
 import { Game } from './game.js';
 import { PERFORMANCE } from './config.js';
-import { openCharacterCreation, HUD, Hotbar, Crafting } from './ui.js';
+import {
+  openCharacterCreation, HUD, Hotbar, InventoryPanel, Crafting,
+} from './ui.js';
 import { isLowPowerDevice } from './utils.js';
 
 const canvas = document.getElementById('game');
@@ -47,20 +49,54 @@ async function boot() {
   game.start();
   hud.show();
   document.getElementById('controls-hint').classList.remove('hidden');
+  document.getElementById('inventory-btn').classList.remove('hidden');
   document.getElementById('craft-btn').classList.remove('hidden');
 
-  // 3. Barre rapide + fabrication branchées sur l'inventaire du jeu
+  // 3. Barre rapide, inventaire complet et fabrication branchés sur
+  // l'inventaire réel du jeu.
   hotbar.attach(game.inventory);
-  const crafting = new Crafting(
+
+  let inventoryPanel;
+  let crafting;
+  const syncPause = () => game.setPaused(Boolean(inventoryPanel?.isOpen || crafting?.isOpen));
+
+  inventoryPanel = new InventoryPanel(
+    document.getElementById('inventory-panel'),
+    document.getElementById('inventory-grid'),
+    document.getElementById('inventory-hotbar'),
+    game.inventory,
+    (open) => {
+      if (open && crafting?.isOpen) crafting.close();
+      syncPause();
+    },
+  );
+  crafting = new Crafting(
     document.getElementById('crafting'),
     document.getElementById('craft-list'),
     game.inventory,
+    (open) => {
+      if (open && inventoryPanel?.isOpen) inventoryPanel.close();
+      syncPause();
+    },
   );
+
+  document.getElementById('inventory-btn').onclick = () => inventoryPanel.toggle();
+  document.getElementById('inventory-close').onclick = () => inventoryPanel.close();
   document.getElementById('craft-btn').onclick = () => crafting.toggle();
-  document.getElementById('craft-close').onclick = () => crafting.toggle();
+  document.getElementById('craft-close').onclick = () => crafting.close();
   window.addEventListener('keydown', (e) => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-    if (e.key.toLowerCase() === 'c') crafting.toggle();
+    const key = e.key.toLowerCase();
+    if (key === 'e') {
+      e.preventDefault();
+      inventoryPanel.toggle();
+    } else if (key === 'c') {
+      e.preventDefault();
+      crafting.toggle();
+    } else if (key === 'escape') {
+      inventoryPanel.close();
+      crafting.close();
+    }
   });
 
   function refreshHUD() {

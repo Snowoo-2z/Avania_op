@@ -2,8 +2,10 @@
 //  AVANIA — Boucle de jeu, rendu et interactions avec les blocs
 // ============================================================
 
-import { TILE, WORLD_W, WORLD_H, REACH, PERFORMANCE } from './config.js';
-import { BLOCK_DEFS } from './blocks.js';
+import {
+  TILE, WORLD_W, WORLD_H, REACH, PERFORMANCE, PLAYER_RENDER_SCALE,
+} from './config.js';
+import { BLOCK_DEFS, DIGGABLE_FLOOR, ITEM_DEFS } from './blocks.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { Camera } from './camera.js';
@@ -59,6 +61,9 @@ export class Game {
     this.targetTx = -1;
     this.targetTy = -1;
     this.inReach = false;
+    this.actionCooldown = 0;
+    this.paused = false;
+    this.toastTimer = 0;
 
     this.running = false;
     this.onFrame = this.onFrame.bind(this);
@@ -72,6 +77,26 @@ export class Game {
 
   stop() {
     this.running = false;
+  }
+
+  setPaused(value) {
+    this.paused = Boolean(value);
+    if (this.paused) {
+      this.input.mouse.leftClicked = false;
+      this.input.mouse.rightClicked = false;
+      this.input.mouse.leftDown = false;
+      this.input.mouse.rightDown = false;
+    }
+  }
+
+  notify(message) {
+    if (typeof document === 'undefined') return;
+    const toast = document.getElementById('game-toast');
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.add('visible');
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => toast.classList.remove('visible'), 2200);
   }
 
   onFrame(now) {
@@ -125,6 +150,9 @@ export class Game {
   update(dt) {
     this.resizeView();
     this.time += dt;
+    this.actionCooldown = Math.max(0, this.actionCooldown - dt);
+    if (this.paused) return;
+
     const dir = this.input.getDirection();
     this.player.update(dir, dt, this.world);
     this.camera.follow(this.player.x, this.player.y, dt);
@@ -159,7 +187,7 @@ export class Game {
   //  Sélection de la barre rapide (touches 1..9 + molette)
   // ------------------------------------------------------------
   handleHotbarKeys() {
-    const n = this.inventory.order.length;
+    const n = this.inventory.hotbarSize;
     for (let i = 0; i < n; i++) {
       if (this.input.isDown(String(i + 1))) {
         this.input.keys.delete(String(i + 1));
@@ -176,32 +204,67 @@ export class Game {
   //  Casser (clic gauche) / Poser (clic droit)
   // ------------------------------------------------------------
   handleClicks() {
-    const leftClicked = this.input.mouse.leftClicked;
-    const rightClicked = this.input.mouse.rightClicked;
-    if (!leftClicked && !rightClicked) return;
+    const clickedLeft = this.input.mouse.leftClicked;
+    const clickedRight = this.input.mouse.rightClicked;
+    const holdingLeft = this.input.mouse.leftDown;
+    const holdingRight = this.input.mouse.rightDown;
+    if (!clickedLeft && !clickedRight && !holdingLeft && !holdingRight) return;
 
-    // On consomme toujours les clics. Avant, un clic hors portée restait
-    // en attente et pouvait casser/poser plus tard sans que le joueur le veuille.
+    // Un clic est consommé même s'il est hors de portée. Le maintien du
+    // bouton, lui, réessaie à la fin du délai d'action (outils plus rapides).
     this.input.mouse.leftClicked = false;
     this.input.mouse.rightClicked = false;
+    if (this.actionCooldown > 0 || !this.inReach) return;
 
-    if (!this.inReach) return;
-
-    if (leftClicked) {
+    if (clickedLeft || holdingLeft) {
       const i = this.world.idx(this.targetTx, this.targetTy);
       const oldFloor = this.world.floor[i];
+      const existingBlock = this.world.blockAt(this.targetTx, this.targetTy);
+      const possibleDrop = existingBlock
+        ? BLOCK_DEFS[existingBlock]?.drop
+        : DIGGABLE_FLOOR[this.world.floorAt(this.targetTx, this.targetTy)]?.drop;
+
+      // Ne détruit pas une ressource si toutes les cases sont pleines.
+      if (possibleDrop && !this.inventory.canAdd(possibleDrop, 1)) {
+        this.notify('Inventaire plein : libère une case avant de récolter.');
+        return;
+      }
+
+      const selected = this.inventory.getSelectedStack();
+      const selectedDef = selected ? ITEM_DEFS[selected.id] : null;
+      const requiredTool = this.world.requiredToolAt(this.targetTx, this.targetTy);
+      const effectiveTool = selectedDef?.toolType === requiredTool;
       const drop = this.world.breakBlock(this.targetTx, this.targetTy);
-      if (drop) this.inventory.add(drop);
+      if (drop) {
+        this.inventory.add(drop);
+        if (selectedDef?.type === 'tool') {
+          const result = this.inventory.damageSelectedTool(1);
+          if (result.broken) this.notify(`${selectedDef.label} s'est cassé.`);
+          else if (effectiveTool && clickedLeft) this.notify(`${selectedDef.label} efficace pour cette ressource.`);
+        } else if (requiredTool && clickedLeft) {
+          const labels = { axe: 'une hache', pickaxe: 'une pioche', shovel: 'une pelle' };
+          this.notify(`Conseil : utilise ${labels[requiredTool] || 'un outil'} pour aller plus vite.`);
+        }
+      }
       if (this.world.floor[i] !== oldFloor) this.invalidateFloorChunk(this.targetTx, this.targetTy);
+
+      // Le maintien de la souris mine en continu. L'efficacité Minecraft
+      // est volontairement simple : les outils adaptés sont plus rapides.
+      const efficiency = effectiveTool ? (selectedDef.efficiency || 2) : 1;
+      this.actionCooldown = 0.34 / efficiency;
     }
 
-    if (rightClicked) {
-      const item = this.inventory.getSelected();
-      if (this.inventory.count(item) <= 0) return;
+    if (clickedRight || holdingRight) {
+      const selected = this.inventory.getSelectedStack();
+      const item = selected?.id;
+      if (!item || !ITEM_DEFS[item]?.place) return;
       if (this.isPlayerOnTile(this.targetTx, this.targetTy)) return;
 
       const placed = this.world.placeBlock(this.targetTx, this.targetTy, item);
-      if (placed) this.inventory.remove(item);
+      if (placed) {
+        this.inventory.takeSlot(this.inventory.selectedSlotIndex(), 1);
+        this.actionCooldown = 0.16;
+      }
     }
   }
 
@@ -412,7 +475,9 @@ export class Game {
     drawCharacter(ctx, player.appearance, player.x, player.y, {
       facing: player.facing,
       walkPhase: player.moving ? player.walkPhase : 0,
-      scale: 1,
+      // Le joueur reste lisible, mais nettement plus petit que l'arbre :
+      // une tuile représente désormais un vrai espace autour de lui.
+      scale: PLAYER_RENDER_SCALE,
       shadow: !this.performanceMode,
     });
     this.drawNameTag(ctx, player);
@@ -453,6 +518,6 @@ export class Game {
 
   drawNameTag(ctx, player) {
     const tag = this.getNameTag(player.appearance.name);
-    ctx.drawImage(tag.canvas, player.x - tag.w / 2, player.y - 50);
+    ctx.drawImage(tag.canvas, player.x - tag.w / 2, player.y - 34);
   }
 }
