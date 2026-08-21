@@ -17,6 +17,47 @@ import { isLowPowerDevice, makeCanvas } from './utils.js';
 
 const REACH_SQ = REACH * REACH;
 const SORT_BY_Y = (a, b) => a.sortY - b.sortY;
+const MINING_CRACK_STAGES = 9;
+
+// Fissures pixelisées pré-rendues une seule fois. En plus d'être plus
+// propres que des traits recalculés chaque frame, ces sprites allègent
+// le rendu pendant que le joueur maintient le bouton de minage.
+const CRACK_SEGMENTS = [
+  { stage: 0, points: [[16, 16], [12, 12], [8, 13]] },
+  { stage: 1, points: [[12, 12], [11, 7], [7, 4]] },
+  { stage: 2, points: [[16, 16], [19, 13], [24, 12]] },
+  { stage: 3, points: [[19, 13], [23, 8], [28, 7]] },
+  { stage: 4, points: [[16, 16], [14, 20], [10, 25]] },
+  { stage: 5, points: [[14, 20], [7, 22], [4, 27]] },
+  { stage: 6, points: [[16, 16], [20, 19], [24, 24], [28, 26]] },
+  { stage: 7, points: [[20, 19], [21, 24], [19, 29]] },
+  { stage: 8, points: [[8, 13], [5, 15], [3, 13]] },
+];
+
+function buildMiningCrackSprites() {
+  return Array.from({ length: MINING_CRACK_STAGES }, (_, stage) => {
+    const canvas = makeCanvas(TILE, TILE);
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = `rgba(12,14,15,${0.025 + stage * 0.012})`;
+    ctx.fillRect(1, 1, TILE - 2, TILE - 2);
+    ctx.strokeStyle = `rgba(17,19,20,${0.72 + stage * 0.025})`;
+    ctx.lineWidth = 1.35;
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'miter';
+
+    for (const segment of CRACK_SEGMENTS) {
+      if (segment.stage > stage) continue;
+      ctx.beginPath();
+      segment.points.forEach(([x, y], index) => {
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+    return canvas;
+  });
+}
 
 export class Game {
   constructor(canvas, appearance) {
@@ -37,6 +78,10 @@ export class Game {
     this.lastTime = performance.now();
     this.time = 0;
     this.tileset = buildTileset();
+    this.miningCrackSprites = buildMiningCrackSprites();
+    this.staticObjects = [];
+    this.staticObjectMap = new Map();
+    this.rebuildStaticObjects();
 
     // Rendu optimisé : le sol est rendu par chunks statiques au lieu
     // d'être redessiné tuile par tuile à chaque frame.
@@ -280,6 +325,9 @@ export class Game {
     const oldFloor = this.world.floor[i];
     const drop = this.world.breakBlock(this.targetTx, this.targetTy);
     if (drop) {
+      if (existingBlock && BLOCK_DEFS[existingBlock]?.kind === 'object') {
+        this.removeStaticObjectAt(this.targetTx, this.targetTy);
+      }
       this.inventory.add(drop);
       if (selectedDef?.type === 'tool') {
         const result = this.inventory.damageSelectedTool(1);
@@ -348,7 +396,7 @@ export class Game {
     this.drawDepthSorted(ctx, minTx, minTy, maxTx, maxTy);
 
     // 4) fissures de minage par-dessus la ressource ciblée, comme dans Minecraft
-    this.drawMiningCracks(ctx, zoom);
+    this.drawMiningCracks(ctx);
 
     ctx.restore();
 
@@ -457,87 +505,67 @@ export class Game {
     ctx.restore();
   }
 
-  // Animation de fissures inspirée du minage Minecraft. Les branches se
-  // dévoilent par étapes au lieu d'afficher une barre de chargement.
-  drawMiningCracks(ctx, zoom) {
+  // Animation de fissures inspirée du minage Minecraft. Les stages sont
+  // pré-rendus : à l'écran on ne fait qu'un drawImage très léger.
+  drawMiningCracks(ctx) {
     if (
       this.mining.progress <= 0
       || this.mining.tx !== this.targetTx
       || this.mining.ty !== this.targetTy
     ) return;
 
-    const progress = Math.min(1, this.mining.progress);
+    const stage = Math.min(
+      MINING_CRACK_STAGES - 1,
+      Math.floor(this.mining.progress * MINING_CRACK_STAGES),
+    );
     const px = this.targetTx * TILE;
     const py = this.targetTy * TILE;
-    const centerX = px + TILE * 0.5;
-    const centerY = py + TILE * 0.54;
-    const crackBranches = [
-      { at: 0.02, points: [[0, 0], [-0.18, -0.18], [-0.31, -0.11]] },
-      { at: 0.16, points: [[-0.18, -0.18], [-0.14, -0.36], [-0.27, -0.48]] },
-      { at: 0.28, points: [[0, 0], [0.16, -0.12], [0.28, -0.3]] },
-      { at: 0.42, points: [[0.16, -0.12], [0.34, -0.08], [0.45, 0.08]] },
-      { at: 0.55, points: [[0, 0], [-0.08, 0.17], [-0.26, 0.3]] },
-      { at: 0.68, points: [[-0.08, 0.17], [0.06, 0.36], [0.2, 0.46]] },
-      { at: 0.8, points: [[0, 0], [0.22, 0.14], [0.4, 0.3]] },
-      { at: 0.91, points: [[-0.08, 0.17], [-0.22, 0.1], [-0.42, 0.16]] },
-    ];
+    const sprite = this.miningCrackSprites[stage];
+    if (sprite) ctx.drawImage(sprite, px, py);
+  }
 
-    ctx.save();
-    // Voile très léger sur la case pour donner une impression de matière qui
-    // cède, sans masquer l'arbre, la pierre ou le bloc posé.
-    ctx.fillStyle = `rgba(12,14,15,${0.035 + progress * 0.09})`;
-    ctx.fillRect(px + 2, py + 2, TILE - 4, TILE - 4);
-    ctx.strokeStyle = `rgba(18,20,21,${0.68 + progress * 0.2})`;
-    ctx.lineWidth = 1.55 / zoom;
-    ctx.lineCap = 'square';
-    ctx.lineJoin = 'miter';
-
-    for (const branch of crackBranches) {
-      if (progress < branch.at) continue;
-      ctx.beginPath();
-      branch.points.forEach(([x, y], index) => {
-        const px2 = centerX + x * TILE;
-        const py2 = centerY + y * TILE;
-        if (index === 0) ctx.moveTo(px2, py2);
-        else ctx.lineTo(px2, py2);
-      });
-      ctx.stroke();
+  rebuildStaticObjects() {
+    this.staticObjects.length = 0;
+    this.staticObjectMap.clear();
+    for (let ty = 0; ty < WORLD_H; ty++) {
+      for (let tx = 0; tx < WORLD_W; tx++) {
+        const block = this.world.blockAt(tx, ty);
+        if (!block || BLOCK_DEFS[block]?.kind !== 'object') continue;
+        const drawable = {
+          tx,
+          ty,
+          sortY: ty * TILE + TILE / 2,
+          kind: block,
+          x: tx * TILE + TILE / 2,
+          y: ty * TILE + TILE / 2,
+          active: true,
+        };
+        this.staticObjects.push(drawable);
+        this.staticObjectMap.set(`${tx},${ty}`, drawable);
+      }
     }
+  }
 
-    // Fine lueur sur le bord des fissures pour rester lisible à faible zoom.
-    ctx.strokeStyle = `rgba(245,245,245,${0.16 + progress * 0.12})`;
-    ctx.lineWidth = 0.65 / zoom;
-    for (const branch of crackBranches) {
-      if (progress < branch.at) continue;
-      ctx.beginPath();
-      branch.points.forEach(([x, y], index) => {
-        const px2 = centerX + x * TILE - 0.7 / zoom;
-        const py2 = centerY + y * TILE - 0.7 / zoom;
-        if (index === 0) ctx.moveTo(px2, py2);
-        else ctx.lineTo(px2, py2);
-      });
-      ctx.stroke();
-    }
-    ctx.restore();
+  removeStaticObjectAt(tx, ty) {
+    const drawable = this.staticObjectMap.get(`${tx},${ty}`);
+    if (!drawable) return;
+    drawable.active = false;
+    this.staticObjectMap.delete(`${tx},${ty}`);
   }
 
   drawDepthSorted(ctx, minTx, minTy, maxTx, maxTy) {
     const drawables = this.drawables;
     drawables.length = 0;
 
-    for (let ty = minTy; ty <= maxTy; ty++) {
-      let i = this.world.idx(minTx, ty);
-      for (let tx = minTx; tx <= maxTx; tx++, i++) {
-        const b = this.world.blocks[i];
-        if (b && BLOCK_DEFS[b].kind === 'object') {
-          drawables.push({
-            sortY: ty * TILE + TILE / 2,
-            kind: b,
-            x: tx * TILE + TILE / 2,
-            y: ty * TILE + TILE / 2,
-          });
-        }
-      }
+    // Les ressources naturelles sont statiques : on les indexe une fois,
+    // puis on ne parcourt que cette petite liste au lieu de rescanner toute
+    // la grille visible à chaque frame.
+    for (const object of this.staticObjects) {
+      if (
+        object.active
+        && object.tx >= minTx && object.tx <= maxTx
+        && object.ty >= minTy && object.ty <= maxTy
+      ) drawables.push(object);
     }
 
     drawables.push({ sortY: this.player.y, kind: 'player', player: this.player });
