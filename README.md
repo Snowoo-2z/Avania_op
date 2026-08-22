@@ -72,6 +72,28 @@ node server.js
 # puis ouvre http://localhost:3000
 ```
 
+## 🧪 Tests & performance
+
+```bash
+npm test                        # test de fumée (logique pure, sans navigateur)
+node scripts/render-preview.mjs # régénère les aperçus PNG (preview/)
+node scripts/frame-bench.mjs    # benchmark de la boucle de jeu (ms/frame)
+node scripts/frame-bench.mjs --shots /tmp/shots  # + captures PNG par scénario
+node scripts/diff-shots.mjs /tmp/avant /tmp/après  # compare deux dossiers de captures
+```
+
+Le moteur est pensé pour rester fluide sur des PC modestes : sol rendu par
+**chunks pré-dessinés**, sprites procéduraux **mis en cache** (personnage,
+mobs, icônes, fissures de minage, surbrillance, ombres), **index spatiaux**
+(ressources et eau par chunk, fusion des piles au sol en O(n)), **zéro
+allocation** dans la boucle de rendu (pas de pression sur le GC) et remplissage
+plein écran sauté quand la vue est couverte par le monde. Un **mode
+performance** automatique (petits appareils ou frame coûteuse détectée) réduit
+encore la résolution et les effets sans changer le rendu jouable.
+
+Bonus : les **vagues animées** prévues dans le tileset sont désormais visibles
+le long des berges — l'eau n'est plus figée.
+
 ## 🎮 Comment jouer
 
 | Action | Touche / clic |

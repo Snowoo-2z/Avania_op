@@ -7,6 +7,7 @@
 // ============================================================
 
 import { TILE } from './config.js';
+import { makeCanvas } from './utils.js';
 
 function withAlpha(hex, a) {
   if (hex.startsWith('rgb(')) return hex.replace('rgb(', 'rgba(').replace(')', `,${a})`);
@@ -135,26 +136,67 @@ export function updateMob(mob, dt, world, player) {
 
 // ------------------------------------------------------------
 //  Rendu (style voxel du jeu)
+//
+//  Le corps de l'animal est pré-rendu dans un sprite hors-écran,
+//  mis en cache par (espèce × orientation × flash × étape de
+//  marche). Les formes dessinées sont STRICTEMENT celles de la
+//  version vectorielle d'origine : le résultat à l'écran est le
+//  même, mais une frame ne fait plus que 2 drawImage par animal
+//  au lieu de ~30 primitives (roundRect, arcs, chemins…).
+//  Seuls le balancement vertical (bob) et la position restent
+//  calculés en direct — ce sont de simples décalages entiers.
 // ------------------------------------------------------------
 
-function leg(ctx, x, y, w, h, color, phase) {
-  const lift = Math.sin(phase) * 1.6;
-  ctx.fillStyle = color;
-  ctx.fillRect(x, y - Math.max(0, lift), w, h);
+// Dimensions du sprite pré-rendu : assez large pour la vache qui
+// regarde sur le côté (tête dépassant du corps) et pour la tête
+// haute de la vue « up ».
+const MOB_SPRITE_W = 50;
+const MOB_SPRITE_H = 34;
+const MOB_SPRITE_AX = 25; // ancre : centre horizontal du corps
+const MOB_SPRITE_AY = 32; // ancre : contact au sol (y = 0)
+
+const MOB_KIND_INDEX = { sheep: 0, cow: 1 };
+const MOB_FACING_INDEX = { down: 0, left: 1, up: 2, right: 3 };
+
+let mobShadowSprite = null;
+const mobSpriteCache = new Map();
+
+// Ombre ovale sous l'animal : autrefois une ellipse recomputée à
+// chaque frame, désormais un sprite partagé (rendu à 2×, soit la
+// résolution d'écran du jeu : le blit est net, pixel pour pixel).
+function getMobShadowSprite() {
+  if (mobShadowSprite) return mobShadowSprite;
+  const c = makeCanvas(28 * 2, 10 * 2);
+  const sctx = c.getContext('2d');
+  sctx.imageSmoothingEnabled = false;
+  sctx.fillStyle = 'rgba(0,0,0,0.22)';
+  sctx.beginPath();
+  sctx.ellipse(14 * 2, 5 * 2, 13 * 2, 4.5 * 2, 0, 0, Math.PI * 2);
+  sctx.fill();
+  mobShadowSprite = c;
+  return c;
 }
 
-function drawMobBody(ctx, mob) {
-  const def = MOB_DEFS[mob.kind];
-  const bobbing = Math.sin(mob.walkPhase * 2) * (mob.moving ? 1.1 : 0.3);
-  const x = mob.x;
-  const y = mob.y - bobbing;
-  const flash = mob.hitFlash > 0;
+// Une patte : `lift` est le levé en pixels (0 = au sol).
+function leg(ctx, x, y, w, h, color, lift) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y - lift, w, h);
+}
 
-  // ombre portée
-  ctx.fillStyle = 'rgba(0,0,0,0.22)';
-  ctx.beginPath();
-  ctx.ellipse(x, mob.y + 4, 13, 4.5, 0, 0, Math.PI * 2);
-  ctx.fill();
+// Étape de marche quantifiée : sin(walkPhase) ramené à 7 paliers.
+// L'œil ne voit aucune différence (paliers de ~0,5 px sur des
+// pattes de 3 px de large), mais cela borne le cache de sprites.
+function legStepOf(walkPhase) {
+  return Math.max(-3, Math.min(3, Math.round(Math.sin(walkPhase) * 3)));
+}
+
+// Dessine le corps complet du mob, pieds au point (0, 0).
+// `legStep` ∈ [-3, 3] : pattes 1/3 levées si > 0, pattes 0/2 si < 0.
+function renderMobBody(ctx, mob, legStep) {
+  const def = MOB_DEFS[mob.kind];
+  const x = 0;
+  const y = 0;
+  const flash = mob.hitFlash > 0;
 
   const isSheep = mob.kind === 'sheep';
   const bodyW = isSheep ? 24 : 27;
@@ -164,9 +206,10 @@ function drawMobBody(ctx, mob) {
   // pattes (4, animées)
   const legC = isSheep ? '#c9c9c9' : '#5f3a20';
   const legW = 3;
+  const lift = (legStep / 3) * 1.6;
   for (let i = 0; i < 4; i++) {
     const lx = x - bodyW / 2 + 3 + i * (bodyW - 6) / 3 - legW / 2;
-    leg(ctx, lx, y - 6, legW, 7, legC, mob.walkPhase + (i % 2 ? 0 : Math.PI));
+    leg(ctx, lx, y - 6, legW, 7, legC, i % 2 ? Math.max(0, lift) : Math.max(0, -lift));
   }
 
   // corps
@@ -243,8 +286,35 @@ function drawMobBody(ctx, mob) {
   }
 }
 
+// Sprite pré-rendu du mob (cache lazy, clé numérique = zéro
+// allocation dans la boucle de jeu).
+function getMobSprite(mob) {
+  const kindIdx = MOB_KIND_INDEX[mob.kind] || 0;
+  const facingIdx = MOB_FACING_INDEX[mob.facing] ?? 0;
+  const flash = mob.hitFlash > 0 ? 1 : 0;
+  const step = legStepOf(mob.walkPhase);
+  const key = (((kindIdx * 4 + facingIdx) * 2 + flash) * 7) + (step + 3);
+  const cached = mobSpriteCache.get(key);
+  if (cached) return cached;
+
+  const canvas = makeCanvas(MOB_SPRITE_W, MOB_SPRITE_H);
+  const sctx = canvas.getContext('2d');
+  sctx.imageSmoothingEnabled = false;
+  // Le corps est dessiné avec ses coordonnées habituelles, pieds en (0, 0),
+  // décalé vers le point d'ancrage du sprite.
+  sctx.translate(MOB_SPRITE_AX, MOB_SPRITE_AY);
+  renderMobBody(sctx, { ...mob, hitFlash: flash ? 1 : 0 }, step);
+  mobSpriteCache.set(key, canvas);
+  return canvas;
+}
+
 export function drawMob(ctx, mob) {
-  drawMobBody(ctx, mob);
+  // 1) Ombre partagée (sprite pré-rendu une fois pour toutes).
+  ctx.drawImage(getMobShadowSprite(), mob.x - 14, mob.y - 1.5, 28, 10);
+  // 2) Corps : un seul blit. Le balancement (bob) reste calculé en
+  //    direct pour garder une montée/descente parfaitement continue.
+  const bobbing = Math.sin(mob.walkPhase * 2) * (mob.moving ? 1.1 : 0.3);
+  ctx.drawImage(getMobSprite(mob), mob.x - MOB_SPRITE_AX, mob.y - bobbing - MOB_SPRITE_AY);
 }
 
 // ------------------------------------------------------------

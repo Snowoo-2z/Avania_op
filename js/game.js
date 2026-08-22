@@ -17,7 +17,7 @@ import {
   buildTileset, getTileCanvas, getDoorCanvas, getFurnaceCanvas, getWaterFrame,
   drawTreeObject, drawRockObject, drawIronOreObject,
   getObjectSprite, getObjectSpriteInfo, treeVariantAt, treeDropCount,
-  treeBreakTime, TREE_VARIANTS,
+  treeBreakTime, TREE_VARIANTS, WATER_FRAMES,
 } from './tileset.js';
 import { drawCharacter } from './character.js';
 import { getItemSprite } from './icons.js';
@@ -29,6 +29,14 @@ import { MOB_DEFS, spawnMobs, updateMob, drawMob, mobDrops } from './mobs.js';
 const REACH_SQ = REACH * REACH;
 const SORT_BY_Y = (a, b) => a.sortY - b.sortY;
 const MINING_CRACK_STAGES = 9;
+// Codes de rendu pour le tri de profondeur (entiers : pas de comparaison
+// de chaînes ni d'objets d'enrobage alloués dans la boucle chaude).
+const DRAW_OBJECT = 0; // ressource statique (arbre, rocher, minerai)
+const DRAW_DROP = 1;   // objet lâché au sol
+const DRAW_MOB = 2;    // animal
+const DRAW_PLAYER = 3; // joueur
+// Touches 1..9 pré-générées : évite neuf conversions String par frame.
+const HOTBAR_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 // Vitesse du balancement de l'outil pendant le minage (rad/s) : un va-et-
 // vient complet ≈ 0,66 s, comme le geste de la main dans Minecraft.
 const SWING_SPEED = 9.5;
@@ -186,14 +194,17 @@ export class Game {
     this.camera = new Camera(this.viewW, this.viewH, WORLD_W * TILE, WORLD_H * TILE);
     this.camera.snapTo(this.player.x, this.player.y);
 
+    this.player.dy = DRAW_PLAYER; // tag de rendu (tri sans allocation)
     this.otherPlayers = []; // futurs joueurs en ligne
     // Objets posés au sol (ramassables en marchant dessus).
     this.droppedItems = [];
     this.pickupFullCooldown = 0;
     // Animaux (moutons, vaches) qui se baladent dans le monde.
     this.mobs = spawnMobs(this.world);
+    for (const mob of this.mobs) mob.dy = DRAW_MOB;
     this.mobAttackCooldown = 0;
-    // Fours posés : contenu + progression (clé "tx,ty").
+    // Fours posés : contenu + progression (clé numérique = index de tuile,
+    // finies les chaînes "tx,ty" allouées dans la boucle de rendu).
     this.furnaceData = new Map();
     // Rappels branchés par l'UI (ex. ouvrir le panneau du four).
     this.uiCallbacks = { openFurnace: null };
@@ -219,16 +230,27 @@ export class Game {
     for (const variant of TREE_VARIANTS) registerObjectCracks(`tree:${variant}`, 'tree', variant);
     registerObjectCracks('rock', 'rock');
     registerObjectCracks('ironOre', 'ironOre');
-    this.staticObjects = [];
-    this.staticObjectMap = new Map();
-    this.rebuildStaticObjects();
-
     // Rendu optimisé : le sol est rendu par chunks statiques au lieu
-    // d'être redessiné tuile par tuile à chaque frame.
+    // d'être redessiné tuile par tuile à chaque frame. Les objets
+    // statiques (arbres, rochers) et les tuiles d'eau sont indexés par
+    // chunk spatial : la boucle de rendu ne parcourt que la zone
+    // visible au lieu de scanner tout le monde à chaque frame.
+    // (Initialisé AVANT rebuildStaticObjects, qui s'appuie dessus.)
     this.chunkTiles = PERFORMANCE.CHUNK_TILES;
     this.floorChunkCache = new Map();
+    this.staticObjects = [];
+    this.staticObjectMap = new Map();
+    this.staticObjectsByChunk = new Map();
+    this.waterTilesByChunk = new Map();
+    this.rebuildStaticObjects();
     this.drawables = [];
     this.nameTagCache = new Map();
+    // Sprites pré-rendus : surbrillance de la cible et ombres ovales
+    // des objets au sol (clés numériques, aucune allocation par frame).
+    this.highlightCache = new Map();
+    this.shadowCache = new Map();
+    // Grille spatiale réutilisée pour la fusion des piles au sol.
+    this.mergeGrid = new Map();
     this.vignetteCanvas = null;
     this.vignetteW = 0;
     this.vignetteH = 0;
@@ -382,7 +404,7 @@ export class Game {
   }
 
   getFurnaceEntry(tx, ty) {
-    const key = `${tx},${ty}`;
+    const key = ty * WORLD_W + tx;
     let entry = this.furnaceData.get(key);
     if (!entry) {
       entry = makeFurnaceEntry();
@@ -532,6 +554,7 @@ export class Game {
       hop: 8 + Math.random() * 8,
       hopV: 90 + Math.random() * 40,
       sortY: y,
+      dy: DRAW_DROP, // tag de rendu (tri sans allocation)
       born: this.time,
       life: DROP_LIFETIME,
     });
@@ -565,8 +588,9 @@ export class Game {
   handleHotbarKeys() {
     const n = this.inventory.hotbarSize;
     for (let i = 0; i < n; i++) {
-      if (this.input.isDown(String(i + 1))) {
-        this.input.keys.delete(String(i + 1));
+      const key = HOTBAR_KEYS[i]; // constantes partagées : pas d'allocation
+      if (this.input.isDown(key)) {
+        this.input.keys.delete(key);
         this.inventory.select(i);
       }
     }
@@ -759,6 +783,7 @@ export class Game {
       hop: 8 + Math.random() * 10,
       hopV: 90 + Math.random() * 45,
       sortY: y,
+      dy: DRAW_DROP, // tag de rendu (tri sans allocation)
       born: this.time,
       life: DROP_LIFETIME,
     });
@@ -774,7 +799,8 @@ export class Game {
   }
 
   updateDroppedItems(dt) {
-    if (this.droppedItems.length === 0) return;
+    const items = this.droppedItems;
+    if (items.length === 0) return;
     this.pickupFullCooldown = Math.max(0, this.pickupFullCooldown - dt);
 
     const px = this.player.x;
@@ -786,8 +812,25 @@ export class Game {
     const gravity = 480 * dt;
     const MERGE_SQ = 22 * 22;
 
-    for (let n = this.droppedItems.length - 1; n >= 0; n--) {
-      const d = this.droppedItems[n];
+    // Grille spatiale (un seau par tuile) pour la fusion des piles :
+    // deux piles qui fusionnent sont à moins de 22 px l'une de l'autre,
+    // donc toujours dans des tuiles voisines. La recherche de candidats
+    // devient O(n) au lieu d'être quadratique — important après un grand
+    // défrichage, quand des dizaines de piles jonchent le sol.
+    const grid = this.mergeGrid;
+    grid.clear();
+    let anyGone = false;
+    for (let i = 0; i < items.length; i++) {
+      const d = items[i];
+      d.ord = i; // rang initial : reproduit l'ordre de fusion d'origine
+      const key = (((d.y / TILE) | 0) + 1024) * 4096 + (((d.x / TILE) | 0) + 1024);
+      const bucket = grid.get(key);
+      if (bucket) bucket.push(d);
+      else grid.set(key, [d]);
+    }
+
+    for (let n = items.length - 1; n >= 0; n--) {
+      const d = items[n];
 
       // léger élan au lâcher, amorti par friction + petit rebond
       d.x += d.vx * dt;
@@ -807,7 +850,8 @@ export class Game {
       // Disparition après quelques minutes (comme Minecraft).
       d.life -= dt;
       if (d.life <= 0) {
-        this.droppedItems.splice(n, 1);
+        d.gone = true;
+        anyGone = true;
         continue;
       }
 
@@ -819,7 +863,8 @@ export class Game {
       if (distSq < PICKUP_SQ) {
         const added = this.inventory.add(d.id, d.count);
         if (added >= d.count) {
-          this.droppedItems.splice(n, 1);
+          d.gone = true;
+          anyGone = true;
         } else {
           d.count -= added;
           if (added === 0 && this.pickupFullCooldown <= 0) {
@@ -831,23 +876,55 @@ export class Game {
       }
 
       // Les piles proches de même type fusionnent (une seule pile au sol).
-      if (d.count < 64 && this.droppedItems.length < MAX_DROPS) {
-        for (let m = n - 1; m >= 0; m--) {
-          const other = this.droppedItems[m];
-          if (!other || other.id !== d.id) continue;
-          const ox = d.x - other.x;
-          const oy = d.y - other.y;
-          if (ox * ox + oy * oy > MERGE_SQ) continue;
-          const add = Math.min(64 - d.count, other.count);
-          if (add <= 0) continue;
-          d.count += add;
-          other.count -= add;
-          if (other.count <= 0) this.droppedItems.splice(m, 1);
-          break;
+      // On ne teste que les seaux des 9 tuiles voisines (grille spatiale)
+      // et l'on choisit, comme dans la version d'origine, la pile valide
+      // la plus récente (ord le plus grand, strictement avant n).
+      if (d.count < 64 && items.length < MAX_DROPS) {
+        const ctx0 = ((d.x / TILE) | 0) + 1024;
+        const cty0 = ((d.y / TILE) | 0) + 1024;
+        let best = null;
+        for (let gy = cty0 - 1; gy <= cty0 + 1; gy++) {
+          for (let gx = ctx0 - 1; gx <= ctx0 + 1; gx++) {
+            const bucket = grid.get(gy * 4096 + gx);
+            if (!bucket) continue;
+            for (let m = bucket.length - 1; m >= 0; m--) {
+              const other = bucket[m];
+              if (other === d || other.gone || other.ord >= n) continue;
+              if (best && other.ord <= best.ord) continue;
+              if (other.id !== d.id) continue;
+              const ox = d.x - other.x;
+              const oy = d.y - other.y;
+              if (ox * ox + oy * oy > MERGE_SQ) continue;
+              if (other.count <= 0) continue;
+              best = other;
+              break; // le seau est ordonné : le 1er valide est le plus récent
+            }
+          }
+        }
+        if (best) {
+          const add = Math.min(64 - d.count, best.count);
+          if (add > 0) {
+            d.count += add;
+            best.count -= add;
+            if (best.count <= 0) {
+              best.gone = true;
+              anyGone = true;
+            }
+          }
         }
       }
 
       d.sortY = d.y;
+    }
+
+    // Compactage final en une passe (les retraits sont différés pour
+    // garder des indices stables pendant toute la boucle).
+    if (anyGone) {
+      let w = 0;
+      for (let r = 0; r < items.length; r++) {
+        if (!items[r].gone) items[w++] = items[r];
+      }
+      items.length = w;
     }
   }
 
@@ -949,10 +1026,20 @@ export class Game {
 
     ctx.save();
     ctx.imageSmoothingEnabled = false;
-    // Le fond couvre tout le canvas : inutile d'appeler clearRect en plus
-    // (une opération plein-écran de moins par frame).
-    ctx.fillStyle = '#2f76b2'; // hors-monde (eau)
-    ctx.fillRect(0, 0, W, H);
+    // Fond « océan » hors-monde. Quand la vue est entièrement à
+    // l'intérieur du monde (le cas courant), les chunks de sol opaques
+    // couvrent déjà chaque pixel de l'écran : on saute alors ce grand
+    // remplissage plein écran, ce qui économise environ un tiers du
+    // fill-rate à chaque frame. Au bord de la carte, il reste requis.
+    const worldPxW = WORLD_W * TILE;
+    const worldPxH = WORLD_H * TILE;
+    const fullyInside = cam.x >= 1 && cam.y >= 1
+      && cam.x + W / zoom <= worldPxW - 1
+      && cam.y + H / zoom <= worldPxH - 1;
+    if (!fullyInside) {
+      ctx.fillStyle = '#2f76b2'; // hors-monde (eau)
+      ctx.fillRect(0, 0, W, H);
+    }
 
     ctx.translate(-cam.x * zoom, -cam.y * zoom);
     ctx.scale(zoom, zoom);
@@ -984,7 +1071,7 @@ export class Game {
 
     ctx.restore();
 
-    // 4) vignette d'ambiance. Elle est cachée en mode performance et
+    // 6) vignette d'ambiance. Elle est cachée en mode performance et
     // pré-rendue sinon, pour éviter un radialGradient à chaque frame.
     if (!this.performanceMode) {
       ctx.drawImage(this.getVignette(W, H), 0, 0, W, H);
@@ -998,16 +1085,30 @@ export class Game {
     const chunkR = Math.min(Math.ceil(WORLD_W / ct) - 1, Math.floor(viewR / ct));
     const chunkB = Math.min(Math.ceil(WORLD_H / ct) - 1, Math.floor(viewB / ct));
 
+    // Surface de l'eau animée : les tuiles d'eau (indexées par chunk)
+    // sont redessinées avec la frame courante par-dessus le chunk figé.
+    // Hors des berges il n'y a aucune eau : le surcoût est nul.
+    const waterFrame = Math.floor(this.time * 2.5) % WATER_FRAMES;
+    const waterImg = getWaterFrame(waterFrame);
+
     for (let cy = chunkT; cy <= chunkB; cy++) {
       for (let cx = chunkL; cx <= chunkR; cx++) {
         const chunk = this.getFloorChunk(cx, cy);
         ctx.drawImage(chunk, cx * ct * TILE, cy * ct * TILE);
+
+        const water = this.waterTilesByChunk.get(cy * 256 + cx);
+        if (water) {
+          for (let k = 0; k < water.length; k++) {
+            const i = water[k];
+            ctx.drawImage(waterImg, (i % WORLD_W) * TILE, ((i / WORLD_W) | 0) * TILE);
+          }
+        }
       }
     }
   }
 
   floorChunkKey(cx, cy) {
-    return `${cx},${cy}`;
+    return cy * 64 + cx; // clé numérique : aucune chaîne par frame
   }
 
   invalidateFloorChunk(tx, ty) {
@@ -1017,7 +1118,7 @@ export class Game {
   }
 
   getFloorChunk(cx, cy) {
-    const key = this.floorChunkKey(cx, cy);
+    const key = cy * 64 + cx;
     const cached = this.floorChunkCache.get(key);
     if (cached) return cached;
 
@@ -1045,22 +1146,57 @@ export class Game {
   }
 
   drawPlacedBlocks(ctx, minTx, minTy, maxTx, maxTy) {
+    const blocks = this.world.blocks;
+    const doorOpen = this.world.doorOpen;
     for (let ty = minTy; ty <= maxTy; ty++) {
       let i = this.world.idx(minTx, ty);
       for (let tx = minTx; tx <= maxTx; tx++, i++) {
-        const block = this.world.blocks[i];
+        const block = blocks[i];
         if (!block) continue;
         const def = BLOCK_DEFS[block];
         if (def.kind === 'door') {
-          ctx.drawImage(getDoorCanvas(this.world.doorOpen[i] === 1), tx * TILE, ty * TILE);
+          ctx.drawImage(getDoorCanvas(doorOpen[i] === 1), tx * TILE, ty * TILE);
         } else if (block === 'furnace') {
-          const entry = this.furnaceData.get(`${tx},${ty}`);
+          const entry = this.furnaceData.get(i);
           ctx.drawImage(getFurnaceCanvas(Boolean(entry && entry.fuelTime > 0)), tx * TILE, ty * TILE);
         } else if (def.kind === 'block') {
           ctx.drawImage(getTileCanvas(block), tx * TILE, ty * TILE);
         }
       }
     }
+  }
+
+  // Contour de la tuile ciblée : le trait lumineux et son halo (flou)
+  // sont pré-rendus une fois en sprite, puis pulsés via globalAlpha.
+  // Plus de shadowBlur ni de roundRect recalculés à chaque frame — le
+  // résultat est strictement le même dessin, mis en cache.
+  getHighlightSprite(canAct, glow, scaleQ) {
+    const key = (canAct ? 1 : 0) | (glow ? 2 : 0) | (scaleQ << 2);
+    let sprite = this.highlightCache.get(key);
+    if (sprite) return sprite;
+
+    const pad = glow ? 12 : 4; // marge englobant le halo (en px écran)
+    const size = (TILE - 2) * scaleQ + pad * 2;
+    const c = makeCanvas(size, size);
+    const hctx = c.getContext('2d');
+    hctx.imageSmoothingEnabled = false;
+    hctx.strokeStyle = canAct ? 'rgba(255,255,255,1)' : 'rgba(255,80,80,1)';
+    hctx.lineWidth = 2.5;
+    if (glow) {
+      hctx.shadowColor = canAct ? 'rgba(255,255,255,0.55)' : 'rgba(255,80,80,0.55)';
+      hctx.shadowBlur = 8;
+    }
+    const r = 6 * scaleQ;
+    if (hctx.roundRect) {
+      hctx.beginPath();
+      hctx.roundRect(pad, pad, (TILE - 2) * scaleQ, (TILE - 2) * scaleQ, r);
+      hctx.stroke();
+    } else {
+      hctx.strokeRect(pad, pad, (TILE - 2) * scaleQ, (TILE - 2) * scaleQ);
+    }
+    sprite = { canvas: c, padWorld: pad / scaleQ };
+    this.highlightCache.set(key, sprite);
+    return sprite;
   }
 
   drawTargetHighlight(ctx, zoom) {
@@ -1074,25 +1210,24 @@ export class Game {
     const px = this.targetTx * TILE;
     const py = this.targetTy * TILE;
 
-    const alpha = this.performanceMode ? 0.82 : 0.72 + Math.sin(this.time * 6) * 0.12;
-    ctx.save();
-    ctx.strokeStyle = canAct ? `rgba(255,255,255,${alpha})` : 'rgba(255,80,80,0.85)';
-    ctx.lineWidth = 2.5 / zoom;
-    if (!this.performanceMode) {
-      ctx.shadowColor = canAct ? 'rgba(255,255,255,0.55)' : 'rgba(255,80,80,0.55)';
-      ctx.shadowBlur = 8;
-    }
+    // Remplissage translucide (alpha fixe, comme avant).
     ctx.fillStyle = canAct ? 'rgba(255,255,255,0.10)' : 'rgba(255,80,80,0.12)';
-    const r = 6;
     if (ctx.roundRect) {
       ctx.beginPath();
-      ctx.roundRect(px + 1, py + 1, TILE - 2, TILE - 2, r);
+      ctx.roundRect(px + 1, py + 1, TILE - 2, TILE - 2, 6);
       ctx.fill();
-      ctx.stroke();
     } else {
       ctx.fillRect(px + 1, py + 1, TILE - 2, TILE - 2);
-      ctx.strokeRect(px + 1, py + 1, TILE - 2, TILE - 2);
     }
+
+    // Contour + halo pulsant (sprite pré-rendu à la résolution écran).
+    const alpha = this.performanceMode ? 0.82 : 0.72 + Math.sin(this.time * 6) * 0.12;
+    const scaleQ = Math.max(1, Math.round(zoom));
+    const sprite = this.getHighlightSprite(canAct, !this.performanceMode, scaleQ);
+    ctx.save();
+    ctx.globalAlpha = canAct ? alpha : 0.85;
+    const size = TILE - 2 + sprite.padWorld * 2;
+    ctx.drawImage(sprite.canvas, px + 1 - sprite.padWorld, py + 1 - sprite.padWorld, size, size);
     ctx.restore();
   }
 
@@ -1111,11 +1246,14 @@ export class Game {
     );
 
     // Arbre / rocher : on couvre l'ensemble du corps (sprite complet).
+    // La clé de fissure est pré-calculée sur l'objet statique (pas de
+    // gabarit de chaîne reconstruit à chaque frame de minage).
     const block = this.world.blockAt(this.targetTx, this.targetTy);
     if (block && BLOCK_DEFS[block]?.kind === 'object') {
-      const crackKey = block === 'tree'
-        ? `tree:${treeVariantAt(this.targetTx, this.targetTy)}`
-        : block;
+      const obj = this.staticObjectMap.get(this.targetTy * WORLD_W + this.targetTx);
+      const crackKey = obj
+        ? obj.crackKey
+        : (block === 'tree' ? `tree:${treeVariantAt(this.targetTx, this.targetTy)}` : block);
       const crack = this.objectCrackSprites[crackKey];
       if (crack) {
         const cx = this.targetTx * TILE + TILE / 2;
@@ -1140,6 +1278,32 @@ export class Game {
     if (sprite) ctx.drawImage(sprite, px, py);
   }
 
+  // Ombre ovale d'un objet au sol, pré-rendue en sprite (cache par
+  // taille quantifiée au demi-pixel : invisible à l'œil, et le chemin
+  // chaud ne crée plus d'ellipse vectorielle par objet et par frame).
+  getDropShadow(rx, ry) {
+    const qx = Math.max(1, Math.round(rx * 2)) | 0;
+    const qy = Math.max(1, Math.round(ry * 2)) | 0;
+    const key = qy * 64 + qx;
+    let sprite = this.shadowCache.get(key);
+    if (sprite) return sprite;
+    if (this.shadowCache.size > 64) this.shadowCache.clear(); // garde-fou
+
+    const S = 2; // rendu à 2× : résolution d'écran du jeu (zoom 2)
+    // qx/qy ≈ diamètres monde de l'ellipse (déjà arrondis au demi-pixel).
+    const w = qx + 2; // marge d'un pixel de chaque côté
+    const h = qy + 2;
+    const c = makeCanvas(w * S, h * S);
+    const sctx = c.getContext('2d');
+    sctx.fillStyle = 'rgba(0,0,0,0.22)';
+    sctx.beginPath();
+    sctx.ellipse((w / 2) * S, (h / 2) * S, (qx / 2) * S, (qy / 2) * S, 0, 0, Math.PI * 2);
+    sctx.fill();
+    sprite = { canvas: c, w, h };
+    this.shadowCache.set(key, sprite);
+    return sprite;
+  }
+
   // Objet posé au sol : ombre douce + sprite qui rebondit légèrement.
   // Un petit "pop" d'apparition adoucit le lâcher.
   drawDrop(ctx, drop) {
@@ -1153,10 +1317,8 @@ export class Game {
     const hop = drop.hop || 0;
     const y = drop.y - bob - hop;
 
-    ctx.fillStyle = 'rgba(0,0,0,0.22)';
-    ctx.beginPath();
-    ctx.ellipse(drop.x, drop.y + 5, size * 0.52, size * 0.2, 0, 0, Math.PI * 2);
-    ctx.fill();
+    const shadow = this.getDropShadow(size * 0.52, size * 0.2);
+    ctx.drawImage(shadow.canvas, drop.x - shadow.w / 2, drop.y + 5 - shadow.h / 2, shadow.w, shadow.h);
 
     if (sprite) {
       ctx.drawImage(sprite, drop.x - size / 2, y - size / 2, size, size);
@@ -1170,9 +1332,28 @@ export class Game {
   rebuildStaticObjects() {
     this.staticObjects.length = 0;
     this.staticObjectMap.clear();
+    this.staticObjectsByChunk.clear();
+    this.waterTilesByChunk.clear();
+    const ct = this.chunkTiles;
+    const floor = this.world.floor;
+    const blocks = this.world.blocks;
     for (let ty = 0; ty < WORLD_H; ty++) {
+      const rowBase = ty * WORLD_W;
+      const chunkRow = Math.floor(ty / ct) * 256;
       for (let tx = 0; tx < WORLD_W; tx++) {
-        const block = this.world.blockAt(tx, ty);
+        const i = rowBase + tx;
+        // Index des tuiles d'eau : leur surface est redessinée par-dessus
+        // les chunks avec la frame animée courante (vagues vivantes).
+        if (floor[i] === 'water') {
+          const key = chunkRow + Math.floor(tx / ct);
+          let list = this.waterTilesByChunk.get(key);
+          if (!list) {
+            list = [];
+            this.waterTilesByChunk.set(key, list);
+          }
+          list.push(i);
+        }
+        const block = blocks[i];
         if (!block || BLOCK_DEFS[block]?.kind !== 'object') continue;
         const drawable = {
           tx,
@@ -1180,60 +1361,98 @@ export class Game {
           sortY: ty * TILE + TILE / 2,
           kind: block,
           variant: block === 'tree' ? treeVariantAt(tx, ty) : null,
+          crackKey: block === 'tree' ? `tree:${treeVariantAt(tx, ty)}` : block,
           x: tx * TILE + TILE / 2,
           y: ty * TILE + TILE / 2,
           active: true,
+          dy: DRAW_OBJECT, // tag de rendu (tri sans allocation)
         };
         this.staticObjects.push(drawable);
-        this.staticObjectMap.set(`${tx},${ty}`, drawable);
+        this.staticObjectMap.set(i, drawable);
+        const key = chunkRow + Math.floor(tx / ct);
+        let list = this.staticObjectsByChunk.get(key);
+        if (!list) {
+          list = [];
+          this.staticObjectsByChunk.set(key, list);
+        }
+        list.push(drawable);
       }
     }
   }
 
   removeStaticObjectAt(tx, ty) {
-    const drawable = this.staticObjectMap.get(`${tx},${ty}`);
+    const drawable = this.staticObjectMap.get(ty * WORLD_W + tx);
     if (!drawable) return;
     drawable.active = false;
-    this.staticObjectMap.delete(`${tx},${ty}`);
+    this.staticObjectMap.delete(ty * WORLD_W + tx);
   }
 
   drawDepthSorted(ctx, minTx, minTy, maxTx, maxTy) {
     const drawables = this.drawables;
     drawables.length = 0;
 
-    // Les ressources naturelles sont statiques : on les indexe une fois,
-    // puis on ne parcourt que cette petite liste au lieu de rescanner toute
-    // la grille visible à chaque frame.
-    for (const object of this.staticObjects) {
-      if (
-        object.active
-        && object.tx >= minTx && object.tx <= maxTx
-        && object.ty >= minTy && object.ty <= maxTy
-      ) drawables.push(object);
+    // Les ressources naturelles sont statiques et indexées par chunk
+    // spatial : on ne collecte que les chunks qui recouvrent l'écran
+    // au lieu de rescanner les ~900 ressources du monde à chaque frame.
+    const ct = this.chunkTiles;
+    const chunkL = Math.floor(minTx / ct);
+    const chunkT = Math.floor(minTy / ct);
+    const chunkR = Math.floor(maxTx / ct);
+    const chunkB = Math.floor(maxTy / ct);
+    for (let cy = chunkT; cy <= chunkB; cy++) {
+      for (let cx = chunkL; cx <= chunkR; cx++) {
+        const list = this.staticObjectsByChunk.get(cy * 256 + cx);
+        if (!list) continue;
+        for (let k = 0; k < list.length; k++) {
+          const object = list[k];
+          if (
+            object.active
+            && object.tx >= minTx && object.tx <= maxTx
+            && object.ty >= minTy && object.ty <= maxTy
+          ) drawables.push(object);
+        }
+      }
     }
 
-    for (const drop of this.droppedItems) {
-      drawables.push({ sortY: drop.sortY, kind: 'drop', drop });
+    // Drops, mobs et joueurs sont poussés tels quels : chacun porte
+    // déjà son sortY et son tag de rendu `dy` (entier). Aucune enveloppe
+    // { sortY, kind, ... } n'est allouée : zéro pression sur le GC.
+    const items = this.droppedItems;
+    for (let i = 0; i < items.length; i++) drawables.push(items[i]);
+
+    const mobs = this.mobs;
+    for (let i = 0; i < mobs.length; i++) {
+      const mob = mobs[i];
+      if (!mob.alive) continue;
+      mob.sortY = mob.y + 6;
+      drawables.push(mob);
     }
 
-    for (const mob of this.mobs) {
-      if (mob.alive) drawables.push({ sortY: mob.y + 6, kind: 'mob', mob });
-    }
-
-    drawables.push({ sortY: this.player.y, kind: 'player', player: this.player, local: true });
+    const player = this.player;
+    player.sortY = player.y;
+    drawables.push(player);
     for (const p of this.otherPlayers) {
-      drawables.push({ sortY: p.y, kind: 'player', player: p, local: false });
+      p.dy = DRAW_PLAYER;
+      p.sortY = p.y;
+      drawables.push(p);
     }
 
     drawables.sort(SORT_BY_Y);
     for (let i = 0; i < drawables.length; i++) {
       const d = drawables[i];
-      if (d.kind === 'tree') drawTreeObject(ctx, d.x, d.y, d.variant || 'medium');
-      else if (d.kind === 'rock') drawRockObject(ctx, d.x, d.y);
-      else if (d.kind === 'ironOre') drawIronOreObject(ctx, d.x, d.y);
-      else if (d.kind === 'drop') this.drawDrop(ctx, d.drop);
-      else if (d.kind === 'mob') drawMob(ctx, d.mob);
-      else this.drawPlayer(ctx, d.player, d.local);
+      const dy = d.dy;
+      if (dy === DRAW_OBJECT) {
+        const kind = d.kind;
+        if (kind === 'tree') drawTreeObject(ctx, d.x, d.y, d.variant || 'medium');
+        else if (kind === 'rock') drawRockObject(ctx, d.x, d.y);
+        else drawIronOreObject(ctx, d.x, d.y);
+      } else if (dy === DRAW_DROP) {
+        this.drawDrop(ctx, d);
+      } else if (dy === DRAW_MOB) {
+        drawMob(ctx, d);
+      } else {
+        this.drawPlayer(ctx, d, d === player);
+      }
     }
   }
 
@@ -1284,36 +1503,43 @@ export class Game {
   }
 
   heldDrawOpts(player) {
-    return {
-      facing: player.facing,
-      walkPhase: player.moving ? player.walkPhase : 0,
-      scale: PLAYER_RENDER_SCALE,
-      mining: this.mining.progress > 0,
-      // Sinus de la phase : 0 au repos, ±1 en plein balancement.
-      swing: Math.sin(this.swingPhase),
-      time: this.time,
-      pop: this.equipPop,
-      shadow: !this.performanceMode,
-    };
+    // Objet d'options persistant, muté à chaque appel : plus aucune
+    // allocation dans la boucle de rendu (c'était 1 à 2 objets/frame).
+    const o = this._heldOpts || (this._heldOpts = {
+      facing: 'down', walkPhase: 0, scale: PLAYER_RENDER_SCALE,
+      mining: false, swing: 0, time: 0, pop: 0, shadow: true,
+    });
+    o.facing = player.facing;
+    o.walkPhase = player.moving ? player.walkPhase : 0;
+    o.mining = this.mining.progress > 0;
+    // Sinus de la phase : 0 au repos, ±1 en plein balancement.
+    o.swing = Math.sin(this.swingPhase);
+    o.time = this.time;
+    o.pop = this.equipPop;
+    o.shadow = !this.performanceMode;
+    return o;
   }
 
   drawPlayer(ctx, player, local = false) {
     const heldId = local ? this.lastHeldId : null;
-    const walkPhase = player.moving ? player.walkPhase : 0;
     const behind = heldId && heldItemIsBehind(player.facing);
 
     if (behind) {
       drawHeldItem(ctx, player.appearance, heldId, player.x, player.y, this.heldDrawOpts(player));
     }
 
-    drawCharacter(ctx, player.appearance, player.x, player.y, {
-      facing: player.facing,
-      walkPhase,
-      // Le joueur reste lisible, mais nettement plus petit que l'arbre :
-      // une tuile représente désormais un vrai espace autour de lui.
-      scale: PLAYER_RENDER_SCALE,
-      shadow: !this.performanceMode,
+    // Objet d'options persistant, mutate à chaque appel (zéro allocation).
+    const o = this._charOpts || (this._charOpts = {
+      facing: 'down', walkPhase: 0, scale: PLAYER_RENDER_SCALE,
+      shadow: true, pixelDensity: 2,
     });
+    o.facing = player.facing;
+    o.walkPhase = player.moving ? player.walkPhase : 0;
+    // Le joueur reste lisible, mais nettement plus petit que l'arbre :
+    // une tuile représente désormais un vrai espace autour de lui.
+    o.shadow = !this.performanceMode;
+    o.pixelDensity = this.camera.zoom;
+    drawCharacter(ctx, player.appearance, player.x, player.y, o);
 
     if (heldId && !behind) {
       drawHeldItem(ctx, player.appearance, heldId, player.x, player.y, this.heldDrawOpts(player));
@@ -1322,7 +1548,8 @@ export class Game {
   }
 
   getNameTag(name, scale = 1) {
-    const key = `${name || 'Aventurier'}@${scale}`;
+    const label = name || 'Aventurier';
+    const key = `${label}@${scale}`; // clé de cache uniquement
     const cached = this.nameTagCache.get(key);
     if (cached) return cached;
 
@@ -1333,7 +1560,7 @@ export class Game {
     const font = `bold ${9 * px}px system-ui, sans-serif`;
     this.ctx.save();
     this.ctx.font = font;
-    const wPx = Math.ceil(this.ctx.measureText(key).width + 8 * px);
+    const wPx = Math.ceil(this.ctx.measureText(label).width + 8 * px);
     this.ctx.restore();
 
     const hPx = 13 * px;
@@ -1351,7 +1578,7 @@ export class Game {
       nctx.fillRect(0, 0, wPx, hPx);
     }
     nctx.fillStyle = '#fff';
-    nctx.fillText(key, wPx / 2, hPx / 2);
+    nctx.fillText(label, wPx / 2, hPx / 2);
 
     const tag = { canvas: c, w: wPx / px, h: hPx / px };
     this.nameTagCache.set(key, tag);
