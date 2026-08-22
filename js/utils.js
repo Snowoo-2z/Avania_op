@@ -47,17 +47,22 @@ export function isLowPowerDevice() {
     || prefersReducedMotion();
 }
 
-// Crée un canvas hors-écran de taille donnée
+// Crée un canvas hors-écran de taille donnée.
+// On privilégie un vrai <canvas> : OffscreenCanvas existe dans certains
+// iframes / webviews sans contexte 2D, et ça noircissait tout l'écran.
 export function makeCanvas(w, h) {
   const width = Math.max(1, Math.ceil(w));
   const height = Math.max(1, Math.ceil(h));
+  if (typeof document !== 'undefined' && document.createElement) {
+    const c = document.createElement('canvas');
+    c.width = width;
+    c.height = height;
+    if (c.getContext && c.getContext('2d')) return c;
+  }
   if (typeof OffscreenCanvas !== 'undefined') {
     return new OffscreenCanvas(width, height);
   }
-  const c = document.createElement('canvas');
-  c.width = width;
-  c.height = height;
-  return c;
+  throw new Error('Aucun canvas 2D disponible');
 }
 
 export function roundedRect(ctx, x, y, w, h, r) {

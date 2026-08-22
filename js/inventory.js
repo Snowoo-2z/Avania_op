@@ -30,6 +30,7 @@ export class Inventory {
     this.slots = new Array(this.slotCount).fill(null);
     this.selected = 0;
     this.craftingGrid = new Array(9).fill(null);
+    this.cursor = null;
 
     // Compteur pratique pour le HUD, toujours recalculé depuis les cases.
     this.items = {};
@@ -364,9 +365,16 @@ export class Inventory {
   }
 
   returnCraftingGrid() {
+    let changed = false;
+    if (this.cursor) {
+      const added = this._addInternal(this.cursor.id, this.cursor.count, this.cursor);
+      if (added > 0) changed = true;
+      if (added >= this.cursor.count) this.cursor = null;
+      else this.cursor = { ...this.cursor, count: this.cursor.count - added };
+    }
     const result = this._returnCraftingGridInternal();
-    if (result.changed) this._touch();
-    return result.complete;
+    if (changed || result.changed) this._touch();
+    return result.complete && !this.cursor;
   }
 
   prepareRecipe(recipe) {
@@ -439,6 +447,105 @@ export class Inventory {
       this._recount();
       return false;
     }
+    this._touch();
+    return true;
+  }
+
+  // ------------------------------------------------------------
+  //  Curseur façon Minecraft (prendre / poser à la main)
+  // ------------------------------------------------------------
+
+  getCursor() {
+    return this.cursor ? cloneStack(this.cursor) : null;
+  }
+
+  _pointerClick(arr, index, size, button = 'left') {
+    if (index < 0 || index >= size) return false;
+    const right = button === 'right';
+    const slot = arr[index];
+    const cursor = this.cursor;
+
+    if (!cursor) {
+      if (!slot) return false;
+      const take = right ? Math.max(1, Math.ceil(slot.count / 2)) : slot.count;
+      this.cursor = { ...slot, count: take };
+      slot.count -= take;
+      if (slot.count <= 0) arr[index] = null;
+      this._touch();
+      return true;
+    }
+
+    const def = ITEM_DEFS[cursor.id];
+    const max = def.maxStack || 64;
+
+    if (!slot) {
+      const add = Math.min(right ? 1 : cursor.count, max);
+      arr[index] = { ...cursor, count: add };
+      cursor.count -= add;
+      if (cursor.count <= 0) this.cursor = null;
+      this._touch();
+      return true;
+    }
+
+    if (slot.id === cursor.id && max > 1) {
+      const add = Math.min(right ? 1 : cursor.count, max - slot.count);
+      if (add > 0) {
+        slot.count += add;
+        cursor.count -= add;
+        if (cursor.count <= 0) this.cursor = null;
+        this._touch();
+        return true;
+      }
+    }
+
+    if (!right) {
+      arr[index] = cursor;
+      this.cursor = slot;
+      this._touch();
+      return true;
+    }
+    return false;
+  }
+
+  clickInventorySlot(index, button = 'left') {
+    return this._pointerClick(this.slots, index, this.slotCount, button);
+  }
+
+  clickCraftSlot(index, button = 'left') {
+    return this._pointerClick(this.craftingGrid, index, 9, button);
+  }
+
+  quickMoveToCraft(index) {
+    const stack = this.slots[index];
+    if (!stack) return false;
+    const def = ITEM_DEFS[stack.id];
+    const max = def.maxStack || 64;
+    if (max > 1) {
+      for (let i = 0; i < 9 && this.slots[index]; i++) {
+        const target = this.craftingGrid[i];
+        if (!target || target.id !== stack.id || target.count >= max) continue;
+        const add = Math.min(stack.count, max - target.count);
+        target.count += add;
+        stack.count -= add;
+        if (stack.count <= 0) this.slots[index] = null;
+      }
+    }
+    for (let i = 0; i < 9 && this.slots[index]; i++) {
+      if (this.craftingGrid[i]) continue;
+      this.craftingGrid[i] = this.slots[index];
+      this.slots[index] = null;
+    }
+    this._touch();
+    return true;
+  }
+
+  quickMoveFromCraft(index) {
+    const cell = this.craftingGrid[index];
+    if (!cell) return false;
+    const added = this._addInternal(cell.id, cell.count, cell);
+    if (added <= 0) return false;
+    if (added >= cell.count) this.craftingGrid[index] = null;
+    else this.craftingGrid[index] = { ...cell, count: cell.count - added };
     this._touch();
     return true;
   }

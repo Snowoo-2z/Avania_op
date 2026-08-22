@@ -169,27 +169,30 @@ kbd {
   position: fixed;
   inset: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 20;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
   background:
     radial-gradient(1200px 700px at 18% -10%, rgba(124, 207, 106, 0.22), transparent 55%),
     radial-gradient(900px 600px at 92% 110%, rgba(242, 193, 78, 0.14), transparent 60%),
     var(--bg);
-  padding: 24px;
+  padding: 16px;
   animation: fadeIn 0.35s ease;
 }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 .panel {
   width: min(900px, 100%);
-  max-height: 94vh;
-  overflow-y: auto;
+  max-height: none;
+  margin: auto;
+  overflow: visible;
   background: linear-gradient(180deg, var(--panel-2), var(--panel));
   border: 1px solid var(--border);
   border-radius: 26px;
   box-shadow: var(--shadow);
-  padding: 34px 40px;
+  padding: 28px 32px 22px;
 }
 
 .panel-header { text-align: center; margin-bottom: 26px; }
@@ -342,7 +345,16 @@ kbd {
   font-size: 13px;
 }
 
-.actions { display: flex; gap: 11px; margin-top: 4px; }
+.actions {
+  display: flex;
+  gap: 11px;
+  margin-top: 4px;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding: 10px 0 2px;
+  background: linear-gradient(180deg, transparent, var(--panel) 28%);
+}
 .btn {
   padding: 14px 22px;
   border-radius: 14px;
@@ -1342,6 +1354,13 @@ html.low-power .craft-output.ready {
 .craft-output .slot-icon {
   image-rendering: pixelated;
 }
+/* Les nouvelles icônes (cubes 3/4 + outils diagonaux) se lisent
+   mieux sans le vieux bevel intérieur, qui les écrasait. */
+.slot-icon,
+.recipe-icon,
+.detail-icon {
+  box-shadow: none;
+}
 /* Fond "tuile pierre" sous les icônes d'outils (sprites transparents). */
 .recipe-icon {
   background: #555a5e;
@@ -1452,4 +1471,138 @@ html.low-power .craft-output.ready {
 @media (max-width: 700px) {
   .tutorial-panel { padding: 16px 14px 14px; border-radius: 16px; }
   .tutorial-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+}
+
+/* ------------------------------------------------------------
+   Établ : onglets Livre / Inventaire + pose manuelle
+   ------------------------------------------------------------ */
+.crafting-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.crafting-header > div:first-child { flex: 1 1 auto; min-width: 140px; }
+.craft-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 3px;
+  border: 2px solid #25282a;
+  border-radius: 4px;
+  background: #35383b;
+  box-shadow: inset 2px 2px 0 rgba(0,0,0,0.28);
+}
+.craft-tab {
+  appearance: none;
+  border: 2px solid #222426;
+  border-radius: 3px;
+  padding: 6px 10px;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 900;
+  color: #d4d7d9;
+  background: #555a5e;
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.22), inset -1px -1px 0 rgba(0,0,0,0.32);
+  cursor: pointer;
+}
+.craft-tab:hover { filter: brightness(1.12); }
+.craft-tab.active {
+  color: #1b1d1f;
+  background: linear-gradient(180deg, #fff4a3, #e0c45a);
+  border-color: #fff4a3;
+}
+.crafting.craft-mode-inventory {
+  width: min(720px, calc(100vw - 20px));
+}
+.crafting.craft-mode-inventory .crafting-layout {
+  display: flex;
+  flex-direction: column;
+  height: auto;
+  max-height: min(80vh, 620px);
+}
+.crafting.craft-mode-inventory .craft-main {
+  order: 1;
+  flex: 0 0 auto;
+}
+.crafting.craft-mode-inventory .craft-inv-pane {
+  order: 2;
+  flex: 1 1 auto;
+  border-right: 0;
+  border-top: 2px solid rgba(25,27,29,0.55);
+  min-height: 160px;
+}
+.slot.occupied .slot-icon {
+  opacity: 1 !important;
+  background: transparent !important;
+}
+.slot-icon img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.craft-inv-pane {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: auto;
+  padding: 12px 10px 12px;
+  border-right: 2px solid rgba(25,27,29,0.55);
+  background: linear-gradient(180deg, rgba(50,53,56,0.82), rgba(38,41,44,0.92));
+}
+.craft-inv-pane.hidden { display: none !important; }
+.craft-player-grid,
+.craft-player-hotbar {
+  grid-template-columns: repeat(9, minmax(0, 1fr)) !important;
+  gap: 4px;
+  width: 100%;
+}
+.craft-player-grid .slot,
+.craft-player-hotbar .slot {
+  height: 40px;
+  min-width: 0;
+  width: 100%;
+}
+.craft-player-grid .slot-icon,
+.craft-player-hotbar .slot-icon { inset: 4px; }
+.craft-slot {
+  appearance: none;
+  cursor: pointer;
+  font-family: var(--font);
+  color: inherit;
+}
+.craft-slot:hover { filter: brightness(1.12); }
+.craft-cursor {
+  position: fixed;
+  z-index: 90;
+  width: 36px;
+  height: 36px;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+.craft-cursor .slot-icon {
+  position: absolute;
+  inset: 0;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+.craft-cursor .slot-count {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  font-size: 12px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 2px 2px 0 rgba(0,0,0,0.8);
+}
+
+@media (max-width: 700px) {
+  .craft-tabs { width: 100%; }
+  .craft-tab { flex: 1; }
+  .craft-inv-pane { border-right: 0; border-top: 2px solid rgba(25,27,29,0.55); max-height: 38vh; }
+  .crafting.craft-mode-inventory .craft-main { order: 1; }
+  .crafting.craft-mode-inventory .craft-inv-pane { order: 2; }
 }

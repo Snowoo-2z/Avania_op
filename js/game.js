@@ -12,10 +12,13 @@ import { Camera } from './camera.js';
 import { Input } from './input.js';
 import { Inventory } from './inventory.js';
 import {
-  buildTileset, getTileCanvas, getWaterFrame, drawTreeObject, drawRockObject, getObjectSpriteInfo,
+  buildTileset, getTileCanvas, getWaterFrame, drawTreeObject, drawRockObject,
+  getObjectSprite, getObjectSpriteInfo, treeVariantAt, treeDropCount,
+  treeBreakTime, TREE_VARIANTS,
 } from './tileset.js';
 import { drawCharacter } from './character.js';
 import { getItemSprite } from './icons.js';
+import { drawHeldItem, heldItemIsBehind } from './held.js';
 import { isLowPowerDevice, makeCanvas } from './utils.js';
 
 const REACH_SQ = REACH * REACH;
@@ -57,19 +60,28 @@ const CRACK_SEGMENTS = [
   { stage: 8, points: [[8, 13], [5, 15], [3, 13]] },
 ];
 
-function buildMiningCrackSprites(w = TILE, h = TILE) {
-  const sx = w / TILE; // échelle (grille de référence = 32 px)
+function hash32(n) {
+  n |= 0;
+  n = Math.imul(n ^ (n >>> 16), 0x7feb352d);
+  n = Math.imul(n ^ (n >>> 15), 0x846ca68b);
+  return (n ^ (n >>> 16)) >>> 0;
+}
+
+function buildMiningCrackSprites(w = TILE, h = TILE, mask = null) {
+  const sx = w / TILE;
   const sy = h / TILE;
-  const lineW = 1.35 * Math.max(sx, sy);
+  const lineW = Math.max(1.15, Math.min(2.4, 1.15 * Math.max(sx, sy) * 0.72));
   return Array.from({ length: MINING_CRACK_STAGES }, (_, stage) => {
     const canvas = makeCanvas(w, h);
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = `rgba(12,14,15,${0.025 + stage * 0.012})`;
-    ctx.fillRect(1, 1, w - 2, h - 2);
-    ctx.strokeStyle = `rgba(17,19,20,${0.72 + stage * 0.025})`;
+
+    // Réseau de fissures qui se développe, plus un voile très léger.
+    ctx.fillStyle = `rgba(12,14,15,${0.02 + stage * 0.012})`;
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = `rgba(10,12,12,${0.62 + stage * 0.035})`;
     ctx.lineWidth = lineW;
-    ctx.lineCap = 'butt';
+    ctx.lineCap = 'square';
     ctx.lineJoin = 'miter';
 
     for (const segment of CRACK_SEGMENTS) {
@@ -83,8 +95,50 @@ function buildMiningCrackSprites(w = TILE, h = TILE) {
       });
       ctx.stroke();
     }
+
+    // Branches supplémentaires pour couvrir un grand sprite (gros arbre)
+    // sans jamais dessiner un « pavé » : elles seront masquées à la forme.
+    const extra = 2 + stage;
+    for (let i = 0; i < extra; i++) {
+      const seed = hash32(w * 131 + h * 17 + stage * 97 + i * 13);
+      const x0 = ((seed & 255) / 255) * w;
+      const y0 = (((seed >>> 8) & 255) / 255) * h;
+      const ang = ((seed >>> 16) & 255) / 255 * Math.PI * 2;
+      const len = (0.18 + ((seed >>> 24) & 255) / 255 * 0.28) * Math.max(w, h);
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x0 + Math.cos(ang) * len, y0 + Math.sin(ang) * len);
+      if (i % 2 === 0) {
+        ctx.lineTo(
+          x0 + Math.cos(ang + 0.7) * len * 0.45,
+          y0 + Math.sin(ang + 0.7) * len * 0.45,
+        );
+      }
+      ctx.stroke();
+    }
+
+    if (mask) {
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.drawImage(mask, 0, 0);
+      ctx.globalCompositeOperation = 'source-over';
+    }
     return canvas;
   });
+}
+
+function buildDamageOverlay(mask) {
+  if (!mask) return null;
+  const c = makeCanvas(mask.width, mask.height);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#120e0c';
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.globalCompositeOperation = 'destination-in';
+  ctx.drawImage(mask, 0, 0);
+  return c;
+}
+
+function isStoneLike(blockId) {
+  return blockId === 'rock' || blockId === 'stone';
 }
 
 export class Game {
@@ -114,16 +168,19 @@ export class Game {
     this.miningCrackSprites = buildMiningCrackSprites(TILE, TILE);
     // Fissures à la taille exacte des arbres / rochers (couvrent tout le corps).
     this.objectCrackSprites = {};
-    for (const kind of ['tree', 'rock']) {
-      const info = getObjectSpriteInfo(kind);
-      if (info) {
-        this.objectCrackSprites[kind] = {
-          sprites: buildMiningCrackSprites(info.w, info.h),
-          anchorX: info.anchorX,
-          anchorY: info.anchorY,
-        };
-      }
-    }
+    const registerObjectCracks = (key, kind, variant) => {
+      const sprite = getObjectSprite(kind, variant);
+      const info = getObjectSpriteInfo(kind, variant);
+      if (!sprite || !info) return;
+      this.objectCrackSprites[key] = {
+        sprites: buildMiningCrackSprites(info.w, info.h, sprite.mask || sprite.canvas),
+        overlay: buildDamageOverlay(sprite.mask || sprite.canvas),
+        anchorX: info.anchorX,
+        anchorY: info.anchorY,
+      };
+    };
+    for (const variant of TREE_VARIANTS) registerObjectCracks(`tree:${variant}`, 'tree', variant);
+    registerObjectCracks('rock', 'rock');
     this.staticObjects = [];
     this.staticObjectMap = new Map();
     this.rebuildStaticObjects();
@@ -157,6 +214,10 @@ export class Game {
     // Progression de minage : le bloc ne disparaît qu'après un maintien
     // du clic gauche. Le bon outil réduit la durée nécessaire.
     this.mining = { tx: -1, ty: -1, progress: 0, duration: 0 };
+    // Petit « pop » quand on change d'objet en main (touches 1–9).
+    this.equipPop = 0;
+    this.lastHeldId = null;
+    this.lastHeldSlot = -1;
 
     this.running = false;
     this.onFrame = this.onFrame.bind(this);
@@ -258,6 +319,7 @@ export class Game {
     this.camera.follow(this.player.x, this.player.y, dt);
     this.updateDroppedItems(dt);
     this.updateParticles(dt);
+    this.updateHeldItem(dt);
 
     this.updateTarget();
     this.handleHotbarKeys();
@@ -328,7 +390,11 @@ export class Game {
       return;
     }
 
-    const duration = this.world.breakDurationAt(this.targetTx, this.targetTy);
+    const existingBlock = this.world.blockAt(this.targetTx, this.targetTy);
+    let duration = this.world.breakDurationAt(this.targetTx, this.targetTy);
+    if (existingBlock === 'tree') {
+      duration = treeBreakTime(treeVariantAt(this.targetTx, this.targetTy));
+    }
     if (duration <= 0) {
       this.resetMining();
       return;
@@ -344,18 +410,19 @@ export class Game {
     const selectedDef = selected ? ITEM_DEFS[selected.id] : null;
     const requiredTool = this.world.requiredToolAt(this.targetTx, this.targetTy);
     const effectiveTool = selectedDef?.toolType === requiredTool;
+    const stoneByHand = isStoneLike(existingBlock) && !effectiveTool;
 
     // Une hache / pioche / pelle adaptée accélère réellement le minage.
-    // La main reste utilisable, mais demande davantage de temps.
-    const speed = effectiveTool
+    // La pierre à la main est volontairement pénible (×10) et ne drop rien.
+    let speed = effectiveTool
       ? (selectedDef.efficiency || 1)
       : selectedDef?.type === 'tool' ? 0.7 : 0.55;
+    if (stoneByHand) speed /= 10;
     this.mining.duration = duration / speed;
     this.mining.progress += dt / this.mining.duration;
 
     if (this.mining.progress < 1) return;
 
-    const existingBlock = this.world.blockAt(this.targetTx, this.targetTy);
     const i = this.world.idx(this.targetTx, this.targetTy);
     const oldFloor = this.world.floor[i];
     const drop = this.world.breakBlock(this.targetTx, this.targetTy);
@@ -363,17 +430,23 @@ export class Game {
       if (existingBlock && BLOCK_DEFS[existingBlock]?.kind === 'object') {
         this.removeStaticObjectAt(this.targetTx, this.targetTy);
       }
-      // L'objet tombe au sol : on le ramasse en marchant dessus.
-      const dropN = (existingBlock && BLOCK_DEFS[existingBlock]?.dropN) || 1;
-      // Plusieurs ressources : on les disperse en éventail pour un joli
-      // effet "éclaboussure" dans des directions différentes.
-      const baseAngle = Math.random() * Math.PI * 2;
-      for (let k = 0; k < dropN; k++) {
-        const angle = dropN > 1 ? baseAngle + (k / dropN) * Math.PI * 2 : null;
-        this.spawnDrop(this.targetTx, this.targetTy, drop, 1, angle);
-      }
-      // Petit jet de débris pixelisés à l'endroit de la casse.
       this.spawnBreakParticles(this.targetTx, this.targetTy, existingBlock || drop);
+      if (stoneByHand) {
+        this.notify('Sans pioche, la pierre s\'effrite… rien à récupérer.');
+      } else {
+        let dropN = (existingBlock && BLOCK_DEFS[existingBlock]?.dropN) || 1;
+        if (existingBlock === 'tree') {
+          dropN = treeDropCount(treeVariantAt(this.targetTx, this.targetTy));
+        }
+        const baseAngle = Math.random() * Math.PI * 2;
+        for (let k = 0; k < dropN; k++) {
+          const jitter = (Math.random() - 0.5) * 0.45;
+          const angle = dropN > 1
+            ? baseAngle + (k / dropN) * Math.PI * 2 + jitter
+            : null;
+          this.spawnDrop(this.targetTx, this.targetTy, drop, 1, angle);
+        }
+      }
       if (selectedDef?.type === 'tool') {
         const result = this.inventory.damageSelectedTool(1);
         if (result.broken) this.notify(`${selectedDef.label} s'est cassé.`);
@@ -390,15 +463,22 @@ export class Game {
     const cx = tx * TILE + TILE / 2;
     const cy = ty * TILE + TILE / 2;
     const a = angle === null ? Math.random() * Math.PI * 2 : angle;
-    const speed = 26 + Math.random() * 38;
+    // Départ déjà décalé + élan plus long : les piles ne restent plus
+    // superposées au pied de l'arbre.
+    const spread = 16 + Math.random() * 12;
+    const speed = 78 + Math.random() * 52;
+    const x = cx + Math.cos(a) * spread;
+    const y = cy + Math.sin(a) * spread;
     this.droppedItems.push({
       id,
       count,
-      x: cx,
-      y: cy,
+      x,
+      y,
       vx: Math.cos(a) * speed,
       vy: Math.sin(a) * speed,
-      sortY: cy,
+      hop: 8 + Math.random() * 10,
+      hopV: 90 + Math.random() * 45,
+      sortY: y,
       born: this.time,
     });
   }
@@ -412,16 +492,26 @@ export class Game {
     // Rayon de ramassage généreux : il suffit d'être « sur » la tuile
     // de l'objet pour le récupérer, même sans être pile au centre.
     const PICKUP_SQ = 28 * 28;
-    const friction = 1 - Math.min(1, dt * 7);
+    const friction = 1 - Math.min(1, dt * 4.2);
+    const gravity = 480 * dt;
 
     for (let n = this.droppedItems.length - 1; n >= 0; n--) {
       const d = this.droppedItems[n];
 
-      // léger élan au lâcher, amorti par friction
+      // léger élan au lâcher, amorti par friction + petit rebond
       d.x += d.vx * dt;
       d.y += d.vy * dt;
       d.vx *= friction;
       d.vy *= friction;
+      if (d.hop > 0 || d.hopV !== 0) {
+        d.hopV -= gravity;
+        d.hop += d.hopV * dt;
+        if (d.hop < 0) {
+          d.hop = 0;
+          d.hopV *= -0.36;
+          if (Math.abs(d.hopV) < 22) d.hopV = 0;
+        }
+      }
 
       const dx = px - d.x;
       const dy = py - d.y;
@@ -552,24 +642,24 @@ export class Game {
     ctx.translate(-cam.x * zoom, -cam.y * zoom);
     ctx.scale(zoom, zoom);
 
-    const viewL = Math.floor(cam.x / TILE) - 1;
-    const viewT = Math.floor(cam.y / TILE) - 1;
-    const viewR = Math.ceil((cam.x + W / zoom) / TILE) + 1;
+    const viewL = Math.floor(cam.x / TILE) - 2;
+    const viewT = Math.floor(cam.y / TILE) - 3;
+    const viewR = Math.ceil((cam.x + W / zoom) / TILE) + 2;
     const viewB = Math.ceil((cam.y + H / zoom) / TILE) + 1;
     const minTx = Math.max(0, viewL);
     const minTy = Math.max(0, viewT);
     const maxTx = Math.min(WORLD_W - 1, viewR);
     const maxTy = Math.min(WORLD_H - 1, viewB);
 
-    // 1) sols par chunks + blocs pleins posés
+    // 1) sols par chunks + blocs posés (une tuile = un bloc, plus petit qu'un arbre)
     this.drawFloorChunks(ctx, viewL, viewT, viewR, viewB);
     this.drawPlacedBlocks(ctx, minTx, minTy, maxTx, maxTy);
 
-    // 2) surbrillance de la tuile ciblée
-    this.drawTargetHighlight(ctx, zoom);
-
-    // 3) objets (arbres, rochers) + joueurs, triés par profondeur
+    // 2) objets (arbres, rochers) + joueurs, triés par profondeur
     this.drawDepthSorted(ctx, minTx, minTy, maxTx, maxTy);
+
+    // 3) surbrillance de la tuile ciblée
+    this.drawTargetHighlight(ctx, zoom);
 
     // 4) fissures de minage par-dessus la ressource ciblée, comme dans Minecraft
     this.drawMiningCracks(ctx);
@@ -701,12 +791,23 @@ export class Game {
     // Arbre / rocher : on couvre l'ensemble du corps (sprite complet).
     const block = this.world.blockAt(this.targetTx, this.targetTy);
     if (block && BLOCK_DEFS[block]?.kind === 'object') {
-      const crack = this.objectCrackSprites[block];
+      const crackKey = block === 'tree'
+        ? `tree:${treeVariantAt(this.targetTx, this.targetTy)}`
+        : block;
+      const crack = this.objectCrackSprites[crackKey];
       if (crack) {
-        const sprite = crack.sprites[stage];
         const cx = this.targetTx * TILE + TILE / 2;
         const cy = this.targetTy * TILE + TILE / 2;
-        if (sprite) ctx.drawImage(sprite, cx - crack.anchorX, cy - crack.anchorY);
+        const dx = cx - crack.anchorX;
+        const dy = cy - crack.anchorY;
+        if (crack.overlay) {
+          ctx.save();
+          ctx.globalAlpha = 0.1 + this.mining.progress * 0.32;
+          ctx.drawImage(crack.overlay, dx, dy);
+          ctx.restore();
+        }
+        const sprite = crack.sprites[stage];
+        if (sprite) ctx.drawImage(sprite, dx, dy);
         return;
       }
     }
@@ -721,13 +822,14 @@ export class Game {
   // Un petit "pop" d'apparition adoucit le lâcher.
   drawDrop(ctx, drop) {
     const sprite = getItemSprite(drop.id);
-    const base = 0.42; // un peu plus petit que l'original
+    const base = 0.46;
     const age = this.time - drop.born;
     const pop = Math.min(1, age / 0.16);
     const scale = base * (0.6 + 0.4 * pop);
     const size = 32 * scale;
-    const bob = Math.sin(this.time * 4 + drop.x * 0.13) * 1.6;
-    const y = drop.y - bob;
+    const bob = Math.sin(this.time * 4 + drop.x * 0.13) * 1.4;
+    const hop = drop.hop || 0;
+    const y = drop.y - bob - hop;
 
     ctx.fillStyle = 'rgba(0,0,0,0.22)';
     ctx.beginPath();
@@ -755,6 +857,7 @@ export class Game {
           ty,
           sortY: ty * TILE + TILE / 2,
           kind: block,
+          variant: block === 'tree' ? treeVariantAt(tx, ty) : null,
           x: tx * TILE + TILE / 2,
           y: ty * TILE + TILE / 2,
           active: true,
@@ -791,18 +894,18 @@ export class Game {
       drawables.push({ sortY: drop.sortY, kind: 'drop', drop });
     }
 
-    drawables.push({ sortY: this.player.y, kind: 'player', player: this.player });
+    drawables.push({ sortY: this.player.y, kind: 'player', player: this.player, local: true });
     for (const p of this.otherPlayers) {
-      drawables.push({ sortY: p.y, kind: 'player', player: p });
+      drawables.push({ sortY: p.y, kind: 'player', player: p, local: false });
     }
 
     drawables.sort(SORT_BY_Y);
     for (let i = 0; i < drawables.length; i++) {
       const d = drawables[i];
-      if (d.kind === 'tree') drawTreeObject(ctx, d.x, d.y);
+      if (d.kind === 'tree') drawTreeObject(ctx, d.x, d.y, d.variant || 'medium');
       else if (d.kind === 'rock') drawRockObject(ctx, d.x, d.y);
       else if (d.kind === 'drop') this.drawDrop(ctx, d.drop);
-      else this.drawPlayer(ctx, d.player);
+      else this.drawPlayer(ctx, d.player, d.local);
     }
   }
 
@@ -826,15 +929,51 @@ export class Game {
     return c;
   }
 
-  drawPlayer(ctx, player) {
-    drawCharacter(ctx, player.appearance, player.x, player.y, {
+  updateHeldItem(dt) {
+    const stack = this.inventory.getSelectedStackRef();
+    const id = stack ? stack.id : null;
+    const slot = this.inventory.selected;
+    if (id !== this.lastHeldId || slot !== this.lastHeldSlot) {
+      this.lastHeldId = id;
+      this.lastHeldSlot = slot;
+      this.equipPop = 1;
+    }
+    this.equipPop = Math.max(0, this.equipPop - dt * 4.6);
+  }
+
+  heldDrawOpts(player) {
+    return {
       facing: player.facing,
       walkPhase: player.moving ? player.walkPhase : 0,
+      scale: PLAYER_RENDER_SCALE,
+      mining: this.mining.progress > 0,
+      time: this.time,
+      pop: this.equipPop,
+      shadow: !this.performanceMode,
+    };
+  }
+
+  drawPlayer(ctx, player, local = false) {
+    const heldId = local ? this.lastHeldId : null;
+    const walkPhase = player.moving ? player.walkPhase : 0;
+    const behind = heldId && heldItemIsBehind(player.facing);
+
+    if (behind) {
+      drawHeldItem(ctx, player.appearance, heldId, player.x, player.y, this.heldDrawOpts(player));
+    }
+
+    drawCharacter(ctx, player.appearance, player.x, player.y, {
+      facing: player.facing,
+      walkPhase,
       // Le joueur reste lisible, mais nettement plus petit que l'arbre :
       // une tuile représente désormais un vrai espace autour de lui.
       scale: PLAYER_RENDER_SCALE,
       shadow: !this.performanceMode,
     });
+
+    if (heldId && !behind) {
+      drawHeldItem(ctx, player.appearance, heldId, player.x, player.y, this.heldDrawOpts(player));
+    }
     this.drawNameTag(ctx, player);
   }
 
