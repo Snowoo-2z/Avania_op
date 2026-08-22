@@ -5,14 +5,17 @@
 import {
   TILE, WORLD_W, WORLD_H, REACH, PERFORMANCE, PLAYER_RENDER_SCALE,
 } from './config.js';
-import { BLOCK_DEFS, ITEM_DEFS } from './blocks.js';
+import {
+  BLOCK_DEFS, ITEM_DEFS, TOOL_TIERS, toolTierIndex, blockMinTierIndex,
+} from './blocks.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { Camera } from './camera.js';
 import { Input } from './input.js';
 import { Inventory } from './inventory.js';
 import {
-  buildTileset, getTileCanvas, getWaterFrame, drawTreeObject, drawRockObject,
+  buildTileset, getTileCanvas, getDoorCanvas, getFurnaceCanvas, getWaterFrame,
+  drawTreeObject, drawRockObject, drawIronOreObject,
   getObjectSprite, getObjectSpriteInfo, treeVariantAt, treeDropCount,
   treeBreakTime, TREE_VARIANTS,
 } from './tileset.js';
@@ -20,10 +23,18 @@ import { drawCharacter } from './character.js';
 import { getItemSprite } from './icons.js';
 import { drawHeldItem, heldItemIsBehind } from './held.js';
 import { isLowPowerDevice, makeCanvas } from './utils.js';
+import { updateFurnace, makeFurnaceEntry } from './furnace.js';
+import { MOB_DEFS, spawnMobs, updateMob, drawMob, mobDrops } from './mobs.js';
 
 const REACH_SQ = REACH * REACH;
 const SORT_BY_Y = (a, b) => a.sortY - b.sortY;
 const MINING_CRACK_STAGES = 9;
+// Vitesse du balancement de l'outil pendant le minage (rad/s) : un va-et-
+// vient complet ≈ 0,66 s, comme le geste de la main dans Minecraft.
+const SWING_SPEED = 9.5;
+// Durée de vie d'un objet au sol (5 min, comme Minecraft).
+const DROP_LIFETIME = 300;
+const MAX_DROPS = 240;
 
 // Couleurs des particules de casse, par ressource. Des carrés pixelisés
 // de la même palette que la ressource, pour un débris cohérent.
@@ -39,6 +50,9 @@ const BREAK_PARTICLE_COLORS = {
   sandBlock: ['#e2c88a', '#c0a25e', '#f4e6b8'],
   dirt: ['#8a6a46', '#6a4f30', '#a8875c'],
   dirtBlock: ['#8a6a46', '#6a4f30', '#a8875c'],
+  ironOre: ['#8d8d94', '#b8865b', '#d8a06e', '#a5a5ac'],
+  ironBlock: ['#d8dde2', '#aab3bb', '#f4f7fa', '#7a838c'],
+  door: ['#c89a5e', '#b07a3c', '#8a5a2e'],
 };
 const MAX_PARTICLES = 240; // plafond anti-abus (spam de casses)
 
@@ -48,16 +62,36 @@ const MAX_PARTICLES = 240; // plafond anti-abus (spam de casses)
 // Les coordonnées sont définies dans une grille 32×32 puis mises à
 // l'échelle : on peut ainsi couvrir TOUT le corps d'un arbre ou d'un
 // rocher (pas seulement le bas de sa tuile).
+//
+// Le motif imite la texture de casse de Minecraft : de fines fissures
+// apparaissent au centre puis se ramifient, et le bloc s'assombrit de
+// plus en plus jusqu'à la casse.
 const CRACK_SEGMENTS = [
-  { stage: 0, points: [[16, 16], [12, 12], [8, 13]] },
-  { stage: 1, points: [[12, 12], [11, 7], [7, 4]] },
-  { stage: 2, points: [[16, 16], [19, 13], [24, 12]] },
-  { stage: 3, points: [[19, 13], [23, 8], [28, 7]] },
-  { stage: 4, points: [[16, 16], [14, 20], [10, 25]] },
-  { stage: 5, points: [[14, 20], [7, 22], [4, 27]] },
-  { stage: 6, points: [[16, 16], [20, 19], [24, 24], [28, 26]] },
-  { stage: 7, points: [[20, 19], [21, 24], [19, 29]] },
-  { stage: 8, points: [[8, 13], [5, 15], [3, 13]] },
+  // Stage 0 : une fissure naissante au centre
+  { stage: 0, points: [[16, 16], [13, 12]] },
+  // Stage 1 : elle s'allonge vers le haut
+  { stage: 1, points: [[13, 12], [11, 8], [8, 5]] },
+  // Stage 2 : une branche part vers la droite
+  { stage: 2, points: [[16, 16], [20, 19], [24, 21]] },
+  // Stage 3 : la branche droite monte et une fissure descend à gauche
+  { stage: 3, points: [[24, 21], [27, 18], [30, 17]] },
+  { stage: 3, points: [[16, 16], [14, 21], [11, 26]] },
+  // Stage 4 : descente complète + branche gauche
+  { stage: 4, points: [[11, 26], [9, 30], [7, 33]] },
+  { stage: 4, points: [[16, 16], [19, 12], [22, 9]] },
+  // Stage 5 : réseau dense sur le haut
+  { stage: 5, points: [[22, 9], [26, 7], [29, 4]] },
+  { stage: 5, points: [[8, 5], [4, 4]] },
+  // Stage 6 : fissures basses + traverses
+  { stage: 6, points: [[20, 19], [18, 24], [19, 29]] },
+  { stage: 6, points: [[7, 33], [3, 31]] },
+  // Stage 7 : ramification générale
+  { stage: 7, points: [[13, 12], [9, 10], [5, 9]] },
+  { stage: 7, points: [[14, 21], [19, 22], [23, 24]] },
+  // Stage 8 : le bloc est prêt à céder — fissures partout
+  { stage: 8, points: [[30, 17], [31, 21]] },
+  { stage: 8, points: [[24, 21], [23, 26]] },
+  { stage: 8, points: [[11, 8], [6, 11]] },
 ];
 
 function hash32(n) {
@@ -68,21 +102,23 @@ function hash32(n) {
 }
 
 function buildMiningCrackSprites(w = TILE, h = TILE, mask = null) {
-  const sx = w / TILE;
-  const sy = h / TILE;
-  const lineW = Math.max(1.15, Math.min(2.4, 1.15 * Math.max(sx, sy) * 0.72));
+  const sx = w / 32;
+  const sy = h / 32;
   return Array.from({ length: MINING_CRACK_STAGES }, (_, stage) => {
     const canvas = makeCanvas(w, h);
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
 
-    // Réseau de fissures qui se développe, plus un voile très léger.
-    ctx.fillStyle = `rgba(12,14,15,${0.02 + stage * 0.012})`;
+    // Voile d'assombrissement : léger au début, presque noir à la fin.
+    const veil = 0.06 + (stage / (MINING_CRACK_STAGES - 1)) * 0.34;
+    ctx.fillStyle = `rgba(8,9,10,${veil})`;
     ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = `rgba(10,12,12,${0.62 + stage * 0.035})`;
+
+    const lineW = Math.max(1.2, Math.min(2.6, (1.2 + stage * 0.1) * Math.max(sx, sy)));
+    ctx.strokeStyle = `rgba(5,6,7,${0.5 + stage * 0.055})`;
     ctx.lineWidth = lineW;
-    ctx.lineCap = 'square';
-    ctx.lineJoin = 'miter';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
     for (const segment of CRACK_SEGMENTS) {
       if (segment.stage > stage) continue;
@@ -96,24 +132,18 @@ function buildMiningCrackSprites(w = TILE, h = TILE, mask = null) {
       ctx.stroke();
     }
 
-    // Branches supplémentaires pour couvrir un grand sprite (gros arbre)
-    // sans jamais dessiner un « pavé » : elles seront masquées à la forme.
-    const extra = 2 + stage;
+    // Petites branches décoratives déterministes pour que le motif ne soit
+    // pas trop régulier sur les grands sprites (arbres, rochers).
+    const extra = Math.max(0, stage - 3);
     for (let i = 0; i < extra; i++) {
       const seed = hash32(w * 131 + h * 17 + stage * 97 + i * 13);
       const x0 = ((seed & 255) / 255) * w;
       const y0 = (((seed >>> 8) & 255) / 255) * h;
       const ang = ((seed >>> 16) & 255) / 255 * Math.PI * 2;
-      const len = (0.18 + ((seed >>> 24) & 255) / 255 * 0.28) * Math.max(w, h);
+      const len = (0.12 + ((seed >>> 24) & 255) / 255 * 0.2) * Math.max(w, h);
       ctx.beginPath();
       ctx.moveTo(x0, y0);
       ctx.lineTo(x0 + Math.cos(ang) * len, y0 + Math.sin(ang) * len);
-      if (i % 2 === 0) {
-        ctx.lineTo(
-          x0 + Math.cos(ang + 0.7) * len * 0.45,
-          y0 + Math.sin(ang + 0.7) * len * 0.45,
-        );
-      }
       ctx.stroke();
     }
 
@@ -138,7 +168,7 @@ function buildDamageOverlay(mask) {
 }
 
 function isStoneLike(blockId) {
-  return blockId === 'rock' || blockId === 'stone';
+  return blockId === 'rock' || blockId === 'stone' || blockId === 'ironOre';
 }
 
 export class Game {
@@ -160,6 +190,13 @@ export class Game {
     // Objets posés au sol (ramassables en marchant dessus).
     this.droppedItems = [];
     this.pickupFullCooldown = 0;
+    // Animaux (moutons, vaches) qui se baladent dans le monde.
+    this.mobs = spawnMobs(this.world);
+    this.mobAttackCooldown = 0;
+    // Fours posés : contenu + progression (clé "tx,ty").
+    this.furnaceData = new Map();
+    // Rappels branchés par l'UI (ex. ouvrir le panneau du four).
+    this.uiCallbacks = { openFurnace: null };
     // Particules de casse (débris légers, courte durée de vie).
     this.particles = [];
     this.lastTime = performance.now();
@@ -181,6 +218,7 @@ export class Game {
     };
     for (const variant of TREE_VARIANTS) registerObjectCracks(`tree:${variant}`, 'tree', variant);
     registerObjectCracks('rock', 'rock');
+    registerObjectCracks('ironOre', 'ironOre');
     this.staticObjects = [];
     this.staticObjectMap = new Map();
     this.rebuildStaticObjects();
@@ -214,6 +252,9 @@ export class Game {
     // Progression de minage : le bloc ne disparaît qu'après un maintien
     // du clic gauche. Le bon outil réduit la durée nécessaire.
     this.mining = { tx: -1, ty: -1, progress: 0, duration: 0 };
+    // Balancement de l'outil pendant le minage : une phase continue qui
+    // démarre au repos (0) et revient doucement au repos quand on arrête.
+    this.swingPhase = 0;
     // Petit « pop » quand on change d'objet en main (touches 1–9).
     this.equipPop = 0;
     this.lastHeldId = null;
@@ -312,6 +353,8 @@ export class Game {
   update(dt) {
     this.time += dt;
     this.actionCooldown = Math.max(0, this.actionCooldown - dt);
+    // Les fours cuisent en continu, même panneau ouvert (la barre avance).
+    this.updateFurnaces(dt);
     if (this.paused) return;
 
     const dir = this.input.getDirection();
@@ -320,10 +363,179 @@ export class Game {
     this.updateDroppedItems(dt);
     this.updateParticles(dt);
     this.updateHeldItem(dt);
+    this.updateMobs(dt);
 
     this.updateTarget();
     this.handleHotbarKeys();
+    this.handleDropKey();
     this.handleClicks(dt);
+  }
+
+  // ------------------------------------------------------------
+  //  Fours : chaque four posé cuit indépendamment (en temps réel).
+  // ------------------------------------------------------------
+  updateFurnaces(dt) {
+    if (this.furnaceData.size === 0) return;
+    for (const entry of this.furnaceData.values()) {
+      updateFurnace(entry, dt);
+    }
+  }
+
+  getFurnaceEntry(tx, ty) {
+    const key = `${tx},${ty}`;
+    let entry = this.furnaceData.get(key);
+    if (!entry) {
+      entry = makeFurnaceEntry();
+      this.furnaceData.set(key, entry);
+    }
+    return entry;
+  }
+
+  // ------------------------------------------------------------
+  //  Mobs (moutons, vaches) : errance + fuite quand on les frappe.
+  // ------------------------------------------------------------
+  updateMobs(dt) {
+    this.mobAttackCooldown = Math.max(0, this.mobAttackCooldown - dt);
+    for (const mob of this.mobs) {
+      if (!mob.alive) continue;
+      updateMob(mob, dt, this.world, this.player);
+    }
+  }
+
+  // Trouve un mob sous le curseur (dans la portée d'interaction).
+  mobUnderCursor() {
+    const m = this.input.mouse;
+    const zoom = this.camera.zoom;
+    const wx = this.camera.x + m.x / zoom;
+    const wy = this.camera.y + m.y / zoom;
+    let best = null;
+    let bestDist = Infinity;
+    for (const mob of this.mobs) {
+      if (!mob.alive) continue;
+      const dx = mob.x - wx;
+      const dy = mob.y - wy;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < 15 * 15 && distSq < bestDist) {
+        best = mob;
+        bestDist = distSq;
+      }
+    }
+    // Portée : le joueur doit être assez proche du mob.
+    if (best) {
+      const dx = best.x - this.player.x;
+      const dy = best.y - this.player.y;
+      if (dx * dx + dy * dy > REACH_SQ) return null;
+    }
+    return best;
+  }
+
+  attackMob(mob) {
+    const selected = this.inventory.getSelectedStackRef();
+    const def = selected && ITEM_DEFS[selected.id];
+    const sword = def?.toolType === 'sword';
+    const damage = sword ? 3 : 1;
+
+    mob.hp -= damage;
+    mob.hitFlash = 0.18;
+    mob.fleeT = 1.7;
+    this.spawnHitParticles(mob.x, mob.y);
+
+    if (sword) {
+      const result = this.inventory.damageSelectedTool(1);
+      if (result.broken) this.notify(`${def.label} s'est cassé.`);
+    }
+
+    if (mob.hp <= 0) {
+      mob.alive = false;
+      this.killMob(mob);
+      const label = (MOB_DEFS[mob.kind] && MOB_DEFS[mob.kind].label) || 'Créature';
+      this.notify(`${label} tué${mob.kind === 'vache' ? 'e' : ''}.`);
+    }
+  }
+
+  killMob(mob) {
+    const drops = mobDrops(mob);
+    for (const d of drops) {
+      for (let i = 0; i < d.count; i++) {
+        this.spawnDropAt(mob.x, mob.y, d.id, 1);
+      }
+    }
+    this.spawnBreakParticles(Math.floor(mob.x / TILE), Math.floor(mob.y / TILE), mob.kind === 'sheep' ? 'wool' : 'rawBeef');
+  }
+
+  spawnHitParticles(x, y) {
+    if (this.particles.length > MAX_PARTICLES) return;
+    const count = this.performanceMode ? 3 : 5;
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 30 + Math.random() * 40;
+      this.particles.push({
+        x,
+        y: y - 10,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 30,
+        life: 1,
+        decay: 3.4,
+        size: 1.4 + Math.random() * 1.6,
+        color: '#ff5a4a',
+      });
+    }
+  }
+
+  // ------------------------------------------------------------
+  //  Lâcher un objet au sol (touche Q, comme Minecraft)
+  //  Q = un seul objet · Ctrl+Q = toute la pile sélectionnée
+  // ------------------------------------------------------------
+  handleDropKey() {
+    if (!this.input.isDown('q')) return;
+    this.input.keys.delete('q');
+    const wholeStack = this.input.isDown('control') || this.input.isDown('shift');
+    this.dropSelected(wholeStack ? Infinity : 1);
+  }
+
+  dropSelected(count) {
+    const idx = this.inventory.selectedSlotIndex();
+    const stack = this.inventory.getSlot(idx);
+    if (!stack) return;
+    const take = Math.min(count, stack.count);
+    const dropped = this.inventory.takeSlot(idx, take);
+    if (!dropped) return;
+    this.spawnDropAtPlayer(dropped.id, dropped.count);
+  }
+
+  // Lâche un objet pile au niveau du joueur, avec un élan vers la
+  // direction regardée (le joueur « jette » l'objet devant lui).
+  spawnDropAtPlayer(id, count) {
+    const dirs = {
+      down: { x: 0, y: 1 },
+      up: { x: 0, y: -1 },
+      left: { x: -1, y: 0 },
+      right: { x: 1, y: 0 },
+    };
+    const d = dirs[this.player.facing] || dirs.down;
+    const a = Math.atan2(d.y, d.x) + (Math.random() - 0.5) * 0.55;
+    const sp = 72 + Math.random() * 46;
+    this.spawnDropAt(this.player.x, this.player.y, id, count, a, sp);
+  }
+
+  // Fait apparaître un objet au sol à une position donnée.
+  spawnDropAt(x, y, id, count = 1, angle = null, speed = 0) {
+    const a = angle === null ? Math.random() * Math.PI * 2 : angle;
+    const sp = speed || 40 + Math.random() * 40;
+    this.droppedItems.push({
+      id,
+      count,
+      x,
+      y,
+      vx: Math.cos(a) * sp,
+      vy: Math.sin(a) * sp,
+      hop: 8 + Math.random() * 8,
+      hopV: 90 + Math.random() * 40,
+      sortY: y,
+      born: this.time,
+      life: DROP_LIFETIME,
+    });
+    this.limitDrops();
   }
 
   // ------------------------------------------------------------
@@ -378,10 +590,70 @@ export class Game {
     this.input.mouse.leftClicked = false;
     this.input.mouse.rightClicked = false;
 
-    if (holdingLeft) this.mineTarget(dt);
-    else if (clickedLeft || this.mining.progress > 0) this.resetMining();
+    if (holdingLeft) {
+      // Le clic gauche frappe d'abord les animaux sous le curseur
+      // (comme dans Minecraft), sinon il mine la tuile.
+      if (!this.tryAttackMob(dt)) this.mineTarget(dt);
+    } else if (clickedLeft || this.mining.progress > 0) {
+      this.resetMining();
+    }
 
-    if (clickedRight || holdingRight) this.placeSelectedBlock();
+    if (clickedRight || holdingRight) this.interactTarget();
+  }
+
+  // Frappe un mob sous le curseur si possible. Retourne true si un mob
+  // a été touché (le minage de la tuile est alors consommé).
+  tryAttackMob(dt) {
+    const mob = this.mobUnderCursor();
+    if (!mob) return false;
+    if (this.mobAttackCooldown <= 0) {
+      this.attackMob(mob);
+      this.mobAttackCooldown = 0.38;
+    }
+    return true;
+  }
+
+  // Clic droit : porte (ouvrir/fermer) ou four (ouvrir le panneau), sinon
+  // pose le bloc sélectionné (comme dans Minecraft).
+  interactTarget() {
+    if (this.actionCooldown > 0 || !this.inReach) return;
+    const targetBlock = this.world.blockAt(this.targetTx, this.targetTy);
+    if (targetBlock === 'door' && !this.isPlayerOnTile(this.targetTx, this.targetTy)) {
+      const open = this.world.toggleDoor(this.targetTx, this.targetTy);
+      this.actionCooldown = 0.28;
+      this.spawnDoorPuff(this.targetTx, this.targetTy, open);
+      return;
+    }
+    if (targetBlock === 'furnace') {
+      if (this.uiCallbacks.openFurnace) {
+        this.uiCallbacks.openFurnace(this.targetTx, this.targetTy);
+      }
+      this.actionCooldown = 0.25;
+      return;
+    }
+    this.placeSelectedBlock();
+  }
+
+  // Petite bouffée de particules quand une porte s'ouvre / se ferme.
+  spawnDoorPuff(tx, ty, open) {
+    if (this.particles.length > MAX_PARTICLES) return;
+    const cx = tx * TILE + TILE / 2;
+    const cy = ty * TILE + TILE / 2;
+    const count = this.performanceMode ? 3 : 5;
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 18 + Math.random() * 26;
+      this.particles.push({
+        x: cx,
+        y: cy,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 20,
+        life: 1,
+        decay: 3.2,
+        size: 1 + Math.random() * 1.6,
+        color: open ? '#c8a36a' : '#9a7a4a',
+      });
+    }
   }
 
   mineTarget(dt) {
@@ -410,7 +682,11 @@ export class Game {
     const selectedDef = selected ? ITEM_DEFS[selected.id] : null;
     const requiredTool = this.world.requiredToolAt(this.targetTx, this.targetTy);
     const effectiveTool = selectedDef?.toolType === requiredTool;
-    const stoneByHand = isStoneLike(existingBlock) && !effectiveTool;
+    // Certains blocs exigent un niveau d'outil minimum (ex. minerai de fer :
+    // pioche en pierre ou mieux). Sinon on casse « à la main » : très lent,
+    // et rien ne tombe (comme la pierre).
+    const tierOk = toolTierIndex(selectedDef) >= blockMinTierIndex(existingBlock);
+    const stoneByHand = isStoneLike(existingBlock) && (!effectiveTool || !tierOk);
 
     // Une hache / pioche / pelle adaptée accélère réellement le minage.
     // La pierre à la main est volontairement pénible (×10) et ne drop rien.
@@ -432,7 +708,11 @@ export class Game {
       }
       this.spawnBreakParticles(this.targetTx, this.targetTy, existingBlock || drop);
       if (stoneByHand) {
-        this.notify('Sans pioche, la pierre s\'effrite… rien à récupérer.');
+        if (existingBlock === 'ironOre') {
+          this.notify('Pioche en pierre ou fer requise.');
+        } else {
+          this.notify('Sans pioche, rien à récupérer.');
+        }
       } else {
         let dropN = (existingBlock && BLOCK_DEFS[existingBlock]?.dropN) || 1;
         if (existingBlock === 'tree') {
@@ -480,7 +760,17 @@ export class Game {
       hopV: 90 + Math.random() * 45,
       sortY: y,
       born: this.time,
+      life: DROP_LIFETIME,
     });
+    this.limitDrops();
+  }
+
+  // Plafonne le nombre d'objets au sol : si le maximum est dépassé, le plus
+  // vieux objet disparaît (léger nuage de fumée pour prévenir le joueur).
+  limitDrops() {
+    if (this.droppedItems.length <= MAX_DROPS) return;
+    const oldest = this.droppedItems.shift();
+    this.spawnBreakParticles(Math.floor(oldest.x / TILE), Math.floor(oldest.y / TILE), oldest.id);
   }
 
   updateDroppedItems(dt) {
@@ -494,6 +784,7 @@ export class Game {
     const PICKUP_SQ = 28 * 28;
     const friction = 1 - Math.min(1, dt * 4.2);
     const gravity = 480 * dt;
+    const MERGE_SQ = 22 * 22;
 
     for (let n = this.droppedItems.length - 1; n >= 0; n--) {
       const d = this.droppedItems[n];
@@ -513,6 +804,13 @@ export class Game {
         }
       }
 
+      // Disparition après quelques minutes (comme Minecraft).
+      d.life -= dt;
+      if (d.life <= 0) {
+        this.droppedItems.splice(n, 1);
+        continue;
+      }
+
       const dx = px - d.x;
       const dy = py - d.y;
       const distSq = dx * dx + dy * dy;
@@ -525,11 +823,28 @@ export class Game {
         } else {
           d.count -= added;
           if (added === 0 && this.pickupFullCooldown <= 0) {
-            this.notify('Inventaire plein : libère une case pour ramasser.');
+            this.notify('Inventaire plein.');
             this.pickupFullCooldown = 1.6;
           }
         }
         continue;
+      }
+
+      // Les piles proches de même type fusionnent (une seule pile au sol).
+      if (d.count < 64 && this.droppedItems.length < MAX_DROPS) {
+        for (let m = n - 1; m >= 0; m--) {
+          const other = this.droppedItems[m];
+          if (!other || other.id !== d.id) continue;
+          const ox = d.x - other.x;
+          const oy = d.y - other.y;
+          if (ox * ox + oy * oy > MERGE_SQ) continue;
+          const add = Math.min(64 - d.count, other.count);
+          if (add <= 0) continue;
+          d.count += add;
+          other.count -= add;
+          if (other.count <= 0) this.droppedItems.splice(m, 1);
+          break;
+        }
       }
 
       d.sortY = d.y;
@@ -734,7 +1049,14 @@ export class Game {
       let i = this.world.idx(minTx, ty);
       for (let tx = minTx; tx <= maxTx; tx++, i++) {
         const block = this.world.blocks[i];
-        if (block && BLOCK_DEFS[block].kind === 'block') {
+        if (!block) continue;
+        const def = BLOCK_DEFS[block];
+        if (def.kind === 'door') {
+          ctx.drawImage(getDoorCanvas(this.world.doorOpen[i] === 1), tx * TILE, ty * TILE);
+        } else if (block === 'furnace') {
+          const entry = this.furnaceData.get(`${tx},${ty}`);
+          ctx.drawImage(getFurnaceCanvas(Boolean(entry && entry.fuelTime > 0)), tx * TILE, ty * TILE);
+        } else if (def.kind === 'block') {
           ctx.drawImage(getTileCanvas(block), tx * TILE, ty * TILE);
         }
       }
@@ -802,7 +1124,7 @@ export class Game {
         const dy = cy - crack.anchorY;
         if (crack.overlay) {
           ctx.save();
-          ctx.globalAlpha = 0.1 + this.mining.progress * 0.32;
+          ctx.globalAlpha = 0.06 + this.mining.progress * 0.22;
           ctx.drawImage(crack.overlay, dx, dy);
           ctx.restore();
         }
@@ -894,6 +1216,10 @@ export class Game {
       drawables.push({ sortY: drop.sortY, kind: 'drop', drop });
     }
 
+    for (const mob of this.mobs) {
+      if (mob.alive) drawables.push({ sortY: mob.y + 6, kind: 'mob', mob });
+    }
+
     drawables.push({ sortY: this.player.y, kind: 'player', player: this.player, local: true });
     for (const p of this.otherPlayers) {
       drawables.push({ sortY: p.y, kind: 'player', player: p, local: false });
@@ -904,7 +1230,9 @@ export class Game {
       const d = drawables[i];
       if (d.kind === 'tree') drawTreeObject(ctx, d.x, d.y, d.variant || 'medium');
       else if (d.kind === 'rock') drawRockObject(ctx, d.x, d.y);
+      else if (d.kind === 'ironOre') drawIronOreObject(ctx, d.x, d.y);
       else if (d.kind === 'drop') this.drawDrop(ctx, d.drop);
+      else if (d.kind === 'mob') drawMob(ctx, d.mob);
       else this.drawPlayer(ctx, d.player, d.local);
     }
   }
@@ -939,6 +1267,20 @@ export class Game {
       this.equipPop = 1;
     }
     this.equipPop = Math.max(0, this.equipPop - dt * 4.6);
+
+    // Balancement de l'outil : pendant le minage la phase avance (l'outil
+    // fait des va-et-vient réguliers) ; dès qu'on arrête, elle revient
+    // doucement au repos au lieu de se figer en plein mouvement.
+    const mining = this.mining.progress > 0 && this.inReach;
+    if (mining) {
+      this.swingPhase += SWING_SPEED * dt;
+    } else {
+      const rest = Math.round(this.swingPhase / Math.PI) * Math.PI;
+      const diff = rest - this.swingPhase;
+      const step = SWING_SPEED * dt * 2.2;
+      if (Math.abs(diff) <= step) this.swingPhase = rest;
+      else this.swingPhase += Math.sign(diff) * step;
+    }
   }
 
   heldDrawOpts(player) {
@@ -947,6 +1289,8 @@ export class Game {
       walkPhase: player.moving ? player.walkPhase : 0,
       scale: PLAYER_RENDER_SCALE,
       mining: this.mining.progress > 0,
+      // Sinus de la phase : 0 au repos, ±1 en plein balancement.
+      swing: Math.sin(this.swingPhase),
       time: this.time,
       pop: this.equipPop,
       shadow: !this.performanceMode,

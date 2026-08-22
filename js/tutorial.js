@@ -7,9 +7,10 @@
 // ============================================================
 
 import { getItemSprite } from './icons.js';
-import { getTileCanvas, drawTreeObject, drawRockObject } from './tileset.js';
+import { getTileCanvas, getFurnaceCanvas, drawTreeObject, drawRockObject } from './tileset.js';
 import { drawCharacter } from './character.js';
 import { drawHeldItem } from './held.js';
+import { Mob, drawMob } from './mobs.js';
 
 const ILL_W = 168;
 const ILL_H = 110;
@@ -178,36 +179,79 @@ function illBuild(ctx, app) {
   drawHeldItem(ctx, app, 'plank', 132, 88, { facing: 'left', scale: 1.05 });
 }
 
+function illMobs(ctx, app) {
+  backdrop(ctx);
+  const sheep = new Mob('sheep', 52, 68);
+  sheep.facing = 'left';
+  drawMob(ctx, sheep);
+  drawMob(ctx, new Mob('cow', 118, 70));
+  // petit couteau / épée en main du personnage
+  drawCharacter(ctx, app, 60, 26, { facing: 'down', scale: 0.9 });
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = 'bold 11px system-ui, sans-serif';
+  ctx.fillText('clic G', 66, 52);
+}
+
+function illFurnace(ctx, app) {
+  backdrop(ctx);
+  ctx.drawImage(getFurnaceCanvas(true), 40, 52, 32, 32);
+  drawShadow(ctx, 40 + 16, 52 + 34, 12);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 22px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('→', 88, 68);
+  drawItem(ctx, 'ironIngot', 122, 62, 28);
+  drawItem(ctx, 'rawIron', 24, 30, 24);
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = 'bold 10px system-ui, sans-serif';
+  ctx.fillText('clic D', 44, 88);
+}
+
 const CARDS = [
   {
     title: 'Te déplacer',
-    text: 'Utilise ZQSD (ou les flèches) pour te promener dans le monde.',
+    text: 'ZQSD ou flèches.',
     draw: illMove,
   },
   {
     title: 'Récolter',
-    text: 'Maintiens le clic gauche sur un arbre ou un rocher pour le casser et récupérer ses ressources.',
+    text: 'Clic gauche maintenu sur un arbre ou un rocher.',
     draw: illGather,
   },
   {
     title: 'Poser des blocs',
-    text: 'Clic droit pour poser le bloc sélectionné dans ta barre rapide.',
+    text: 'Clic droit pose le bloc sélectionné.',
     draw: illPlace,
   },
   {
+    title: 'Lâcher des objets',
+    text: 'Q jette un objet, Ctrl+Q toute la pile.',
+    draw: illGather,
+  },
+  {
     title: 'Ton inventaire',
-    text: 'Touche E pour ouvrir ton sac : 36 cases, glisse-dépose ou shift-clic pour ranger.',
+    text: 'E ouvre le sac : clic, double-clic, shift-clic, glisser.',
     draw: illInventory,
   },
   {
     title: 'Fabriquer',
-    text: 'Touche C pour ouvrir l\'établi et transformer tes matériaux en outils (pioche, hache…).',
+    text: 'C ouvre l\'établi. Choisis une recette puis fabrique.',
     draw: illCraft,
   },
   {
     title: 'Construire',
-    text: 'Récupère du bois et de la pierre, puis bâtis ta propre maison. Le monde t\'appartient !',
+    text: 'Bois et pierre pour bâtir ta maison.',
     draw: illBuild,
+  },
+  {
+    title: 'Les animaux',
+    text: 'Moutons et vaches : clic gauche pour laine et bœuf.',
+    draw: illMobs,
+  },
+  {
+    title: 'Le four',
+    text: '8 pierres → four. Fonds minerai et sable, cuit la viande.',
+    draw: illFurnace,
   },
 ];
 
@@ -233,7 +277,7 @@ export class Tutorial {
         <div class="tutorial-logo">◼</div>
         <div>
           <span class="panel-eyebrow">AVANIA // GUIDE</span>
-          <h2>Bienvenue dans le village</h2>
+          <h2>Bienvenue</h2>
         </div>
       </div>
       <button id="tutorial-close" class="craft-close" title="Fermer">✕</button>
@@ -242,7 +286,7 @@ export class Tutorial {
 
     const intro = document.createElement('p');
     intro.className = 'tutorial-intro';
-    intro.textContent = 'Un monde vide t\'attend. Récupère des ressources, fabrique tes outils, et construis tout ce que tu imagines. Voici l\'essentiel pour bien démarrer :';
+    intro.textContent = 'Récupère des ressources, fabrique tes outils, construis. L\'essentiel pour démarrer :';
     panel.appendChild(intro);
 
     // Grille de cartes
@@ -274,7 +318,7 @@ export class Tutorial {
     const footer = document.createElement('footer');
     footer.className = 'tutorial-footer';
     footer.innerHTML = `
-      <button id="tutorial-start" class="btn btn-primary">C'est parti ! 🚀</button>
+      <button id="tutorial-start" class="btn btn-primary">C'est parti !</button>
     `;
     panel.appendChild(footer);
 

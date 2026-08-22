@@ -24,11 +24,38 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   bordure d'eau, arbres & rochers éparpillés comme ressources.
 - **Collecte de blocs** : maintenir le clic gauche pour miner progressivement
   (la durée dépend de la ressource et de l'outil), clic droit = poser.
-- **Inventaire réaliste** : 36 cases (27 stockage + 9 barre rapide), piles de 64,
-  déplacement par glisser-déposer / shift-clic, compteur de capacité et détails de l'objet.
-- **Fabrication façon Minecraft** (touche `C` ou bouton 🛠️) : grille 3×3,
-  livre de recettes, préparation des ingrédients puis récupération du résultat.
-  Bois → planches → bâtons, puis pioches, haches, pelles et épées en bois ou pierre.
+- **Inventaire façon Minecraft** (touche `E`) : écran plein façon Minecraft
+  avec personnage animé, **fabrication 2×2** et 36 cases (27 stockage + 9 barre
+  rapide), piles de 64.
+- **Manipulation des objets 100 % façon Minecraft** : la pile flottante suit la
+  souris — clic gauche (prendre/poser toute la pile), clic droit (moitié/un),
+  double-clic (tout ramasser), shift-clic (ranger vite), **glisser-répartir**
+  la pile entre plusieurs cases (maintien + survol), touches `1..9` pour
+  échanger avec la barre rapide, infobulle au survol.
+- **Établi façon Minecraft** (touche `C` ou bouton 🛠️) : grille 3×3 + résultat,
+  **livre de recettes repliable** avec recherche, et l'inventaire du joueur
+  affiché en bas. Bois → planches → bâtons, puis pioches, haches, pelles et
+  épées en bois, pierre ou **fer**. Clic (ou maintien) sur le résultat pour
+  fabriquer, shift-clic pour tout fabriquer d'un coup.
+- **🪵 Portes** : 6 planches → 3 portes. Posées comme un bloc, elles se
+  ferment au clic droit et laissent passer (ou bloquent) le joueur.
+- **⛏️ Le fer** : du **minerai de fer** (rocher tacheté de rouille) apparaît
+  dans le monde, rare. Il exige une **pioche en pierre ou mieux** pour lâcher
+  du **fer brut**, fondu en **lingots** (1:1) puis en **bloc de fer** (9
+  lingots) pour construire, et en **outils en fer** bien plus durables.
+- **📦 Lâcher des objets** : touche `Q` pour jeter un objet de ta main,
+  `Ctrl+Q` pour toute la pile — ou sors une pile de l'inventaire par-dessus
+  le bord de l'écran. Les objets tombent au sol, fusionnent entre eux et
+  disparaissent après 5 minutes.
+- **🔥 Le four** : 8 pierres → 1 four (clic droit dessus pour l'ouvrir).
+  On y met un **combustible** (bois, planches, bâtons) + un ingrédient :
+  **fer brut → lingots**, **sable → verre**, **bœuf cru → steak cuit**.
+  Interface façon Minecraft avec flamme, flèche de progression et
+  inventaire du joueur en bas. Les fours cuisent même quand on les ferme.
+- **🐑 Mobs passifs** : des **moutons** (→ laine, craftable en blocs de
+  laine) et des **vaches** (→ bœuf cru, cuisable au four) errent sur
+  l'herbe, fuient quand on les frappe. Clic gauche pour attaquer (une épée
+  fait 3× de dégâts).
 - **Outils durables** : les outils ont une barre de durabilité et accélèrent la récolte
   quand leur type correspond à la ressource (hache pour bois, pioche pour pierre, pelle pour sol).
 - **Plus de blocs** : bois, pierre, planche, brique, verre, sable, terre.
@@ -56,7 +83,16 @@ node server.js
 | Changer d'objet | Touches 1..9 / molette (l'objet apparaît dans ta main) |
 | Ouvrir l'inventaire | Touche `E` |
 | Fabriquer (matériaux & outils) | Touche `C` ou bouton 🛠️ |
-| Déplacer une pile | Glisser-déposer ou deux clics dans l'inventaire |
+| Prendre / poser toute une pile | Clic gauche (la pile suit la souris) |
+| Prendre la moitié / poser un objet | Clic droit |
+| Ramasser tout un objet | Double-clic |
+| Ranger vite (sac ↔ barre rapide) | Shift-clic |
+| Répartir une pile sur plusieurs cases | Maintenir le clic et survoler les cases |
+| Échanger avec la barre rapide | Touches `1..9` en survolant une case |
+| Lâcher un objet au sol | Touche `Q` (ou `Ctrl+Q` pour toute la pile) |
+| Ouvrir / fermer une porte | Clic droit sur la porte |
+| Ouvrir un four | Clic droit sur le four |
+| Attaquer un animal | Clic gauche sur le mouton / la vache |
 
 Astuce : casse les **arbres** (→ bois) et les **rochers** (→ pierre) autour de toi,
 puis construis ta première cabane.
@@ -78,8 +114,9 @@ puis construis ta première cabane.
 ```
 js/
   config.js      constantes & options de personnalisation
-  blocks.js      définition des blocs / objets
-  inventory.js   inventaire du joueur
+  blocks.js      définition des blocs / objets / recettes
+  inventory.js   inventaire du joueur (piles, curseur, drag, grilles)
+  slots.js       interactions des cases façon Minecraft (clic, drag, infobulle)
   utils.js       helpers (RNG seed, canvas…)
   input.js       clavier + souris
   camera.js      caméra (zoom + suivi)
@@ -89,7 +126,9 @@ js/
   world.js       monde vide + casser/poser
   character.js   personnage carré personnalisable
   player.js      entité joueur + collisions
-  ui.js          création du personnage + HUD + barre rapide
+  furnace.js     logique du four (recettes, combustibles, cuisson)
+  mobs.js        moutons & vaches (IA d'errance, rendu, butin)
+  ui.js          création du personnage + HUD + barre rapide + écrans E/C + four
   game.js        boucle de jeu, rendu, interactions
   main.js        point d'entrée
 ```

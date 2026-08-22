@@ -40,6 +40,36 @@ export const BLOCK_DEFS = {
   // --- blocs de terrain (récoltés à la pelle, reposés) ---
   sandBlock: { id: 'sandBlock', label: 'Sable', kind: 'block', solid: true, breakable: true, drop: 'sand', color: '#e2c88a', requiredTool: 'shovel', breakTime: 0.5 },
   dirtBlock: { id: 'dirtBlock', label: 'Terre', kind: 'block', solid: true, breakable: true, drop: 'dirt', color: '#8a6a46', requiredTool: 'shovel', breakTime: 0.45 },
+
+  // --- minerai de fer (ressource rare, pioche en pierre minimum) ---
+  ironOre: {
+    id: 'ironOre', label: 'Minerai de fer', kind: 'object', solid: true, breakable: true,
+    drop: 'rawIron', dropN: 1, color: '#a08d80', requiredTool: 'pickaxe', minTier: 'stone', breakTime: 3.0,
+  },
+
+  // --- bloc de fer (compacte 9 lingots, posable) ---
+  ironBlock: {
+    id: 'ironBlock', label: 'Bloc de fer', kind: 'block', solid: true, breakable: true,
+    drop: 'ironBlock', color: '#d8dde2', requiredTool: 'pickaxe', breakTime: 1.4,
+  },
+
+  // --- porte (s'ouvre / se ferme au clic droit) ---
+  door: {
+    id: 'door', label: 'Porte', kind: 'door', solid: true, breakable: true,
+    drop: 'door', color: '#c89a5e', requiredTool: null, breakTime: 0.5,
+  },
+
+  // --- four (fond les minerais, cuit la viande) ---
+  furnace: {
+    id: 'furnace', label: 'Four', kind: 'block', solid: true, breakable: true,
+    drop: 'furnace', color: '#5d5d62', requiredTool: 'pickaxe', breakTime: 2.0,
+  },
+
+  // --- bloc de laine (4 laines → 1 bloc, comme Minecraft) ---
+  woolBlock: {
+    id: 'woolBlock', label: 'Bloc de laine', kind: 'block', solid: true, breakable: true,
+    drop: 'woolBlock', color: '#e8e8e8', requiredTool: null, breakTime: 0.5,
+  },
 };
 
 // Les objets que le joueur peut posséder. maxStack reprend le principe
@@ -49,6 +79,15 @@ export const ITEM_DEFS = {
   stone: { id: 'stone', label: 'Pierre',    color: '#9a9aa3', icon: '🪨', type: 'resource', maxStack: 64, place: 'stone' },
   sand:  { id: 'sand',  label: 'Sable',     color: '#e2c88a', icon: '▪',  type: 'resource', maxStack: 64, place: 'sandBlock' },
   dirt:  { id: 'dirt',  label: 'Terre',     color: '#8a6a46', icon: '▪',  type: 'resource', maxStack: 64, place: 'dirtBlock' },
+  rawIron: { id: 'rawIron', label: 'Fer brut', color: '#b0875f', type: 'resource', maxStack: 64 },
+  ironIngot: { id: 'ironIngot', label: 'Lingot de fer', color: '#dfe4e8', type: 'material', maxStack: 64 },
+  ironBlock: { id: 'ironBlock', label: 'Bloc de fer', color: '#d8dde2', type: 'material', maxStack: 64, place: 'ironBlock' },
+  door: { id: 'door', label: 'Porte en bois', color: '#c89a5e', type: 'material', maxStack: 64, place: 'door' },
+  furnace: { id: 'furnace', label: 'Four', color: '#5d5d62', type: 'material', maxStack: 64, place: 'furnace' },
+  wool: { id: 'wool', label: 'Laine', color: '#e8e8e8', type: 'resource', maxStack: 64 },
+  woolBlock: { id: 'woolBlock', label: 'Bloc de laine', color: '#e8e8e8', type: 'material', maxStack: 64, place: 'woolBlock' },
+  rawBeef: { id: 'rawBeef', label: 'Bœuf cru', color: '#c0504a', type: 'resource', maxStack: 64 },
+  cookedBeef: { id: 'cookedBeef', label: 'Steak cuit', color: '#a4683c', type: 'resource', maxStack: 64 },
   plank: { id: 'plank', label: 'Planches',  color: '#c89a5e', icon: '▤',  type: 'material', maxStack: 64, place: 'plank' },
   brick: { id: 'brick', label: 'Briques',   color: '#b4553f', icon: '▦',  type: 'material', maxStack: 64, place: 'brick' },
   glass: { id: 'glass', label: 'Verre',     color: '#bfe3ea', icon: '◇',  type: 'material', maxStack: 64, place: 'glass' },
@@ -56,37 +95,66 @@ export const ITEM_DEFS = {
 
   wooden_pickaxe: {
     id: 'wooden_pickaxe', label: 'Pioche en bois', color: '#b07a3c', icon: '⛏', type: 'tool', maxStack: 1,
-    toolType: 'pickaxe', durability: 45, efficiency: 1.8,
+    toolType: 'pickaxe', tier: 'wood', durability: 45, efficiency: 1.8,
   },
   stone_pickaxe: {
     id: 'stone_pickaxe', label: 'Pioche en pierre', color: '#9a9aa3', icon: '⛏', type: 'tool', maxStack: 1,
-    toolType: 'pickaxe', durability: 110, efficiency: 2.8,
+    toolType: 'pickaxe', tier: 'stone', durability: 110, efficiency: 2.8,
+  },
+  iron_pickaxe: {
+    id: 'iron_pickaxe', label: 'Pioche en fer', color: '#d8dde2', icon: '⛏', type: 'tool', maxStack: 1,
+    toolType: 'pickaxe', tier: 'iron', durability: 250, efficiency: 5,
   },
   wooden_axe: {
     id: 'wooden_axe', label: 'Hache en bois', color: '#b07a3c', icon: '🪓', type: 'tool', maxStack: 1,
-    toolType: 'axe', durability: 45, efficiency: 1.8,
+    toolType: 'axe', tier: 'wood', durability: 45, efficiency: 1.8,
   },
   stone_axe: {
     id: 'stone_axe', label: 'Hache en pierre', color: '#9a9aa3', icon: '🪓', type: 'tool', maxStack: 1,
-    toolType: 'axe', durability: 110, efficiency: 2.8,
+    toolType: 'axe', tier: 'stone', durability: 110, efficiency: 2.8,
+  },
+  iron_axe: {
+    id: 'iron_axe', label: 'Hache en fer', color: '#d8dde2', icon: '🪓', type: 'tool', maxStack: 1,
+    toolType: 'axe', tier: 'iron', durability: 250, efficiency: 5,
   },
   wooden_shovel: {
     id: 'wooden_shovel', label: 'Pelle en bois', color: '#b07a3c', icon: '⚒', type: 'tool', maxStack: 1,
-    toolType: 'shovel', durability: 45, efficiency: 2.2,
+    toolType: 'shovel', tier: 'wood', durability: 45, efficiency: 2.2,
   },
   stone_shovel: {
     id: 'stone_shovel', label: 'Pelle en pierre', color: '#9a9aa3', icon: '⚒', type: 'tool', maxStack: 1,
-    toolType: 'shovel', durability: 110, efficiency: 3.2,
+    toolType: 'shovel', tier: 'stone', durability: 110, efficiency: 3.2,
+  },
+  iron_shovel: {
+    id: 'iron_shovel', label: 'Pelle en fer', color: '#d8dde2', icon: '⚒', type: 'tool', maxStack: 1,
+    toolType: 'shovel', tier: 'iron', durability: 250, efficiency: 5,
   },
   wooden_sword: {
     id: 'wooden_sword', label: 'Épée en bois', color: '#b07a3c', icon: '⚔', type: 'tool', maxStack: 1,
-    toolType: 'sword', durability: 55, efficiency: 1,
+    toolType: 'sword', tier: 'wood', durability: 55, efficiency: 1,
   },
   stone_sword: {
     id: 'stone_sword', label: 'Épée en pierre', color: '#9a9aa3', icon: '⚔', type: 'tool', maxStack: 1,
-    toolType: 'sword', durability: 130, efficiency: 1,
+    toolType: 'sword', tier: 'stone', durability: 130, efficiency: 1,
+  },
+  iron_sword: {
+    id: 'iron_sword', label: 'Épée en fer', color: '#d8dde2', icon: '⚔', type: 'tool', maxStack: 1,
+    toolType: 'sword', tier: 'iron', durability: 250, efficiency: 1,
   },
 };
+
+// Ordre des niveaux d'outils. Un bloc avec `minTier` exige un outil d'au
+// moins ce niveau (ex. le minerai de fer demande une pioche en pierre+).
+export const TOOL_TIERS = ['wood', 'stone', 'iron'];
+
+export function toolTierIndex(def) {
+  return def && def.tier ? TOOL_TIERS.indexOf(def.tier) : 0;
+}
+
+export function blockMinTierIndex(blockId) {
+  const def = blockId && BLOCK_DEFS[blockId];
+  return def && def.minTier ? TOOL_TIERS.indexOf(def.minTier) : 0;
+}
 
 // Cette liste historique alimente l'API simple et reste volontairement
 // stable pour les anciennes sauvegardes / extensions. L'inventaire réel,
@@ -146,6 +214,42 @@ export const RECIPES = [
   {
     id: 'stone_sword', label: 'Épée en pierre', out: 'stone_sword', outN: 1,
     inputs: { stone: 2, stick: 1 }, pattern: [['stone'], ['stone'], ['stick']], category: 'outils',
+  },
+  {
+    id: 'iron_pickaxe', label: 'Pioche en fer', out: 'iron_pickaxe', outN: 1,
+    inputs: { ironIngot: 3, stick: 2 }, pattern: [['ironIngot', 'ironIngot', 'ironIngot'], [null, 'stick', null], [null, 'stick', null]], category: 'outils',
+  },
+  {
+    id: 'iron_axe', label: 'Hache en fer', out: 'iron_axe', outN: 1,
+    inputs: { ironIngot: 3, stick: 2 }, pattern: [['ironIngot', 'ironIngot', null], ['ironIngot', 'stick', null], [null, 'stick', null]], category: 'outils',
+  },
+  {
+    id: 'iron_shovel', label: 'Pelle en fer', out: 'iron_shovel', outN: 1,
+    inputs: { ironIngot: 1, stick: 2 }, pattern: [['ironIngot'], ['stick'], ['stick']], category: 'outils',
+  },
+  {
+    id: 'iron_sword', label: 'Épée en fer', out: 'iron_sword', outN: 1,
+    inputs: { ironIngot: 2, stick: 1 }, pattern: [['ironIngot'], ['ironIngot'], ['stick']], category: 'outils',
+  },
+  {
+    id: 'ironIngot', label: 'Lingot de fer', out: 'ironIngot', outN: 1,
+    inputs: { rawIron: 1 }, pattern: [['rawIron']], category: 'matériaux',
+  },
+  {
+    id: 'ironBlock', label: 'Bloc de fer', out: 'ironBlock', outN: 1,
+    inputs: { ironIngot: 9 }, pattern: [['ironIngot', 'ironIngot', 'ironIngot'], ['ironIngot', 'ironIngot', 'ironIngot'], ['ironIngot', 'ironIngot', 'ironIngot']], category: 'construction',
+  },
+  {
+    id: 'door', label: 'Porte en bois', out: 'door', outN: 3,
+    inputs: { plank: 6 }, pattern: [['plank', 'plank'], ['plank', 'plank'], ['plank', 'plank']], category: 'construction',
+  },
+  {
+    id: 'furnace', label: 'Four', out: 'furnace', outN: 1,
+    inputs: { stone: 8 }, pattern: [['stone', 'stone', 'stone'], ['stone', null, 'stone'], ['stone', 'stone', 'stone']], category: 'construction',
+  },
+  {
+    id: 'woolBlock', label: 'Bloc de laine', out: 'woolBlock', outN: 1,
+    inputs: { wool: 4 }, pattern: [['wool', 'wool'], ['wool', 'wool']], category: 'construction',
   },
 ];
 

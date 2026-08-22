@@ -251,6 +251,116 @@ function sandBlockTexture(ctx, top, dark) {
   }
 }
 
+function ironBlockTexture(ctx, top, dark) {
+  // Reflets métalliques : fines lignes claires + quelques taches sombres
+  ctx.strokeStyle = withAlpha('#ffffff', 0.5);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(7, 9); ctx.lineTo(22, 6);
+  ctx.moveTo(8, 15); ctx.lineTo(21, 12);
+  ctx.stroke();
+  ctx.fillStyle = withAlpha('#8a939b', 0.4);
+  ctx.fillRect(18, 18, 4, 3);
+  ctx.fillRect(8, 20, 3, 3);
+}
+
+// --- Four : pierre grise avec une bouche sombre et des rivets ---
+function furnaceTexture(ctx, top, dark) {
+  // bouche du foyer
+  ctx.fillStyle = '#2a2b2e';
+  ctx.fillRect(11, 11, 11, 11);
+  ctx.fillStyle = '#1d1e21';
+  ctx.fillRect(12, 12, 9, 9);
+  // barre du foyer
+  ctx.fillStyle = '#3f4146';
+  ctx.fillRect(10, 10, 13, 2);
+  ctx.fillRect(10, 21, 13, 2);
+  ctx.fillStyle = '#4a4c52';
+  ctx.fillRect(10, 10, 13, 1);
+  // rivets
+  ctx.fillStyle = '#4e5056';
+  ctx.fillRect(6, 5, 2, 2);
+  ctx.fillRect(24, 5, 2, 2);
+  ctx.fillRect(6, 24, 2, 2);
+  ctx.fillRect(24, 24, 2, 2);
+  // reflet
+  ctx.fillStyle = withAlpha('#ffffff', 0.14);
+  ctx.fillRect(3, 2, S - 8, 1);
+}
+
+// --- Laine : boules blanches douces ---
+function woolBlockTexture(ctx, top, dark) {
+  ctx.fillStyle = withAlpha('#ffffff', 0.5);
+  for (let i = 0; i < 7; i++) {
+    const x = 4 + ((i * 7) % 22);
+    const y = 4 + ((i * 5) % 20);
+    ctx.beginPath();
+    ctx.arc(x, y, 2.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = withAlpha('#c8c8c8', 0.45);
+  for (let i = 0; i < 5; i++) {
+    const x = 7 + ((i * 9) % 18);
+    const y = 8 + ((i * 7) % 16);
+    ctx.beginPath();
+    ctx.arc(x, y, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// --- Porte : fermée (vue de face) ou ouverte (à plat sur le sol) ---
+function drawDoorClosed(ctx) {
+  ctx.fillStyle = shade(BLOCK_DEFS.door.color, 0.9);
+  ctx.fillRect(3, 1, S - 6, S - 2);
+  ctx.fillStyle = shade(BLOCK_DEFS.door.color, 1.12);
+  ctx.fillRect(5, 3, S - 10, S - 6);
+  // cadre
+  ctx.fillStyle = shade(BLOCK_DEFS.door.color, 0.72);
+  ctx.fillRect(3, 1, 3, S - 2);
+  ctx.fillRect(S - 6, 1, 3, S - 2);
+  // planches verticales
+  ctx.strokeStyle = withAlpha('#5a3a1e', 0.45);
+  ctx.lineWidth = 1;
+  for (let x = 8; x < S - 6; x += 6) {
+    ctx.beginPath();
+    ctx.moveTo(x, 4);
+    ctx.lineTo(x, S - 4);
+    ctx.stroke();
+  }
+  // poignée
+  ctx.fillStyle = '#3a3a3e';
+  ctx.fillRect(S - 8, S / 2 - 1, 3, 3);
+  ctx.fillStyle = withAlpha('#ffffff', 0.3);
+  ctx.fillRect(S - 8, S / 2 - 1, 1, 3);
+  // contour
+  ctx.strokeStyle = shade(BLOCK_DEFS.door.color, 0.5);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, S - 1, S - 1);
+}
+
+function drawDoorOpen(ctx) {
+  // Porte ouverte : à plat sur le sol, le long du bord gauche de la tuile
+  ctx.fillStyle = shade(BLOCK_DEFS.door.color, 0.95);
+  ctx.fillRect(1, 4, S - 8, 10);
+  ctx.fillStyle = shade(BLOCK_DEFS.door.color, 1.15);
+  ctx.fillRect(2, 5, S - 11, 8);
+  ctx.strokeStyle = withAlpha('#5a3a1e', 0.45);
+  ctx.lineWidth = 1;
+  for (let x = 7; x < S - 10; x += 6) {
+    ctx.beginPath();
+    ctx.moveTo(x, 5);
+    ctx.lineTo(x, 13);
+    ctx.stroke();
+  }
+  // charnières
+  ctx.fillStyle = '#3a3a3e';
+  ctx.fillRect(3, 6, 3, 2);
+  ctx.fillRect(3, 10, 3, 2);
+  // ombre portée sous la porte ouverte
+  ctx.fillStyle = withAlpha('#000000', 0.12);
+  ctx.fillRect(2, 15, S - 9, 2);
+}
+
 function dirtBlockTexture(ctx, top, dark) {
   ctx.fillStyle = withAlpha('#6a4f30', 0.5);
   for (let i = 0; i < 8; i++) {
@@ -271,6 +381,11 @@ const DRAWERS = {
   glass:     (c) => drawBlockTile(c, BLOCK_DEFS.glass.color, glassTexture, { alpha: 0.78, shine: 0.45 }),
   sandBlock: (c) => drawBlockTile(c, BLOCK_DEFS.sandBlock.color, sandBlockTexture),
   dirtBlock: (c) => drawBlockTile(c, BLOCK_DEFS.dirtBlock.color, dirtBlockTexture),
+  ironBlock: (c) => drawBlockTile(c, BLOCK_DEFS.ironBlock.color, ironBlockTexture),
+  furnace:   (c) => drawBlockTile(c, BLOCK_DEFS.furnace.color, furnaceTexture),
+  woolBlock: (c) => drawBlockTile(c, BLOCK_DEFS.woolBlock.color, woolBlockTexture),
+  door:      (c) => drawDoorClosed(c),
+  doorOpen:  (c) => drawDoorOpen(c),
 };
 
 const cache = {};
@@ -296,8 +411,25 @@ export function buildTileset() {
     waterCache[f] = c;
   }
   buildObjectSprites();
+  // Variante « four allumé » : une lueur orange dans la bouche.
+  const lit = makeCanvas(S, S);
+  const lctx = lit.getContext('2d');
+  lctx.imageSmoothingEnabled = false;
+  lctx.drawImage(cache.furnace, 0, 0);
+  lctx.fillStyle = '#ff9a3c';
+  lctx.fillRect(13, 13, 7, 7);
+  lctx.fillStyle = '#ffd28a';
+  lctx.fillRect(14, 14, 4, 4);
+  lctx.fillStyle = withAlpha('#ff9a3c', 0.28);
+  lctx.fillRect(11, 11, 11, 11);
+  cache.furnaceLit = lit;
   built = true;
   return cache;
+}
+
+// Tuile de four, allumé ou éteint.
+export function getFurnaceCanvas(lit) {
+  return cache[lit ? 'furnaceLit' : 'furnace'] || cache.furnace;
 }
 
 export function getTileCanvas(key) {
@@ -390,6 +522,34 @@ function drawRockObjectRaw(ctx, x, y, shadow = true) {
   ctx.stroke();
 }
 
+// --- Minerai de fer : rocher gris tacheté de rouille ---
+function drawIronOreObjectRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 1, 14, 5);
+  voxel(ctx, x - 12, y - 18, 24, 19, '#7a7a82');
+  voxel(ctx, x - 10, y - 24, 20, 18, '#8d8d94');
+  voxel(ctx, x - 7, y - 27, 14, 5, '#a5a5ac');
+  // veines de minerai orange / rouille
+  const veins = [
+    [x - 8, y - 14, 6, 4], [x + 1, y - 22, 7, 5], [x - 4, y - 25, 4, 3],
+    [x + 5, y - 10, 5, 4], [x - 10, y - 8, 4, 3],
+  ];
+  for (const [vx, vy, vw, vh] of veins) {
+    ctx.fillStyle = '#b8865b';
+    ctx.fillRect(vx, vy, vw, vh);
+    ctx.fillStyle = '#d8a06e';
+    ctx.fillRect(vx, vy, vw, Math.max(1, Math.floor(vh * 0.4)));
+    ctx.fillStyle = '#8a5a34';
+    ctx.fillRect(vx, vy + vh - 1, vw, 1);
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fillRect(x - 7, y - 27, 14, 2);
+  ctx.strokeStyle = 'rgba(0,0,0,0.16)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x - 6, y - 15); ctx.lineTo(x + 1, y - 19); ctx.lineTo(x - 1, y - 11);
+  ctx.stroke();
+}
+
 function makeObjectSprite(width, height, anchorX, anchorY, draw) {
   const canvas = makeCanvas(width, height);
   const ctx = canvas.getContext('2d');
@@ -437,6 +597,7 @@ function buildObjectSprites() {
   objectCache['tree:large'] = makeObjectSprite(72, 88, 36, 76, drawTreeLargeRaw);
   objectCache.tree = objectCache['tree:small'];
   objectCache.rock = makeObjectSprite(40, 40, 20, 32, drawRockObjectRaw);
+  objectCache.ironOre = makeObjectSprite(40, 40, 20, 32, drawIronOreObjectRaw);
 }
 
 export function getObjectSprite(kind, variant) {
@@ -465,6 +626,17 @@ export function drawRockObject(ctx, x, y) {
   const sprite = objectCache.rock;
   if (!sprite) return drawRockObjectRaw(ctx, x, y);
   ctx.drawImage(sprite.canvas, x - sprite.anchorX, y - sprite.anchorY);
+}
+
+export function drawIronOreObject(ctx, x, y) {
+  const sprite = objectCache.ironOre;
+  if (!sprite) return drawIronOreObjectRaw(ctx, x, y);
+  ctx.drawImage(sprite.canvas, x - sprite.anchorX, y - sprite.anchorY);
+}
+
+// Tuile de porte (fermée / ouverte) pré-rendue.
+export function getDoorCanvas(open) {
+  return cache[open ? 'doorOpen' : 'door'] || cache.door;
 }
 
 export function isExtrudedBlock(id) {

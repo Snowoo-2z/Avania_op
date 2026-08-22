@@ -8,8 +8,9 @@
 
 import { PERFORMANCE } from './config.js';
 import {
-  openCharacterCreation, HUD, Hotbar, InventoryPanel, Crafting,
+  openCharacterCreation, HUD, Hotbar, InventoryPanel, Crafting, FurnacePanel,
 } from './ui.js';
+import { SlotManager } from './slots.js';
 import { initIcons } from './icons.js';
 import { isLowPowerDevice } from './utils.js';
 
@@ -89,17 +90,31 @@ async function boot() {
     try { localStorage.setItem('avania.tutoriel', '1'); } catch { /* ignore */ }
   }
 
-  hotbar.attach(game.inventory);
+  // Interactions de cases façon Minecraft, partagées par la barre rapide,
+  // l'inventaire et l'établi (pile flottante + infobulle).
+  const slotManager = new SlotManager(game.inventory, {
+    cursorEl: document.getElementById('cursor-stack'),
+    tooltipEl: document.getElementById('slot-tooltip'),
+    isPanelOpen: () => Boolean(inventoryPanel?.isOpen || crafting?.isOpen || furnacePanel?.isOpen),
+    // Sortir une pile de l'inventaire la fait tomber dans le monde.
+    onDropCursor: (stack) => game.spawnDropAtPlayer(stack.id, stack.count),
+  });
+  slotManager.attach();
+
+  hotbar.attach(game.inventory, slotManager);
 
   let inventoryPanel;
   let crafting;
-  const syncPause = () => game.setPaused(Boolean(inventoryPanel?.isOpen || crafting?.isOpen));
+  let furnacePanel;
+  const syncPause = () => game.setPaused(Boolean(
+    inventoryPanel?.isOpen || crafting?.isOpen || furnacePanel?.isOpen,
+  ));
 
   inventoryPanel = new InventoryPanel(
     document.getElementById('inventory-panel'),
-    document.getElementById('inventory-grid'),
-    document.getElementById('inventory-hotbar'),
     game.inventory,
+    appearance,
+    slotManager,
     (open) => {
       if (open && crafting?.isOpen) crafting.close();
       syncPause();
@@ -107,29 +122,48 @@ async function boot() {
   );
   crafting = new Crafting(
     document.getElementById('crafting'),
-    document.getElementById('craft-list'),
     game.inventory,
+    slotManager,
     (open) => {
       if (open && inventoryPanel?.isOpen) inventoryPanel.close();
       syncPause();
     },
   );
+  furnacePanel = new FurnacePanel(
+    document.getElementById('furnace'),
+    game.inventory,
+    slotManager,
+    game,
+    (open) => {
+      if (open) {
+        if (inventoryPanel?.isOpen) inventoryPanel.close();
+        if (crafting?.isOpen) crafting.close();
+      }
+      syncPause();
+    },
+  );
+  // Clic droit sur un four posé → ouvre son panneau.
+  game.uiCallbacks.openFurnace = (tx, ty) => furnacePanel.open(tx, ty);
 
   document.getElementById('inventory-close').onclick = () => inventoryPanel.close();
   document.getElementById('craft-btn').onclick = () => crafting.toggle();
   document.getElementById('craft-close').onclick = () => crafting.close();
+  document.getElementById('furnace-close').onclick = () => furnacePanel.close();
   window.addEventListener('keydown', (e) => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
     const key = e.key.toLowerCase();
     if (key === 'e') {
       e.preventDefault();
-      inventoryPanel.toggle();
+      if (furnacePanel.isOpen) furnacePanel.close();
+      else inventoryPanel.toggle();
     } else if (key === 'c') {
       e.preventDefault();
-      crafting.toggle();
+      if (furnacePanel.isOpen) furnacePanel.close();
+      else crafting.toggle();
     } else if (key === 'escape') {
       inventoryPanel.close();
       crafting.close();
+      furnacePanel.close();
       if (tutorial.isOpen) closeTutorial();
     }
   });

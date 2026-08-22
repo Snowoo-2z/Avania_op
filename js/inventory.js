@@ -30,7 +30,14 @@ export class Inventory {
     this.slots = new Array(this.slotCount).fill(null);
     this.selected = 0;
     this.craftingGrid = new Array(9).fill(null);
+    // Grille 2×2 de l'écran d'inventaire (comme dans Minecraft : on ne
+    // peut y fabriquer que des recettes de 2×2 maximum).
+    this.craftingGridSmall = new Array(4).fill(null);
     this.cursor = null;
+    // État du glisser-répartir (drag 1.8+ de Minecraft) : lorsqu'on
+    // maintient le clic et qu'on survole plusieurs cases, la pile du
+    // curseur est répartie entre elles au relâchement.
+    this.drag = null;
 
     // Compteur pratique pour le HUD, toujours recalculé depuis les cases.
     this.items = {};
@@ -250,6 +257,138 @@ export class Inventory {
     return false;
   }
 
+  // Double-clic : ramasse dans le curseur toutes les piles du même objet
+  // (l'inventaire + la barre rapide), comme dans Minecraft.
+  collectItemType(id) {
+    const def = ITEM_DEFS[id];
+    if (!def || !this.cursor || this.cursor.id !== id) return false;
+    const max = def.maxStack || 64;
+    if (this.cursor.count >= max) return false;
+    for (let i = 0; i < this.slotCount && this.cursor.count < max; i++) {
+      const stack = this.slots[i];
+      if (!stack || stack.id !== id) continue;
+      const take = Math.min(stack.count, max - this.cursor.count);
+      stack.count -= take;
+      this.cursor.count += take;
+      if (stack.count <= 0) this.slots[i] = null;
+    }
+    this._touch();
+    return true;
+  }
+
+  // Touche 1..9 : échange la case survolée avec la case correspondante de
+  // la barre rapide (comportement exact de Minecraft).
+  swapWithHotbar(slotIndex, hotbarIndex) {
+    if (hotbarIndex < 0 || hotbarIndex >= this.hotbarSize) return false;
+    const hot = this.hotbarStart + hotbarIndex;
+    if (slotIndex < 0 || slotIndex >= this.slotCount || slotIndex === hot) return false;
+    const a = this.slots[slotIndex];
+    const b = this.slots[hot];
+    this.slots[slotIndex] = b ? cloneStack(b) : null;
+    this.slots[hot] = a ? cloneStack(a) : null;
+    this.selected = hotbarIndex;
+    this._touch();
+    return true;
+  }
+
+  // ------------------------------------------------------------
+  //  Glisser-répartir (Minecraft 1.8+) : maintien du clic et survol
+  //  de plusieurs cases → la pile du curseur est répartie entre elles.
+  // ------------------------------------------------------------
+
+  _canPlaceInto(arr, index) {
+    if (!this.cursor || this.cursor.count <= 0) return false;
+    const max = ITEM_DEFS[this.cursor.id].maxStack || 64;
+    const slot = arr[index];
+    if (!slot) return true;
+    return slot.id === this.cursor.id && slot.count < max;
+  }
+
+  // Pose jusqu'à `count` objets du curseur dans la case. Retourne la
+  // quantité réellement posée (la case doit être vide ou de même type).
+  _placeIntoSlot(arr, index, count) {
+    if (!this.cursor || this.cursor.count <= 0 || count <= 0) return 0;
+    const def = ITEM_DEFS[this.cursor.id];
+    const max = def.maxStack || 64;
+    const slot = arr[index];
+    let placed = 0;
+    if (slot) {
+      if (slot.id !== this.cursor.id || slot.count >= max) return 0;
+      const add = Math.min(count, max - slot.count);
+      slot.count += add;
+      placed = add;
+    } else {
+      const add = Math.min(count, max);
+      arr[index] = { ...this.cursor, count: add };
+      placed = add;
+    }
+    this.cursor.count -= placed;
+    if (this.cursor.count <= 0) this.cursor = null;
+    return placed;
+  }
+
+  beginDragDistribute(button = 'left') {
+    this.drag = {
+      button,
+      targets: [],
+      cursorStart: this.cursor ? this.cursor.count : 0,
+    };
+  }
+
+  dragDistributeEnter(arr, index) {
+    if (!this.drag) return;
+    if (this.drag.targets.some((t) => t.arr === arr && t.index === index)) return;
+    this.drag.targets.push({ arr, index });
+  }
+
+  endDragDistribute() {
+    const drag = this.drag;
+    this.drag = null;
+    if (!drag || !this.cursor) return false;
+    const sizeOf = (arr) => (arr === this.craftingGrid ? 9
+      : arr === this.craftingGridSmall ? 4
+      : this.slotCount);
+
+    if (drag.targets.length === 0) return false;
+
+    // Sans déplacement : simple clic (place tout, échange ou pose une).
+    if (drag.targets.length === 1) {
+      const t = drag.targets[0];
+      this._pointerClick(t.arr, t.index, sizeOf(t.arr), drag.button);
+      this._touch();
+      return true;
+    }
+
+    // Répartition : clic droit = un objet par case ; clic gauche = la pile
+    // est divisée (ceil) entre les cases compatibles, dans l'ordre survolé.
+    if (drag.button === 'right') {
+      for (const t of drag.targets) {
+        if (!this.cursor || this.cursor.count <= 0) break;
+        this._placeIntoSlot(t.arr, t.index, 1);
+      }
+    } else {
+      let remaining = drag.cursorStart;
+      for (let i = 0; i < drag.targets.length && remaining > 0; i++) {
+        const t = drag.targets[i];
+        const valid = drag.targets.slice(i).filter((tt) => this._canPlaceInto(tt.arr, tt.index));
+        if (valid.length === 0) break;
+        const share = Math.ceil(remaining / valid.length);
+        remaining -= this._placeIntoSlot(t.arr, t.index, share);
+      }
+    }
+    this._touch();
+    return true;
+  }
+
+  // Vide le curseur et retourne la pile (pour la lâcher au sol, etc.).
+  dropCursor() {
+    if (!this.cursor) return null;
+    const stack = cloneStack(this.cursor);
+    this.cursor = null;
+    this._touch();
+    return stack;
+  }
+
   // ------------------------------------------------------------
   //  Barre rapide
   // ------------------------------------------------------------
@@ -347,21 +486,34 @@ export class Inventory {
     return grid.map((cell) => (cell ? itemId(cell) : null));
   }
 
-  _returnCraftingGridInternal() {
+  _returnGridInternal(arr) {
     let complete = true;
     let changed = false;
-    for (let i = 0; i < this.craftingGrid.length; i++) {
-      const cell = this.craftingGrid[i];
+    for (let i = 0; i < arr.length; i++) {
+      const cell = arr[i];
       if (!cell) continue;
       const added = this._addInternal(cell.id, cell.count, cell);
       if (added > 0) changed = true;
-      if (added >= cell.count) this.craftingGrid[i] = null;
+      if (added >= cell.count) arr[i] = null;
       else {
-        this.craftingGrid[i] = { ...cell, count: cell.count - added };
+        arr[i] = { ...cell, count: cell.count - added };
         complete = false;
       }
     }
     return { complete, changed };
+  }
+
+  returnCursor() {
+    if (!this.cursor) return true;
+    const added = this._addInternal(this.cursor.id, this.cursor.count, this.cursor);
+    if (added >= this.cursor.count) {
+      this.cursor = null;
+      this._touch();
+      return true;
+    }
+    this.cursor = { ...this.cursor, count: this.cursor.count - added };
+    this._touch();
+    return false;
   }
 
   returnCraftingGrid() {
@@ -372,9 +524,10 @@ export class Inventory {
       if (added >= this.cursor.count) this.cursor = null;
       else this.cursor = { ...this.cursor, count: this.cursor.count - added };
     }
-    const result = this._returnCraftingGridInternal();
-    if (changed || result.changed) this._touch();
-    return result.complete && !this.cursor;
+    const result = this._returnGridInternal(this.craftingGrid);
+    const resultSmall = this._returnGridInternal(this.craftingGridSmall);
+    if (changed || result.changed || resultSmall.changed) this._touch();
+    return result.complete && resultSmall.complete && !this.cursor;
   }
 
   prepareRecipe(recipe) {
@@ -403,7 +556,10 @@ export class Inventory {
     return true;
   }
 
-  getMatchingRecipe(grid = this.craftingGrid) {
+  // Retourne { recipe, ox, oy } : la recette reconnue et la position du
+  // motif dans la grille 3×3 (utile pour consommer un seul jeu d'ingrédients
+  // à la fois, comme Minecraft).
+  getMatchingRecipeResult(grid = this.craftingGrid) {
     const ids = this._gridIds(grid);
 
     for (const recipe of RECIPES) {
@@ -426,29 +582,165 @@ export class Inventory {
               }
             }
           }
-          if (matches) return recipe;
+          if (matches) return { recipe, ox, oy };
         }
       }
     }
     return null;
   }
 
-  craftFromGrid() {
-    const recipe = this.getMatchingRecipe();
-    if (!recipe) return false;
+  getMatchingRecipe(grid = this.craftingGrid) {
+    const match = this.getMatchingRecipeResult(grid);
+    return match ? match.recipe : null;
+  }
+
+  // Grille 2×2 (écran inventaire) : on complète avec des cases vides pour
+  // réutiliser le moteur de correspondance 3×3. Seules les recettes de 2×2
+  // ou moins (planches, briques, verre, bâtons…) peuvent y être fabriquées.
+  getMatchingRecipeSmall(grid = this.craftingGridSmall) {
+    const padded = [
+      ...grid.slice(0, 4),
+      null, null, null, null, null,
+    ];
+    const match = this.getMatchingRecipeResult(padded);
+    return match ? match.recipe : null;
+  }
+
+  clickCraftSmallSlot(index, button = 'left') {
+    return this._pointerClick(this.craftingGridSmall, index, 4, button);
+  }
+
+  quickMoveFromCraft2(index) {
+    const cell = this.craftingGridSmall[index];
+    if (!cell) return false;
+    const added = this._addInternal(cell.id, cell.count, cell);
+    if (added <= 0) return false;
+    if (added >= cell.count) this.craftingGridSmall[index] = null;
+    else this.craftingGridSmall[index] = { ...cell, count: cell.count - added };
+    this._touch();
+    return true;
+  }
+
+  // Pose le résultat d'une fabrication sur le curseur si possible, sinon
+  // dans l'inventaire. Retourne true si tout le résultat a trouvé sa place.
+  _addOutput(id, count, toCursor = true) {
+    const def = ITEM_DEFS[id];
+    if (!def) return false;
+    const max = def.maxStack || 64;
+    let remaining = count;
+    if (toCursor) {
+      if (!this.cursor) {
+        this.cursor = { id, count: remaining };
+        remaining = 0;
+      } else if (this.cursor.id === id && this.cursor.count < max) {
+        const add = Math.min(remaining, max - this.cursor.count);
+        this.cursor.count += add;
+        remaining -= add;
+      }
+    }
+    if (remaining > 0) remaining -= this._addInternal(id, remaining);
+    return remaining <= 0;
+  }
+
+  // Consomme UN exemplaire de chaque ingrédient du motif (comme Minecraft :
+  // une case avec plusieurs exemplaires continue d'alimenter la recette).
+  craftFromGrid({ toCursor = true } = {}) {
+    const match = this.getMatchingRecipeResult();
+    if (!match) return false;
+    const { recipe, ox, oy } = match;
+    const pattern = this._pattern(recipe);
     const beforeGrid = this.craftingGrid.map(cloneStack);
     const beforeSlots = this.slots.map(cloneStack);
+    const beforeCursor = this.cursor ? cloneStack(this.cursor) : null;
 
-    this.craftingGrid.fill(null);
-    const added = this._addInternal(recipe.out, recipe.outN || 1);
-    if (added !== (recipe.outN || 1)) {
+    for (let y = 0; y < pattern.length; y++) {
+      for (let x = 0; x < pattern[y].length; x++) {
+        if (!pattern[y][x]) continue;
+        const cellIndex = (oy + y) * 3 + (ox + x);
+        const cell = this.craftingGrid[cellIndex];
+        if (!cell) {
+          this.craftingGrid = beforeGrid;
+          this.slots = beforeSlots;
+          this.cursor = beforeCursor;
+          this._recount();
+          return false;
+        }
+        cell.count -= 1;
+        if (cell.count <= 0) this.craftingGrid[cellIndex] = null;
+      }
+    }
+
+    if (!this._addOutput(recipe.out, recipe.outN || 1, toCursor)) {
       this.craftingGrid = beforeGrid;
       this.slots = beforeSlots;
+      this.cursor = beforeCursor;
       this._recount();
       return false;
     }
     this._touch();
     return true;
+  }
+
+  // Shift-clic sur le résultat : fabrique autant de fois que possible
+  // (tant que la recette correspond, qu'il reste des ingrédients et de
+  // la place). Retourne le nombre d'objets fabriqués.
+  craftFromGridMax({ toCursor = false } = {}) {
+    let crafted = 0;
+    while (crafted < 64 && this.craftFromGrid({ toCursor })) crafted++;
+    return crafted;
+  }
+
+  craftFromSmallGrid({ toCursor = true } = {}) {
+    const match = this.getMatchingRecipeResult([
+      ...this.craftingGridSmall.slice(0, 4),
+      null, null, null, null, null,
+    ]);
+    if (!match) return false;
+    const { recipe, ox, oy } = match;
+    const pattern = this._pattern(recipe);
+    const beforeGrid = this.craftingGridSmall.map(cloneStack);
+    const beforeSlots = this.slots.map(cloneStack);
+    const beforeCursor = this.cursor ? cloneStack(this.cursor) : null;
+
+    for (let y = 0; y < pattern.length; y++) {
+      for (let x = 0; x < pattern[y].length; x++) {
+        if (!pattern[y][x]) continue;
+        const cellIndex = (oy + y) * 3 + (ox + x);
+        if (cellIndex >= 4) {
+          this.craftingGridSmall = beforeGrid;
+          this.slots = beforeSlots;
+          this.cursor = beforeCursor;
+          this._recount();
+          return false;
+        }
+        const cell = this.craftingGridSmall[cellIndex];
+        if (!cell) {
+          this.craftingGridSmall = beforeGrid;
+          this.slots = beforeSlots;
+          this.cursor = beforeCursor;
+          this._recount();
+          return false;
+        }
+        cell.count -= 1;
+        if (cell.count <= 0) this.craftingGridSmall[cellIndex] = null;
+      }
+    }
+
+    if (!this._addOutput(recipe.out, recipe.outN || 1, toCursor)) {
+      this.craftingGridSmall = beforeGrid;
+      this.slots = beforeSlots;
+      this.cursor = beforeCursor;
+      this._recount();
+      return false;
+    }
+    this._touch();
+    return true;
+  }
+
+  craftFromSmallGridMax({ toCursor = false } = {}) {
+    let crafted = 0;
+    while (crafted < 64 && this.craftFromSmallGrid({ toCursor })) crafted++;
+    return crafted;
   }
 
   // ------------------------------------------------------------
@@ -499,6 +791,8 @@ export class Inventory {
     }
 
     if (!right) {
+      // Même type mais pile pleine : Minecraft ne fait rien (pas d'échange).
+      if (slot.id === cursor.id && max > 1) return false;
       arr[index] = cursor;
       this.cursor = slot;
       this._touch();

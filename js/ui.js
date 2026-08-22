@@ -11,6 +11,7 @@ import {
 import { ITEM_DEFS, RECIPES } from './blocks.js';
 import { drawCharacter } from './character.js';
 import { getItemIconURL } from './icons.js';
+import { SMELT_RECIPES } from './furnace.js';
 import { isLowPowerDevice, pick } from './utils.js';
 
 const SAVE_KEY = 'avania.personnage';
@@ -265,7 +266,7 @@ function updateSlotVisual(el, stack, inventory = null, index = -1) {
     applyItemIcon(icon, null);
     count.textContent = '';
     durability.style.width = '0%';
-    el.title = index >= 0 ? `Case ${index + 1} — vide` : 'Case vide';
+    el.setAttribute('aria-label', index >= 0 ? `Case ${index + 1} — vide` : 'Case vide');
     return;
   }
 
@@ -276,52 +277,78 @@ function updateSlotVisual(el, stack, inventory = null, index = -1) {
     const current = Math.max(0, stack.durability ?? max);
     durability.style.width = `${Math.max(0, Math.min(100, current / max * 100))}%`;
     durability.style.background = current / max < 0.25 ? '#e65b4f' : '#7ccf6a';
-    el.title = `${def.label} — durabilité ${current}/${max}`;
+    el.setAttribute('aria-label', `${def.label} — durabilité ${current}/${max}`);
   } else {
     durability.style.width = '0%';
-    el.title = `${def.label} — ${stack.count} en stock`;
+    el.setAttribute('aria-label', `${def.label} — ${stack.count} en stock`);
   }
 }
+// ============================================================
+//  AVANIA — Cases, barre rapide, inventaire & établi façon Minecraft
+//
+//  Toute la manipulation des objets passe par SlotManager (js/slots.js) :
+//  clic gauche/droit, double-clic, shift-clic, glisser-répartir,
+//  touches 1..9, pile flottante et infobulle.
+// ============================================================
 
-function makeInventorySlot(index, clickHandler, dragHandler) {
+const CRAFT_BOOK_KEY = 'avania.craft.book';
+
+function loadBookState() {
+  try {
+    const v = localStorage.getItem(CRAFT_BOOK_KEY);
+    if (v === '1' || v === '0') return v === '1';
+  } catch { /* ignore */ }
+  return false;
+}
+
+function saveBookState(open) {
+  try { localStorage.setItem(CRAFT_BOOK_KEY, open ? '1' : '0'); } catch { /* ignore */ }
+}
+
+function makeSlotElement(kind, index) {
   const el = document.createElement('button');
   el.type = 'button';
-  el.className = 'slot inventory-slot';
+  el.className = 'slot';
   el.dataset.slot = index;
-  el.draggable = true;
-  const icon = document.createElement('span');
-  icon.className = 'slot-icon';
-  const count = document.createElement('span');
-  count.className = 'slot-count';
-  const durability = document.createElement('span');
-  durability.className = 'slot-durability';
-  el.append(icon, count, durability);
-  el.onclick = clickHandler;
-  el.ondragstart = (event) => {
-    event.dataTransfer?.setData('text/plain', String(index));
-    event.dataTransfer?.setData('application/x-avania-slot', String(index));
-    el.classList.add('dragging');
-  };
-  el.ondragend = () => el.classList.remove('dragging');
-  el.ondragover = (event) => event.preventDefault();
-  el.ondrop = (event) => {
-    event.preventDefault();
-    const from = Number(event.dataTransfer?.getData('application/x-avania-slot')
-      || event.dataTransfer?.getData('text/plain'));
-    if (Number.isInteger(from)) dragHandler(from, index);
-  };
+  el.innerHTML = '<span class="slot-icon"></span><span class="slot-count"></span><span class="slot-durability"></span>';
   return el;
 }
 
+// Bouton « résultat » : clic = fabriquer une fois, maintien = fabriquer en
+// continu, shift-clic = fabriquer le maximum possible (comme Minecraft).
+function bindOutputButton(btn, craftOnce, craftMax) {
+  let timer = null;
+  const stop = () => {
+    if (timer) { clearInterval(timer); timer = null; }
+  };
+  btn.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    if (event.shiftKey) { craftMax(); return; }
+    if (!craftOnce()) return;
+    timer = setInterval(() => {
+      if (!craftOnce()) stop();
+    }, 120);
+  });
+  btn.addEventListener('pointerup', stop);
+  btn.addEventListener('pointerleave', stop);
+  btn.addEventListener('contextmenu', (event) => event.preventDefault());
+}
+
+// ------------------------------------------------------------
+//  Barre rapide (9 cases, visible en jeu)
+// ------------------------------------------------------------
 export class Hotbar {
-  constructor(root, inventory) {
+  constructor(root, inventory, slotManager = null) {
     this.root = root;
     this.inventory = null;
+    this.slotManager = slotManager;
     this.slots = [];
-    if (inventory) this.attach(inventory);
+    if (inventory) this.attach(inventory, slotManager);
   }
 
-  attach(inventory) {
+  attach(inventory, slotManager = null) {
+    if (slotManager) this.slotManager = slotManager;
     this.inventory = inventory;
     this.build();
     inventory.subscribe(() => this.update());
@@ -332,13 +359,10 @@ export class Hotbar {
     this.slots = [];
     for (let i = 0; i < this.inventory.hotbarSize; i++) {
       const index = this.inventory.hotbarStart + i;
-      const el = makeInventorySlot(
-        index,
-        () => this.inventory.select(i),
-        (from, to) => this.inventory.moveSlot(from, to),
-      );
+      const el = makeSlotElement('hotbar', index);
       el.classList.add('hotbar-slot');
       el.dataset.key = i + 1;
+      this.slotManager?.register(el, 'hotbar', index);
       this.root.appendChild(el);
       this.slots.push({ el, index });
     }
@@ -350,141 +374,185 @@ export class Hotbar {
       updateSlotVisual(el, this.inventory.getSlot(index), this.inventory, i);
       el.classList.toggle('selected', this.inventory.selected === i);
     });
+    // La pile flottante suit aussi les prises directes depuis la barre en jeu.
+    this.slotManager?.updateCursor((icon, id) => applyItemIcon(icon, id));
   }
 }
 
 // ------------------------------------------------------------
-//  Inventaire complet : 27 cases + barre rapide
+//  Inventaire complet façon Minecraft (touche E) :
+//  personnage + fabrication 2×2 à gauche, 27 cases + barre rapide.
 // ------------------------------------------------------------
 export class InventoryPanel {
-  constructor(root, gridRoot, hotbarRoot, inventory, onVisibilityChange = () => {}) {
+  constructor(root, inventory, appearance, slotManager, onVisibilityChange = () => {}) {
     this.root = root;
-    this.gridRoot = gridRoot;
-    this.hotbarRoot = hotbarRoot;
     this.inventory = inventory;
+    this.appearance = appearance || {};
+    this.slotManager = slotManager;
     this.onVisibilityChange = onVisibilityChange;
+    this.backdrop = root.querySelector('.panel-backdrop');
+    this.gridRoot = document.getElementById('inventory-grid');
+    this.hotbarRoot = document.getElementById('inventory-hotbar');
+    this.craftRoot = document.getElementById('inventory-craft-grid');
+    this.outputEl = document.getElementById('inventory-craft-output');
+    this.outputIcon = document.getElementById('inventory-craft-output-icon');
+    this.outputName = document.getElementById('inventory-craft-output-name');
     this.slots = [];
-    this.focused = null;
+    this.hotbarSlots = [];
+    this.craftSlots = [];
     this.build();
+    this.initCharacterPreview();
     inventory.subscribe(() => this.update());
+    this.backdrop.addEventListener('pointerdown', () => this.close());
   }
 
   build() {
+    this.craftRoot.innerHTML = '';
+    this.craftSlots = [];
+    for (let i = 0; i < 4; i++) {
+      const el = makeSlotElement('craft2', i);
+      el.classList.add('craft-slot');
+      this.slotManager.register(el, 'craft2', i);
+      this.craftRoot.appendChild(el);
+      this.craftSlots.push({ el, index: i });
+    }
+    bindOutputButton(
+      this.outputEl,
+      () => this.inventory.craftFromSmallGrid({ toCursor: true }),
+      () => {
+        const n = this.inventory.craftFromSmallGridMax({ toCursor: false });
+        if (n > 0) this.toast(`${n} objet${n > 1 ? 's' : ''} fabriqué${n > 1 ? 's' : ''} !`);
+      },
+    );
+
     this.gridRoot.innerHTML = '';
     this.hotbarRoot.innerHTML = '';
     this.slots = [];
-
+    this.hotbarSlots = [];
     for (let index = 0; index < this.inventory.hotbarStart; index++) {
-      this.appendSlot(this.gridRoot, index, 'storage-slot');
+      const el = makeSlotElement('inv', index);
+      this.slotManager.register(el, 'inv', index);
+      this.gridRoot.appendChild(el);
+      this.slots.push({ el, index });
     }
     for (let i = 0; i < this.inventory.hotbarSize; i++) {
-      this.appendSlot(this.hotbarRoot, this.inventory.hotbarStart + i, 'bag-hotbar-slot');
+      const index = this.inventory.hotbarStart + i;
+      const el = makeSlotElement('inv', index);
+      this.slotManager.register(el, 'inv', index);
+      this.hotbarRoot.appendChild(el);
+      this.hotbarSlots.push({ el, index });
     }
     this.update();
   }
 
-  appendSlot(parent, index, extraClass) {
-    const el = makeInventorySlot(
-      index,
-      (event) => this.handleClick(index, event),
-      (from, to) => {
-        this.focused = null;
-        this.inventory.moveSlot(from, to);
-      },
-    );
-    el.classList.add(extraClass);
-    parent.appendChild(el);
-    this.slots.push({ el, index });
+  initCharacterPreview() {
+    this.charCanvas = document.getElementById('inventory-char');
+    const nameEl = document.getElementById('inventory-char-name');
+    if (nameEl) nameEl.textContent = this.appearance.name || '';
+    this.charActive = false;
+    this.charRaf = 0;
   }
 
-  handleClick(index, event) {
-    if (event.shiftKey) {
-      this.focused = null;
-      this.inventory.transferSlot(index);
-      return;
-    }
+  renderCharacter(time = 0) {
+    const canvas = this.charCanvas;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+    const cx = W / 2;
+    const gy = H - 26;
+    ctx.fillStyle = '#12181c';
+    ctx.fillRect(0, 0, W, H);
+    const halo = ctx.createRadialGradient(cx, gy - 40, 6, cx, gy - 40, 72);
+    halo.addColorStop(0, 'rgba(255,240,190,0.16)');
+    halo.addColorStop(1, 'rgba(255,240,190,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, W, H);
+    const plat = ctx.createRadialGradient(cx, gy, 4, cx, gy, 64);
+    plat.addColorStop(0, '#8cc05e');
+    plat.addColorStop(0.75, '#6b9c42');
+    plat.addColorStop(1, '#4d7a2e');
+    ctx.fillStyle = plat;
+    ctx.beginPath();
+    ctx.ellipse(cx, gy, 64, 21, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const breathe = Math.sin(time * 2.2) * 0.8;
+    const blink = (time % 3.6) < 0.14;
+    drawCharacter(ctx, this.appearance, cx, gy, {
+      facing: 'down', walkPhase: breathe, scale: 2.7, blink,
+    });
+  }
 
-    if (index >= this.inventory.hotbarStart) {
-      this.inventory.select(index - this.inventory.hotbarStart);
-      this.focused = null;
-      return;
-    }
+  startCharacterLoop() {
+    if (this.charActive) return;
+    this.charActive = true;
+    const t0 = performance.now();
+    const loop = (now) => {
+      if (!this.charActive) return;
+      this.renderCharacter((now - t0) / 1000);
+      this.charRaf = requestAnimationFrame(loop);
+    };
+    this.charRaf = requestAnimationFrame(loop);
+  }
 
-    // Deux clics sur deux cases déplacent ou regroupent une pile. Le
-    // glisser-déposer est aussi disponible pour un déplacement direct.
-    if (this.focused === null) {
-      this.focused = index;
-    } else if (this.focused === index) {
-      this.focused = null;
-    } else {
-      this.inventory.moveSlot(this.focused, index);
-      this.focused = null;
-    }
-    this.update();
+  stopCharacterLoop() {
+    this.charActive = false;
+    if (this.charRaf) cancelAnimationFrame(this.charRaf);
+    this.charRaf = 0;
+  }
+
+  toast(message) {
+    const el = document.getElementById('game-toast');
+    if (!el) return;
+    el.textContent = message;
+    el.classList.add('visible');
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => el.classList.remove('visible'), 1700);
   }
 
   update() {
-    // Panneau fermé : inutile de réécrire le DOM à chaque changement
-    // d'inventaire (minage, pose…). On rafraîchit à l'ouverture.
     if (this.root.classList.contains('hidden')) return;
+    this.craftSlots.forEach(({ el, index }) => {
+      updateSlotVisual(el, this.inventory.craftingGridSmall[index]);
+    });
     this.slots.forEach(({ el, index }) => {
       updateSlotVisual(el, this.inventory.getSlot(index), this.inventory, index);
-      el.classList.toggle('focused', this.focused === index);
-      if (index >= this.inventory.hotbarStart) {
-        el.classList.toggle('selected', this.inventory.selected === index - this.inventory.hotbarStart);
-      }
+    });
+    this.hotbarSlots.forEach(({ el, index }, i) => {
+      updateSlotVisual(el, this.inventory.getSlot(index), this.inventory, index);
+      el.classList.toggle('selected', this.inventory.selected === i);
     });
 
-    const used = document.getElementById('inventory-used');
-    const capacity = document.getElementById('inventory-capacity');
-    const capacityBar = document.getElementById('inventory-capacity-bar');
-    if (used) used.textContent = this.inventory.usedSlots;
-    if (capacity) capacity.textContent = this.inventory.slotCount;
-    if (capacityBar) {
-      capacityBar.style.width = `${Math.max(0, Math.min(100, this.inventory.usedSlots / this.inventory.slotCount * 100))}%`;
-      capacityBar.classList.toggle('near-full', this.inventory.usedSlots / this.inventory.slotCount > 0.8);
+    const recipe = this.inventory.getMatchingRecipeSmall();
+    const out = recipe && ITEM_DEFS[recipe.out];
+    this.outputEl.classList.toggle('ready', Boolean(out));
+    this.outputEl.disabled = !out;
+    if (out) {
+      applyItemIcon(this.outputIcon, out.id);
+      this.outputName.textContent = `${out.label} ×${recipe.outN}`;
+      this.outputEl.title = `${out.label} ×${recipe.outN}`;
+    } else {
+      applyItemIcon(this.outputIcon, null);
+      this.outputName.textContent = 'Résultat';
+      this.outputEl.title = '';
     }
-
-    const detailIcon = document.getElementById('inventory-detail-icon');
-    const detailName = document.getElementById('inventory-detail-name');
-    const detailText = document.getElementById('inventory-detail-text');
-    const detailSlot = document.getElementById('inventory-detail-slot');
-    const detailType = document.getElementById('inventory-detail-type');
-    const detailStack = document.getElementById('inventory-detail-stack');
-    const detailDurability = document.getElementById('inventory-detail-durability');
-    const selected = this.inventory.getSelectedStack();
-    const def = selected && ITEM_DEFS[selected.id];
-    if (detailIcon) {
-      applyItemIcon(detailIcon, def ? selected.id : null);
-    }
-    if (detailSlot) detailSlot.textContent = `CASE ${this.inventory.selected + 1}`;
-    if (detailName) detailName.textContent = def ? def.label : 'Case sélectionnée vide';
-    if (detailType) {
-      const types = { resource: 'Ressource', material: 'Matériau', tool: 'Outil', block: 'Bloc' };
-      detailType.textContent = def ? (types[def.type] || def.type) : '—';
-    }
-    if (detailStack) detailStack.textContent = def ? `${selected.count}/${def.maxStack || 64}` : '—';
-    if (detailDurability) detailDurability.textContent = def?.type === 'tool'
-      ? `${selected.durability ?? def.durability}/${def.durability}`
-      : '—';
-    if (detailText) {
-      if (!def) detailText.textContent = 'Choisis une case de la barre rapide ou déplace une pile par glisser-déposer.';
-      else if (def.type === 'tool') detailText.textContent = `Outil ${def.toolType} · plus efficace sur les ressources correspondantes.`;
-      else detailText.textContent = `${selected.count} objet${selected.count > 1 ? 's' : ''} prêt${selected.count > 1 ? 's' : ''} à être utilisé${selected.count > 1 ? 's' : ''}.`;
-    }
+    this.slotManager.updateCursor((icon, id) => applyItemIcon(icon, id));
   }
 
   open() {
     if (!this.root.classList.contains('hidden')) return;
     this.root.classList.remove('hidden');
+    this.startCharacterLoop();
     this.update();
     this.onVisibilityChange(true);
   }
 
   close() {
     if (this.root.classList.contains('hidden')) return;
-    this.focused = null;
+    this.inventory.returnCraftingGrid();
     this.root.classList.add('hidden');
+    this.stopCharacterLoop();
+    this.slotManager.updateCursor((icon, id) => applyItemIcon(icon, id));
     this.onVisibilityChange(false);
   }
 
@@ -499,140 +567,225 @@ export class InventoryPanel {
 }
 
 // ------------------------------------------------------------
-//  Fabrication : grille 3x3 + livre de recettes + pose manuelle
+//  Four (clic droit sur un four posé) :
+//  entrée + combustible + sortie, flamme & flèche de progression,
+//  inventaire du joueur en bas — comme l'interface du four Minecraft.
 // ------------------------------------------------------------
-const CRAFT_TAB_KEY = 'avania.craft.tab';
-
-function loadCraftTab() {
-  try {
-    const tab = localStorage.getItem(CRAFT_TAB_KEY);
-    if (tab === 'inventory' || tab === 'book') return tab;
-  } catch { /* ignore */ }
-  return 'book';
-}
-
-function saveCraftTab(tab) {
-  try { localStorage.setItem(CRAFT_TAB_KEY, tab); } catch { /* ignore */ }
-}
-
-export class Crafting {
-  constructor(root, listRoot, inventory, onVisibilityChange = () => {}) {
+export class FurnacePanel {
+  constructor(root, inventory, slotManager, game, onVisibilityChange = () => {}) {
     this.root = root;
-    this.listRoot = listRoot;
     this.inventory = inventory;
+    this.slotManager = slotManager;
+    this.game = game;
     this.onVisibilityChange = onVisibilityChange;
+    this.backdrop = root.querySelector('.panel-backdrop');
+    this.inputRoot = document.getElementById('furnace-input');
+    this.fuelRoot = document.getElementById('furnace-fuel');
+    this.outputRoot = document.getElementById('furnace-output');
+    this.flameFill = document.getElementById('furnace-flame-fill');
+    this.arrowFill = document.getElementById('furnace-arrow-fill');
+    this.statusEl = document.getElementById('furnace-status');
+    this.invGridRoot = document.getElementById('furnace-inv-grid');
+    this.invHotbarRoot = document.getElementById('furnace-inv-hotbar');
+    this.key = null;
+    this.entry = null;
+    this.timer = null;
+    this.invSlots = [];
+    this.invHotbarSlots = [];
+    this.build();
+    this.backdrop.addEventListener('pointerdown', () => this.close());
+  }
+
+  build() {
+    // Les trois cases du four : entrée (haut), combustible (bas), sortie.
+    const inputEl = makeSlotElement('furnaceIn', 0);
+    inputEl.classList.add('craft-slot', 'furnace-slot');
+    this.slotManager.register(inputEl, 'furnaceIn', 0);
+    this.inputRoot.appendChild(inputEl);
+
+    const fuelEl = makeSlotElement('furnaceFuel', 0);
+    fuelEl.classList.add('craft-slot', 'furnace-slot');
+    this.slotManager.register(fuelEl, 'furnaceFuel', 0);
+    this.fuelRoot.appendChild(fuelEl);
+
+    const outputEl = makeSlotElement('furnaceOut', 0);
+    outputEl.classList.add('craft-slot', 'furnace-slot', 'furnace-output-slot');
+    this.slotManager.register(outputEl, 'furnaceOut', 0);
+    this.outputRoot.appendChild(outputEl);
+
+    this.invGridRoot.innerHTML = '';
+    this.invHotbarRoot.innerHTML = '';
+    this.invSlots = [];
+    this.invHotbarSlots = [];
+    for (let index = 0; index < this.inventory.hotbarStart; index++) {
+      const el = makeSlotElement('inv', index);
+      this.slotManager.register(el, 'inv', index);
+      this.invGridRoot.appendChild(el);
+      this.invSlots.push({ el, index });
+    }
+    for (let i = 0; i < this.inventory.hotbarSize; i++) {
+      const index = this.inventory.hotbarStart + i;
+      const el = makeSlotElement('inv', index);
+      this.slotManager.register(el, 'inv', index);
+      this.invHotbarRoot.appendChild(el);
+      this.invHotbarSlots.push({ el, index });
+    }
+  }
+
+  update() {
+    if (this.root.classList.contains('hidden') || !this.entry) return;
+    const e = this.entry;
+    updateSlotVisual(this.inputRoot.querySelector('.mc-slot') || this.inputRoot.firstElementChild, e.input[0]);
+    updateSlotVisual(this.fuelRoot.querySelector('.mc-slot') || this.fuelRoot.firstElementChild, e.fuel[0]);
+    updateSlotVisual(this.outputRoot.querySelector('.mc-slot') || this.outputRoot.firstElementChild, e.output[0]);
+
+    // Flamme : feu restant / durée totale du combustible.
+    if (this.flameFill) {
+      const ratio = e.maxFuelTime > 0 ? Math.max(0, Math.min(1, e.fuelTime / e.maxFuelTime)) : 0;
+      this.flameFill.style.height = `${ratio * 100}%`;
+    }
+    // Flèche : progression de la cuisson.
+    if (this.arrowFill) {
+      const recipe = e.input[0] && SMELT_RECIPES[e.input[0].id];
+      const ratio = recipe ? Math.max(0, Math.min(1, e.progress / recipe.time)) : 0;
+      this.arrowFill.style.width = `${ratio * 100}%`;
+    }
+    if (this.statusEl) {
+      const recipe = e.input[0] && SMELT_RECIPES[e.input[0].id];
+      if (!e.input[0]) this.statusEl.textContent = 'Mets un objet à fondre.';
+      else if (!recipe) this.statusEl.textContent = 'Impossible à fondre.';
+      else if (!e.fuel[0] && e.fuelTime <= 0) this.statusEl.textContent = 'Ajoute du combustible.';
+      else if (e.output[0] && e.output[0].id !== recipe.out) this.statusEl.textContent = 'Vide la sortie.';
+      else this.statusEl.textContent = 'Cuisson…';
+    }
+
+    this.invSlots.forEach(({ el, index }) => {
+      updateSlotVisual(el, this.inventory.getSlot(index), this.inventory, index);
+    });
+    this.invHotbarSlots.forEach(({ el, index }, i) => {
+      updateSlotVisual(el, this.inventory.getSlot(index), this.inventory, index);
+      el.classList.toggle('selected', this.inventory.selected === i);
+    });
+    this.slotManager.updateCursor((icon, id) => applyItemIcon(icon, id));
+  }
+
+  open(tx, ty) {
+    if (!this.root.classList.contains('hidden')) return;
+    this.key = `${tx},${ty}`;
+    this.entry = this.game.getFurnaceEntry(tx, ty);
+    this.slotManager.furnaceArrays = {
+      input: this.entry.input,
+      fuel: this.entry.fuel,
+      output: this.entry.output,
+    };
+    this.root.classList.remove('hidden');
+    this.update();
+    this.timer = setInterval(() => this.update(), 100);
+    this.onVisibilityChange(true);
+  }
+
+  close() {
+    if (this.root.classList.contains('hidden')) return;
+    this.root.classList.add('hidden');
+    if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    this.slotManager.furnaceArrays = null;
+    this.slotManager.updateCursor((icon, id) => applyItemIcon(icon, id));
+    this.onVisibilityChange(false);
+  }
+
+  toggle(tx, ty) {
+    if (this.root.classList.contains('hidden')) this.open(tx, ty);
+    else this.close();
+  }
+
+  get isOpen() {
+    return !this.root.classList.contains('hidden');
+  }
+}
+
+// ------------------------------------------------------------
+//  Établi façon Minecraft (touche C) :
+//  grille 3×3 + résultat, livre de recettes repliable, inventaire en bas.
+// ------------------------------------------------------------
+export class Crafting {
+  constructor(root, inventory, slotManager, onVisibilityChange = () => {}) {
+    this.root = root;
+    this.inventory = inventory;
+    this.slotManager = slotManager;
+    this.onVisibilityChange = onVisibilityChange;
+    this.backdrop = root.querySelector('.panel-backdrop');
+    this.listRoot = document.getElementById('craft-list');
     this.gridRoot = document.getElementById('craft-grid');
     this.outputEl = document.getElementById('craft-output');
     this.outputIcon = document.getElementById('craft-output-icon');
     this.outputName = document.getElementById('craft-output-name');
     this.statusEl = document.getElementById('craft-status');
     this.recipeCountEl = document.getElementById('craft-recipe-count');
-    this.howtoEl = document.getElementById('craft-howto');
+    this.bookToggle = document.getElementById('craft-book-toggle');
     this.paneBook = document.getElementById('craft-pane-book');
-    this.paneInv = document.getElementById('craft-pane-inv');
-    this.tabBook = document.getElementById('craft-tab-book');
-    this.tabInv = document.getElementById('craft-tab-inv');
+    this.searchInput = document.getElementById('craft-search');
     this.invGridRoot = document.getElementById('craft-inv-grid');
     this.invHotbarRoot = document.getElementById('craft-inv-hotbar');
-    this.cursorEl = document.getElementById('craft-cursor');
     this.gridSlots = [];
     this.invSlots = [];
+    this.invHotbarSlots = [];
     this.cards = [];
-    this.tab = loadCraftTab();
+    this.search = '';
     this.build();
-    this.setTab(this.tab, { persist: false });
     inventory.subscribe(() => this.update());
-
-    this.tabBook.onclick = () => this.setTab('book');
-    this.tabInv.onclick = () => this.setTab('inventory');
-    this._onMouseMove = (event) => this.moveCursor(event);
-    this.root.addEventListener('contextmenu', (event) => event.preventDefault());
-  }
-
-  bindSlotClicks(el, onLeft, onRight, onShift) {
-    el.addEventListener('click', (event) => {
-      event.preventDefault();
-      if (event.shiftKey) onShift();
-      else onLeft();
+    this.backdrop.addEventListener('pointerdown', () => this.close());
+    this.bookToggle.onclick = () => this.toggleBook();
+    this.searchInput?.addEventListener('input', () => {
+      this.search = this.searchInput.value.toLowerCase();
+      this.applySearch();
     });
-    el.addEventListener('contextmenu', (event) => {
-      event.preventDefault();
-      onRight();
-    });
-  }
-
-  setTab(tab, { persist = true } = {}) {
-    this.tab = tab === 'inventory' ? 'inventory' : 'book';
-    const inv = this.tab === 'inventory';
-    this.tabBook.classList.toggle('active', !inv);
-    this.tabInv.classList.toggle('active', inv);
-    this.paneBook.classList.toggle('hidden', inv);
-    this.paneInv.classList.toggle('hidden', !inv);
-    this.root.classList.toggle('craft-mode-inventory', inv);
-    if (this.howtoEl) {
-      this.howtoEl.innerHTML = inv
-        ? '<span>1</span> Prends un objet <i>→</i><span>2</span> pose-le dans la grille <i>→</i><span>3</span> récupère'
-        : '<span>1</span> Choisis une recette <i>→</i><span>2</span> récupère le résultat';
-    }
-    if (persist) saveCraftTab(this.tab);
-    if (!this.root.classList.contains('hidden')) this.update();
-  }
-
-  moveCursor(event) {
-    if (!this.cursorEl || this.cursorEl.classList.contains('hidden')) return;
-    this.cursorEl.style.left = `${event.clientX + 10}px`;
-    this.cursorEl.style.top = `${event.clientY + 10}px`;
-  }
-
-  updateCursor() {
-    if (!this.cursorEl) return;
-    const cursor = this.inventory.getCursor();
-    const icon = this.cursorEl.querySelector('.slot-icon');
-    const count = this.cursorEl.querySelector('.slot-count');
-    if (!cursor) {
-      this.cursorEl.classList.add('hidden');
-      return;
-    }
-    this.cursorEl.classList.remove('hidden');
-    applyItemIcon(icon, cursor.id);
-    count.textContent = cursor.count > 1 ? cursor.count : '';
+    // L'établi ouvert autorise le shift-clic « vers la grille ».
+    slotManager.canFillCraftGrid = () => this.isOpen;
   }
 
   build() {
     this.gridRoot.innerHTML = '';
     this.gridSlots = [];
     for (let i = 0; i < 9; i++) {
-      const el = document.createElement('button');
-      el.type = 'button';
-      el.className = 'craft-slot';
-      el.innerHTML = '<span class="slot-icon"></span><span class="slot-count"></span><span class="slot-durability"></span>';
-      this.bindSlotClicks(
-        el,
-        () => this.inventory.clickCraftSlot(i, 'left'),
-        () => this.inventory.clickCraftSlot(i, 'right'),
-        () => this.inventory.quickMoveFromCraft(i),
-      );
+      const el = makeSlotElement('craft', i);
+      el.classList.add('craft-slot');
+      this.slotManager.register(el, 'craft', i);
       this.gridRoot.appendChild(el);
-      this.gridSlots.push(el);
+      this.gridSlots.push({ el, index: i });
     }
-    this.outputEl.onclick = () => {
-      if (this.inventory.craftFromGrid()) this.setStatus('Objet fabriqué !', 'success');
-      else this.setStatus('La recette ou la place disponible ne convient pas.', 'error');
-    };
+    bindOutputButton(
+      this.outputEl,
+      () => this.inventory.craftFromGrid({ toCursor: true }),
+      () => {
+        const n = this.inventory.craftFromGridMax({ toCursor: false });
+        if (n > 0) this.setStatus(`${n} objet${n > 1 ? 's' : ''} fabriqué${n > 1 ? 's' : ''} !`, 'success');
+      },
+    );
 
+    this.invGridRoot.innerHTML = '';
+    this.invHotbarRoot.innerHTML = '';
     this.invSlots = [];
-    if (this.invGridRoot && this.invHotbarRoot) {
-      this.invGridRoot.innerHTML = '';
-      this.invHotbarRoot.innerHTML = '';
-      for (let index = 0; index < this.inventory.hotbarStart; index++) {
-        this.appendCraftInvSlot(this.invGridRoot, index);
-      }
-      for (let i = 0; i < this.inventory.hotbarSize; i++) {
-        this.appendCraftInvSlot(this.invHotbarRoot, this.inventory.hotbarStart + i);
-      }
+    this.invHotbarSlots = [];
+    for (let index = 0; index < this.inventory.hotbarStart; index++) {
+      const el = makeSlotElement('inv', index);
+      this.slotManager.register(el, 'inv', index);
+      this.invGridRoot.appendChild(el);
+      this.invSlots.push({ el, index });
+    }
+    for (let i = 0; i < this.inventory.hotbarSize; i++) {
+      const index = this.inventory.hotbarStart + i;
+      const el = makeSlotElement('inv', index);
+      this.slotManager.register(el, 'inv', index);
+      this.invHotbarRoot.appendChild(el);
+      this.invHotbarSlots.push({ el, index });
     }
 
+    this.buildRecipeList();
+  }
+
+  buildRecipeList() {
     this.listRoot.innerHTML = '';
+    this.cards = [];
     let category = '';
     for (const recipe of RECIPES) {
       if (recipe.category !== category) {
@@ -642,63 +795,62 @@ export class Crafting {
         heading.textContent = category.charAt(0).toUpperCase() + category.slice(1);
         this.listRoot.appendChild(heading);
       }
-
-      const out = ITEM_DEFS[recipe.out];
-      const card = document.createElement('div');
-      card.className = 'recipe';
-
-      const outEl = document.createElement('div');
-      outEl.className = 'recipe-out';
-      const icon = document.createElement('span');
-      icon.className = 'recipe-icon';
-      applyItemIcon(icon, out.id);
-      const name = document.createElement('b');
-      name.textContent = `${out.label} ×${recipe.outN}`;
-      outEl.append(icon, name);
-
-      const costEl = document.createElement('div');
-      costEl.className = 'recipe-cost';
-      costEl.textContent = Object.entries(recipe.inputs)
-        .map(([id, n]) => `${n} ${ITEM_DEFS[id].label.toLowerCase()}`)
-        .join(' + ');
-
-      const stateEl = document.createElement('span');
-      stateEl.className = 'recipe-state';
-
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-primary';
-      btn.textContent = 'Préparer';
-      btn.onclick = () => {
-        if (this.inventory.prepareRecipe(recipe)) {
-          this.setStatus('Ingrédients placés dans la grille.', 'success');
-        } else {
-          const missing = Object.entries(recipe.inputs)
-            .filter(([id, n]) => this.inventory.count(id) < n)
-            .map(([id, n]) => `${ITEM_DEFS[id].label} ×${n - this.inventory.count(id)}`)
-            .join(', ');
-          this.setStatus(missing ? `Il manque : ${missing}.` : 'Vide la grille ou récupère son résultat.', 'error');
-        }
-      };
-
-      card.append(outEl, costEl, stateEl, btn);
-      this.listRoot.appendChild(card);
-      this.cards.push({ recipe, card, btn, stateEl });
+      this.listRoot.appendChild(this.buildRecipeCard(recipe));
     }
-    this.update();
+    this.applySearch();
   }
 
-  appendCraftInvSlot(parent, index) {
-    const el = makeInventorySlot(index, () => {}, (from, to) => {
-      this.inventory.moveSlot(from, to);
-    });
-    this.bindSlotClicks(
-      el,
-      () => this.inventory.clickInventorySlot(index, 'left'),
-      () => this.inventory.clickInventorySlot(index, 'right'),
-      () => this.inventory.quickMoveToCraft(index),
-    );
-    parent.appendChild(el);
-    this.invSlots.push({ el, index });
+  buildRecipeCard(recipe) {
+    const out = ITEM_DEFS[recipe.out];
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'recipe';
+
+    const icon = document.createElement('span');
+    icon.className = 'recipe-icon';
+    applyItemIcon(icon, out.id);
+
+    const text = document.createElement('span');
+    text.className = 'recipe-text';
+    const name = document.createElement('b');
+    name.textContent = `${out.label} ×${recipe.outN}`;
+    const cost = document.createElement('span');
+    cost.className = 'recipe-cost';
+    cost.textContent = Object.entries(recipe.inputs)
+      .map(([id, n]) => `${n} ${ITEM_DEFS[id].label.toLowerCase()}`)
+      .join(' + ');
+    text.append(name, cost);
+
+    const state = document.createElement('span');
+    state.className = 'recipe-state';
+
+    card.append(icon, text, state);
+    card.onclick = () => this.prepareFromBook(recipe);
+    this.cards.push({ recipe, card, stateEl: state });
+    return card;
+  }
+
+  prepareFromBook(recipe) {
+    if (this.inventory.prepareRecipe(recipe)) {
+      this.setStatus('Ingrédients placés.', 'success');
+    } else {
+      const missing = Object.entries(recipe.inputs)
+        .filter(([id, n]) => this.inventory.count(id) < n)
+        .map(([id, n]) => `${ITEM_DEFS[id].label} ×${n - this.inventory.count(id)}`)
+        .join(', ');
+      this.setStatus(missing
+        ? `Il manque : ${missing}.`
+        : 'Vide la grille d\'abord.', 'error');
+    }
+  }
+
+  applySearch() {
+    const q = this.search;
+    for (const { recipe, card } of this.cards) {
+      const label = ITEM_DEFS[recipe.out].label.toLowerCase();
+      const id = recipe.id.toLowerCase();
+      card.classList.toggle('search-hidden', Boolean(q) && !label.includes(q) && !id.includes(q));
+    }
   }
 
   setStatus(message, kind = '') {
@@ -708,16 +860,17 @@ export class Crafting {
   }
 
   update() {
-    // Panneau fermé : on évite de recalculer recettes et DOM à chaque
-    // changement d'inventaire. Rafraîchi à l'ouverture.
     if (this.root.classList.contains('hidden')) return;
-    this.gridSlots.forEach((el, i) => {
-      updateSlotVisual(el, this.inventory.craftingGrid[i]);
+    this.gridSlots.forEach(({ el, index }) => {
+      updateSlotVisual(el, this.inventory.craftingGrid[index]);
     });
     this.invSlots.forEach(({ el, index }) => {
       updateSlotVisual(el, this.inventory.getSlot(index), this.inventory, index);
     });
-    this.updateCursor();
+    this.invHotbarSlots.forEach(({ el, index }, i) => {
+      updateSlotVisual(el, this.inventory.getSlot(index), this.inventory, index);
+      el.classList.toggle('selected', this.inventory.selected === i);
+    });
 
     const recipe = this.inventory.getMatchingRecipe();
     const out = recipe && ITEM_DEFS[recipe.out];
@@ -726,38 +879,44 @@ export class Crafting {
     if (out) {
       applyItemIcon(this.outputIcon, out.id);
       this.outputName.textContent = `${out.label} ×${recipe.outN}`;
-      this.outputEl.title = `Récupérer ${out.label}`;
+      this.outputEl.title = `${out.label} ×${recipe.outN}`;
     } else {
       applyItemIcon(this.outputIcon, null);
       this.outputName.textContent = 'Résultat';
-      this.outputEl.title = 'Prépare une recette pour voir le résultat';
+      this.outputEl.title = '';
     }
 
-    if (this.tab === 'inventory' && !this.inventory.getMatchingRecipe()) {
-      this.setStatus(this.inventory.getCursor()
-        ? 'Pose l\'objet dans la grille, ou reclique une case du sac pour le ranger.'
-        : 'Prends un objet dans ton sac, puis pose-le dans la grille 3 × 3.');
+    for (const { recipe: cardRecipe, card, stateEl } of this.cards) {
+      const available = this.inventory.canCraft(cardRecipe);
+      card.classList.toggle('recipe-locked', !available);
+      stateEl.textContent = available ? '✓' : '🔒';
+      card.title = available
+        ? ''
+        : `Il manque : ${Object.entries(cardRecipe.inputs)
+          .filter(([id, n]) => this.inventory.count(id) < n)
+          .map(([id, n]) => `${ITEM_DEFS[id].label} ×${n - this.inventory.count(id)}`)
+          .join(', ') || 'ingrédients'}`;
     }
     if (this.recipeCountEl) this.recipeCountEl.textContent = `${this.cards.length}`;
-    for (const { recipe: cardRecipe, card, btn, stateEl } of this.cards) {
-      const available = this.inventory.canCraft(cardRecipe);
-      const missing = Object.entries(cardRecipe.inputs)
-        .filter(([id, n]) => this.inventory.count(id) < n)
-        .map(([id, n]) => `${ITEM_DEFS[id].label} ×${n - this.inventory.count(id)}`)
-        .join(', ');
-      card.classList.toggle('recipe-locked', !available);
-      stateEl.textContent = available ? 'DISPONIBLE' : 'À DÉBLOQUER';
-      btn.disabled = false;
-      btn.textContent = available ? 'Préparer' : 'Voir';
-      btn.title = available ? 'Préparer cette recette' : `Il manque : ${missing}`;
-    }
+    this.slotManager.updateCursor((icon, id) => applyItemIcon(icon, id));
+  }
+
+  setBookOpen(open) {
+    this.paneBook.classList.toggle('hidden', !open);
+    this.bookToggle.classList.toggle('active', open);
+    this.root.classList.toggle('book-open', open);
+  }
+
+  toggleBook() {
+    const open = this.paneBook.classList.contains('hidden');
+    this.setBookOpen(open);
+    saveBookState(open);
   }
 
   open() {
     if (!this.root.classList.contains('hidden')) return;
     this.root.classList.remove('hidden');
-    this.setTab(loadCraftTab(), { persist: false });
-    window.addEventListener('mousemove', this._onMouseMove);
+    this.setBookOpen(loadBookState());
     this.update();
     this.onVisibilityChange(true);
   }
@@ -766,8 +925,7 @@ export class Crafting {
     if (this.root.classList.contains('hidden')) return;
     this.inventory.returnCraftingGrid();
     this.root.classList.add('hidden');
-    if (this.cursorEl) this.cursorEl.classList.add('hidden');
-    window.removeEventListener('mousemove', this._onMouseMove);
+    this.slotManager.updateCursor((icon, id) => applyItemIcon(icon, id));
     this.onVisibilityChange(false);
   }
 

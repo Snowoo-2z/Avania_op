@@ -8,7 +8,7 @@
 import { ITEM_DEFS } from './blocks.js';
 import { appearanceColors } from './character.js';
 import { shade } from './tileset.js';
-import { drawItemSprite, isHeldTool } from './icons.js';
+import { drawItemSprite } from './icons.js';
 
 // Positions locales (cube = 30 px, origine aux pieds).
 // z = -1 : l'objet passe derrière le corps (regard vers le haut).
@@ -51,12 +51,15 @@ export function drawHeldItem(ctx, app, itemId, x, y, opts = {}) {
     walkPhase = 0,
     scale = 1,
     mining = false,
+    swing = 0,
     time = 0,
     pop = 0,
     shadow = true,
   } = opts;
 
-  const tool = isHeldTool(itemId) || def.type === 'tool';
+  // Les vrais outils (et le bâton) se tiennent en diagonale ; les matériaux
+  // et blocs en petit cube (comme le bloc tenu dans Minecraft).
+  const tool = def.type === 'tool' || itemId === 'stick';
   const poses = tool ? TOOL_POSES : BLOCK_POSES;
   const pose = poses[facing] || poses.down;
 
@@ -64,13 +67,16 @@ export function drawHeldItem(ctx, app, itemId, x, y, opts = {}) {
   const squash = 1 + Math.sin(walkPhase * 2) * 0.04;
   const idle = Math.sin(time * 2.4) * 0.5;
   const walkSwing = Math.sin(walkPhase) * (tool ? 0.16 : 0.08);
-  const chop = mining ? Math.sin(time * 16) * (tool ? 0.95 : 0.25) : 0;
+  // Balancement de minage : `swing` est un sinus propre (0 au repos, ±1 en
+  // plein geste) piloté par la boucle de jeu — plus de vibration parasite.
+  const chop = swing * (tool ? 0.92 : 0.4);
   const popScale = 1 + Math.sin(Math.min(1, pop) * Math.PI) * 0.28;
 
   let rot = pose.rot + walkSwing + chop;
-  if (def.toolType === 'sword') rot *= 0.55;
+  if (def.toolType === 'sword') rot *= 0.6;
 
-  const size = (tool ? 18 : 13) * popScale;
+  // Les outils sont légèrement plus grands pour rester bien lisibles en main.
+  const size = (tool ? 20 : 13) * popScale;
 
   ctx.save();
   ctx.translate(x, y);
@@ -79,7 +85,8 @@ export function drawHeldItem(ctx, app, itemId, x, y, opts = {}) {
   ctx.scale(1, squash);
 
   const ix = pose.x;
-  const iy = pose.y + idle;
+  // Pendant le minage, l'objet est légèrement poussé vers la cible.
+  const iy = pose.y + idle + (mining ? 1.6 : 0);
 
   // Petite main (voxel de peau) qui "tient" l'objet.
   const colors = appearanceColors(app);
