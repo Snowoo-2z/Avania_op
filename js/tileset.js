@@ -522,32 +522,41 @@ function drawRockObjectRaw(ctx, x, y, shadow = true) {
   ctx.stroke();
 }
 
-// --- Minerai de fer : rocher gris tacheté de rouille ---
+// --- Minerai de fer : rocher aux pépites beige-rosé (façon Minecraft) ---
+//  Gros pépites taillées avec contour sombre, facette claire et
+//  reflet blanc : reconnaissable au premier coup d'œil, contrairement
+//  aux anciennes veines de rouille qui se fondaient dans la roche.
 function drawIronOreObjectRaw(ctx, x, y, shadow = true) {
   if (shadow) softShadow(ctx, x, y + 1, 14, 5);
-  voxel(ctx, x - 12, y - 18, 24, 19, '#7a7a82');
-  voxel(ctx, x - 10, y - 24, 20, 18, '#8d8d94');
-  voxel(ctx, x - 7, y - 27, 14, 5, '#a5a5ac');
-  // veines de minerai orange / rouille
-  const veins = [
-    [x - 8, y - 14, 6, 4], [x + 1, y - 22, 7, 5], [x - 4, y - 25, 4, 3],
-    [x + 5, y - 10, 5, 4], [x - 10, y - 8, 4, 3],
+  // roche légèrement plus chaude que le rocher ordinaire
+  voxel(ctx, x - 12, y - 18, 24, 19, '#82807a');
+  voxel(ctx, x - 10, y - 24, 20, 18, '#98968e');
+  voxel(ctx, x - 7, y - 27, 14, 5, '#adaba3');
+  // pépites de fer brut (la couleur « fer » de Minecraft)
+  const NUG = '#d8ae8a', NUG_HI = '#eec9a2', NUG_OUT = '#7a5232', NUG_SH = '#b98a62';
+  const nuggets = [
+    [x - 8, y - 15, 6, 5], [x + 2, y - 21, 6, 6], [x - 3, y - 25, 4, 4],
+    [x + 6, y - 12, 5, 4], [x - 10, y - 8, 4, 4],
   ];
-  for (const [vx, vy, vw, vh] of veins) {
-    ctx.fillStyle = '#b8865b';
-    ctx.fillRect(vx, vy, vw, vh);
-    ctx.fillStyle = '#d8a06e';
-    ctx.fillRect(vx, vy, vw, Math.max(1, Math.floor(vh * 0.4)));
-    ctx.fillStyle = '#8a5a34';
-    ctx.fillRect(vx, vy + vh - 1, vw, 1);
+  for (const [nx, ny, nw, nh] of nuggets) {
+    ctx.fillStyle = NUG_OUT;
+    ctx.fillRect(nx - 1, ny - 1, nw + 2, nh + 2);
+    ctx.fillStyle = NUG;
+    ctx.fillRect(nx, ny, nw, nh);
+    ctx.fillStyle = NUG_HI;
+    ctx.fillRect(nx, ny, nw, 1);
+    ctx.fillRect(nx, ny, 1, nh);
+    ctx.fillStyle = '#fbe8d4'; // reflet taillé
+    ctx.fillRect(nx + 1, ny + 1, Math.max(1, nw - 4), 1);
+    ctx.fillStyle = NUG_SH;
+    ctx.fillRect(nx, ny + nh - 1, nw, 1);
   }
   ctx.fillStyle = 'rgba(255,255,255,0.2)';
   ctx.fillRect(x - 7, y - 27, 14, 2);
   ctx.strokeStyle = 'rgba(0,0,0,0.16)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(x - 6, y - 15); ctx.lineTo(x + 1, y - 19); ctx.lineTo(x - 1, y - 11);
-  ctx.stroke();
+  ctx.moveTo(x - 6, y - 15); ctx.lineTo(x - 1, y - 11); ctx.stroke();
 }
 
 function makeObjectSprite(width, height, anchorX, anchorY, draw) {

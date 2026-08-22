@@ -237,8 +237,17 @@ export class HUD {
 //  Barre rapide (9 cases)
 // ------------------------------------------------------------
 // Applique l'icône PNG d'un objet (ou vide) sur un élément `.slot-icon`.
+// L'identifiant de l'objet affiché est mémorisé sur l'élément : si rien
+// n'a changé depuis le dernier appel, on ne touche pas au DOM (les mises
+// à jour de compteur / durabilité vivent dans des éléments séparés).
+// Avant, chaque ramassage recréait jusqu'à neuf <img> dans la barre
+// rapide — un va-et-vient DOM inutile plusieurs fois par seconde.
 function applyItemIcon(el, id) {
   if (!el) return;
+  const wanted = id || null;
+  if (el._itemIconId === wanted) return;
+  el._itemIconId = wanted;
+
   const url = id ? getItemIconURL(id) : null;
   const def = id ? ITEM_DEFS[id] : null;
   el.textContent = '';

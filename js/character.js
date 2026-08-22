@@ -86,6 +86,12 @@ function getBodySprite(app, facing, blink, detail) {
   let sprite = bodyCache.get(key);
   if (sprite) return sprite;
 
+  // Garde-fou : le cache ne grossit pas sans borne (l'écran de création
+  // peut explorer des centaines de combinaisons d'apparence). On purge
+  // tout en dessous du plafond : les quelques sprites utiles en jeu
+  // (4 orientations × clignement) sont simplement régénérés à la demande.
+  if (bodyCache.size > 256) bodyCache.clear();
+
   const c = appearanceColors(app);
   const canvas = makeCanvas(SPRITE_W * detail, SPRITE_H * detail);
   const ctx = canvas.getContext('2d');
@@ -123,6 +129,32 @@ function getBodySprite(app, facing, blink, detail) {
   return sprite;
 }
 
+// Ombre douce du joueur : quand l'appelant connaît la densité de pixels
+// (opts.pixelDensity, ex. zoom de la caméra), l'ellipse dégradée est
+// pré-rendue une fois à cette résolution puis réutilisée par simple
+// blit — plus de radialGradient construit à chaque frame du jeu.
+const shadowSpriteCache = new Map();
+
+function getPlayerShadowSprite(pixelDensity) {
+  const pd = Math.max(1, Math.round(pixelDensity * 100) / 100);
+  let sprite = shadowSpriteCache.get(pd);
+  if (sprite) return sprite;
+
+  // Boîte monde de l'ellipse (centre 0,1 — rayons 14 × 6) + 1 px de marge.
+  const canvas = makeCanvas(30 * pd, 13 * pd);
+  const sctx = canvas.getContext('2d');
+  const sg = sctx.createRadialGradient(15 * pd, 7 * pd, 2 * pd, 15 * pd, 7 * pd, 14 * pd);
+  sg.addColorStop(0, 'rgba(0,0,0,0.32)');
+  sg.addColorStop(1, 'rgba(0,0,0,0)');
+  sctx.fillStyle = sg;
+  sctx.beginPath();
+  sctx.ellipse(15 * pd, 7 * pd, 14 * pd, 6 * pd, 0, 0, Math.PI * 2);
+  sctx.fill();
+  sprite = canvas;
+  shadowSpriteCache.set(pd, sprite);
+  return sprite;
+}
+
 // Dessine le personnage — un cube unique posé sur (x, y).
 // y = point de contact au sol.
 export function drawCharacter(ctx, app, x, y, opts = {}) {
@@ -139,15 +171,20 @@ export function drawCharacter(ctx, app, x, y, opts = {}) {
   ctx.scale(scale, scale);
 
   // Ombre douce au sol. En mode performance, le jeu peut la désactiver
-  // pour éviter de créer un radialGradient par personnage à chaque frame.
+  // pour éviter tout coût supplémentaire par personnage.
   if (shadow) {
-    const sg = ctx.createRadialGradient(0, 1, 2, 0, 1, 14);
-    sg.addColorStop(0, 'rgba(0,0,0,0.32)');
-    sg.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = sg;
-    ctx.beginPath();
-    ctx.ellipse(0, 1, 14, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
+    if (opts.pixelDensity) {
+      const sprite = getPlayerShadowSprite(opts.pixelDensity);
+      ctx.drawImage(sprite, -15, -6, 30, 13);
+    } else {
+      const sg = ctx.createRadialGradient(0, 1, 2, 0, 1, 14);
+      sg.addColorStop(0, 'rgba(0,0,0,0.32)');
+      sg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = sg;
+      ctx.beginPath();
+      ctx.ellipse(0, 1, 14, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   // Le cube : on le fait rebondir (bob) et respirer (squash) autour du sol.

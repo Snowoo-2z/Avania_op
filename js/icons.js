@@ -76,71 +76,66 @@ function dropShadow(ctx, draw) {
 }
 
 // ------------------------------------------------------------
-//  Outils — pose diagonale (comme un item tenu en main)
+//  Outils — pose diagonale, tête en haut à droite (comme Minecraft)
 // ------------------------------------------------------------
 function withItemPose(ctx, fn) {
   ctx.save();
-  ctx.translate(16, 17);
-  ctx.rotate(-0.62);
+  ctx.translate(16, 16);
+  ctx.rotate(0.62);
   ctx.translate(-16, -16);
   fn();
   ctx.restore();
 }
 
+// Manche nu à la Minecraft : bois strié, pas de lien de cuir.
 function drawHandle(ctx, x, y, w, h, wood) {
   voxel(ctx, x, y, w, h, wood);
-  // Grain du bois
   ctx.fillStyle = withAlpha(wood.dark, 0.35);
   for (let i = 0; i < 4; i++) {
-    ctx.fillRect(x + 1, y + 3 + i * 5, w - 2, 1);
+    ctx.fillRect(x + 1, y + 4 + i * 5, w - 2, 1);
   }
-  // Lien de cuir à mi-manche
-  const wrapY = y + Math.floor(h * 0.42);
-  voxel(ctx, x - 1, wrapY, w + 2, 4, TOOL_COLORS.wrap);
-  px(ctx, x, wrapY + 1, w, 1, TOOL_COLORS.wrap.light);
 }
 
 function drawPickaxe(ctx, head, handle) {
   withItemPose(ctx, () => {
-    drawHandle(ctx, 14, 10, 4, 20, handle);
-    // Tête en arche façon Minecraft : barre + deux dents qui s'écartent
-    voxel(ctx, 3, 2, 26, 5, head);
-    voxel(ctx, 3, 7, 7, 8, head);
-    voxel(ctx, 22, 7, 7, 8, head);
-    // Pointes des dents (légèrement rentrées vers l'intérieur)
-    voxel(ctx, 2, 14, 6, 4, head);
-    voxel(ctx, 24, 14, 6, 4, head);
-    px(ctx, 4, 17, 2, 1, head.dark);
-    px(ctx, 26, 17, 2, 1, head.dark);
-    // Socket où le manche rejoint la tête
-    voxel(ctx, 13, 5, 6, 4, head.dark);
-    px(ctx, 14, 6, 4, 2, head.light);
-    // Fil tranchant + reflets
-    px(ctx, 3, 2, 26, 1, head.edge);
-    px(ctx, 3, 7, 2, 8, head.edge);
-    px(ctx, 27, 7, 2, 8, head.edge);
-    px(ctx, 2, 14, 1, 4, head.edge);
-    px(ctx, 29, 14, 1, 4, head.edge);
+    drawHandle(ctx, 14, 8, 4, 22, handle);
+    // Tête en arche façon Minecraft : barre épaisse + deux dents
+    // qui descendent en escalier vers l'intérieur.
+    voxel(ctx, 4, 2, 24, 5, head);   // barre du haut
+    voxel(ctx, 4, 7, 8, 5, head);    // dent gauche, étage 1
+    voxel(ctx, 5, 12, 6, 4, head);   // dent gauche, étage 2 (rentrée)
+    voxel(ctx, 20, 7, 8, 5, head);   // dent droite
+    voxel(ctx, 21, 12, 6, 4, head);
+    // Ombres intérieures qui creusent l'arche
+    px(ctx, 11, 9, 1, 7, head.dark);
+    px(ctx, 20, 9, 1, 7, head.dark);
+    // Tranchants extérieurs lumineux + pointes
+    px(ctx, 4, 2, 24, 1, head.edge);
+    px(ctx, 4, 7, 1, 5, head.edge);
+    px(ctx, 27, 7, 1, 5, head.edge);
+    px(ctx, 5, 15, 2, 1, head.edge);
+    px(ctx, 25, 15, 2, 1, head.edge);
+    // Noix où le manche rejoint la tête
+    px(ctx, 13, 5, 6, 3, head.dark);
+    px(ctx, 14, 5, 4, 1, head.light);
   });
 }
 
 function drawAxe(ctx, head, handle) {
   withItemPose(ctx, () => {
-    drawHandle(ctx, 16, 10, 4, 20, handle);
-    // Lame large et haute à gauche, comme la hache de Minecraft
-    voxel(ctx, 3, 3, 17, 7, head);
-    voxel(ctx, 1, 8, 19, 7, head);
-    voxel(ctx, 4, 14, 14, 5, head);
-    // Arrondi supérieur de la lame
-    px(ctx, 4, 3, 5, 1, head.light);
-    px(ctx, 6, 2, 4, 1, head.light);
-    // Tranchant (bord gauche)
-    px(ctx, 1, 8, 1, 7, head.edge);
-    px(ctx, 3, 3, 1, 6, head.edge);
-    px(ctx, 4, 14, 1, 5, head.edge);
-    // Rivet sur le manche
-    px(ctx, 16, 11, 4, 3, head.dark);
-    px(ctx, 17, 12, 2, 1, head.light);
+    drawHandle(ctx, 15, 8, 4, 22, handle);
+    // Lame étagée façon Minecraft : grande plaque vers la gauche,
+    // crochet qui redescend, encoche claire entre lame et manche.
+    voxel(ctx, 8, 3, 14, 5, head);   // haut de la lame, contre le manche
+    voxel(ctx, 3, 6, 17, 6, head);   // partie large
+    voxel(ctx, 3, 12, 7, 5, head);   // crochet
+    // Tranchant lumineux tout le long du bord gauche
+    px(ctx, 3, 6, 1, 11, head.edge);
+    px(ctx, 8, 3, 12, 1, head.edge) ;
+    px(ctx, 9, 13, 1, 4, head.dark); // ombre intérieure du crochet
+    // Rivet au-dessus du manche
+    px(ctx, 15, 6, 4, 2, head.dark);
+    px(ctx, 16, 6, 2, 1, head.light);
   });
 }
 
@@ -200,32 +195,33 @@ function drawStick(ctx, c) {
   ctx.restore();
 }
 
-// --- Fer brut : galet gris tacheté de rouille (comme Minecraft) ---
+// --- Fer brut : pépite massive à facettes (le fer de Minecraft) ---
 function drawRawIron(ctx) {
   ctx.save();
   ctx.translate(SIZE / 2, SIZE / 2);
-  ctx.rotate(-0.18);
-  // amas irrégulier
-  const blobs = [
-    [-8, -3, 12, 10, '#9a948e'], [-2, -7, 12, 12, '#a8a29c'],
-    [4, -1, 10, 10, '#8f8983'], [-5, 3, 12, 9, '#a39d97'],
-  ];
-  for (const [x, y, w, h, c] of blobs) {
-    ctx.fillStyle = c;
-    ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = withAlpha('#ffffff', 0.18);
-    ctx.fillRect(x, y, w, Math.max(1, Math.floor(h * 0.3)));
-    ctx.fillStyle = withAlpha('#000000', 0.14);
-    ctx.fillRect(x, y + h - 1, w, 1);
-  }
-  // taches de rouille
-  ctx.fillStyle = '#b8865b';
-  ctx.fillRect(-6, -1, 4, 3);
-  ctx.fillRect(3, 3, 5, 4);
-  ctx.fillRect(-2, -6, 3, 2);
-  ctx.fillStyle = '#d8a06e';
-  ctx.fillRect(-6, -1, 4, 1);
-  ctx.fillRect(3, 3, 5, 1);
+  ctx.rotate(-0.15);
+  const NUG = '#d8ae8a', NUG_HI = '#eec9a2', NUG_OUT = '#7a5232', NUG_SH = '#b98a62';
+  // forme octogonale (rectangles croisés = coins chanfreinés)
+  const octo = (x, y, w, h) => {
+    ctx.fillRect(x + 2, y, w - 4, h);
+    ctx.fillRect(x, y + 2, w, h - 4);
+  };
+  // grosse pépite
+  ctx.fillStyle = NUG_OUT; octo(-11, -10, 18, 16);
+  ctx.fillStyle = NUG; octo(-10, -9, 16, 14);
+  ctx.fillStyle = NUG_HI;
+  ctx.fillRect(-8, -8, 12, 2);   // facette du dessus
+  ctx.fillRect(-9, -6, 2, 8);    // facette gauche
+  ctx.fillStyle = '#fbe8d4';
+  ctx.fillRect(-6, -6, 3, 2);    // reflet taillé
+  ctx.fillStyle = NUG_SH;
+  ctx.fillRect(-8, 3, 12, 2);    // facette du bas
+  ctx.fillRect(3, -5, 2, 8);     // facette droite
+  // petite pépite accolée en bas à droite
+  ctx.fillStyle = NUG_OUT; octo(3, 2, 10, 9);
+  ctx.fillStyle = NUG; octo(4, 3, 8, 7);
+  ctx.fillStyle = NUG_HI; ctx.fillRect(5, 4, 6, 1);
+  ctx.fillStyle = '#fbe8d4'; ctx.fillRect(6, 5, 2, 1);
   ctx.restore();
 }
 
@@ -273,52 +269,39 @@ function drawWool(ctx) {
   ctx.restore();
 }
 
-// --- Bœuf cru : tranche rouge ---
-function drawRawBeef(ctx) {
+// --- Steak façon Minecraft : dalle arrondie, bord sombre ---
+//  (sert de gabarit commun au bœuf cru et au bœuf cuit)
+function drawSteak(ctx, rim, base, light, marble) {
   ctx.save();
   ctx.translate(SIZE / 2, SIZE / 2);
-  ctx.rotate(-0.22);
-  ctx.fillStyle = '#c0504a';
+  ctx.rotate(-0.3);
+  // la dalle : grand rectangle légèrement chanfreiné
+  ctx.fillStyle = rim;
+  ctx.fillRect(-11, -8, 22, 16);
+  ctx.fillRect(-12, -6, 24, 12);
+  ctx.fillStyle = base;
   ctx.fillRect(-10, -7, 20, 14);
-  ctx.fillStyle = '#a83c36';
-  ctx.fillRect(-9, -2, 18, 8);
-  ctx.fillStyle = '#e0705a';
-  ctx.fillRect(-8, -6, 16, 3);
-  // gras
-  ctx.fillStyle = '#f2e2c8';
-  ctx.beginPath();
-  ctx.arc(-4, 4, 2.6, 0, Math.PI * 2);
-  ctx.arc(3, 5, 2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = withAlpha('#000000', 0.2);
-  ctx.lineWidth = 1;
-  ctx.strokeRect(-10.5, -7.5, 21, 15);
+  ctx.fillRect(-11, -5, 22, 10);
+  // nappage lumineux en haut à gauche
+  ctx.fillStyle = light;
+  ctx.fillRect(-9, -6, 18, 3);
+  ctx.fillRect(-10, -3, 2, 6);
+  // persillage / jus : deux stries fines en diagonale
+  ctx.fillStyle = marble;
+  px(ctx, -5, -2, 2, 7, marble);
+  px(ctx, 3, -3, 2, 8, marble);
+  px(ctx, -4, 5, 1, 2, marble);
   ctx.restore();
 }
 
-// --- Steak cuit : marron grillé ---
+// --- Bœuf cru : rouge saumon persillé de crème ---
+function drawRawBeef(ctx) {
+  drawSteak(ctx, '#a84640', '#cd6a62', '#e08a80', '#ecc9b8');
+}
+
+// --- Steak cuit : brun rôti au jus ambré ---
 function drawCookedBeef(ctx) {
-  ctx.save();
-  ctx.translate(SIZE / 2, SIZE / 2);
-  ctx.rotate(-0.22);
-  ctx.fillStyle = '#8a5a34';
-  ctx.fillRect(-10, -7, 20, 14);
-  ctx.fillStyle = '#6e4528';
-  ctx.fillRect(-9, -2, 18, 8);
-  ctx.fillStyle = '#a4683c';
-  ctx.fillRect(-8, -6, 16, 3);
-  // stries de cuisson
-  ctx.strokeStyle = withAlpha('#3c2412', 0.6);
-  ctx.lineWidth = 1.2;
-  for (let i = 0; i < 3; i++) {
-    ctx.beginPath();
-    ctx.moveTo(-8 + i * 6, -6);
-    ctx.lineTo(-6 + i * 6, 6);
-    ctx.stroke();
-  }
-  ctx.strokeStyle = withAlpha('#000000', 0.25);
-  ctx.strokeRect(-10.5, -7.5, 21, 15);
-  ctx.restore();
+  drawSteak(ctx, '#5e3a1e', '#8a5632', '#a87848', '#c99a5e');
 }
 
 // --- Porte : vue de face avec poignée (icône d'objet) ---
@@ -577,22 +560,25 @@ function paintIronBlock(ctx) {
 }
 
 function paintIronOre(ctx) {
+  // Pépites beige-rosé à facettes, accordées au rocher du monde.
+  const NUG = '#d8ae8a', NUG_HI = '#eec9a2', NUG_OUT = '#7a5232';
+  const nugget = (x, y, w, h) => {
+    ctx.fillStyle = NUG_OUT; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+    ctx.fillStyle = NUG; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = NUG_HI; ctx.fillRect(x, y, w, 1); ctx.fillRect(x, y, 1, h);
+    ctx.fillStyle = '#fbe8d4'; ctx.fillRect(x + 1, y + 1, 1, 1);
+  };
   clipFace(ctx, isoTop, () => {
-    ctx.fillStyle = '#b8865b';
-    ctx.fillRect(7, 6, 6, 4);
-    ctx.fillRect(16, 10, 5, 3);
-    ctx.fillRect(11, 13, 4, 3);
-    ctx.fillStyle = '#d8a06e';
-    ctx.fillRect(7, 6, 6, 1);
-    ctx.fillRect(16, 10, 5, 1);
+    nugget(7, 6, 5, 4);
+    nugget(16, 9, 5, 4);
+    nugget(11, 12, 4, 3);
   });
   clipFace(ctx, isoLeft, () => {
-    ctx.fillStyle = '#b8865b';
-    ctx.fillRect(4, 15, 4, 4);
+    nugget(4, 15, 4, 4);
+    nugget(10, 22, 3, 3);
   });
   clipFace(ctx, isoRight, () => {
-    ctx.fillStyle = '#a8774c';
-    ctx.fillRect(19, 17, 5, 4);
+    nugget(19, 17, 5, 4);
   });
 }
 

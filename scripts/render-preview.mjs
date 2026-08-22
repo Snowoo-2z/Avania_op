@@ -18,7 +18,7 @@ import {
   buildTileset, getTileCanvas, getDoorCanvas, getFurnaceCanvas, getWaterFrame,
   drawTreeObject, drawRockObject, drawIronOreObject,
 } from '../js/tileset.js';
-import { Mob, drawMob } from '../js/mobs.js';
+import { Mob, drawMob } from '../js/mobs/index.js';
 import { drawCharacter } from '../js/character.js';
 import { BLOCK_DEFS } from '../js/blocks.js';
 import { TILE, DEFAULT_APPEARANCE, HAIR_STYLES, HATS, GLASSES, FACIAL_HAIR } from '../js/config.js';
@@ -158,12 +158,16 @@ function renderMobs() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#6b9c42';
   for (let i = 0; i < 60; i++) ctx.fillRect((i * 37) % 320, (i * 23) % 110, 2, 2);
+  // Les animaux sont toujours vus de profil : gauche / droite.
   const sheep = new Mob('sheep', 60, 60);
+  sheep.facing = 'right';
   drawMob(ctx, sheep);
   const sheepL = new Mob('sheep', 130, 60);
   sheepL.facing = 'left';
   drawMob(ctx, sheepL);
-  drawMob(ctx, new Mob('cow', 220, 60));
+  const cow = new Mob('cow', 220, 60);
+  cow.facing = 'right';
+  drawMob(ctx, cow);
   const cowL = new Mob('cow', 285, 60);
   cowL.facing = 'left';
   drawMob(ctx, cowL);
