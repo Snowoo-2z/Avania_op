@@ -43,6 +43,9 @@ const SWING_SPEED = 9.5;
 // Durée de vie d'un objet au sol (5 min, comme Minecraft).
 const DROP_LIFETIME = 300;
 const MAX_DROPS = 240;
+// Délai avant de pouvoir ramasser un objet qu'on vient de lâcher (secondes).
+// Empêche le ramassage instantané quand Q sert aussi à se déplacer (AZERTY).
+const PICKUP_DELAY = 0.6;
 
 // Couleurs des particules de casse, par ressource. Des carrés pixelisés
 // de la même palette que la ressource, pour un débris cohérent.
@@ -536,8 +539,11 @@ export class Game {
     };
     const d = dirs[this.player.facing] || dirs.down;
     const a = Math.atan2(d.y, d.x) + (Math.random() - 0.5) * 0.55;
-    const sp = 72 + Math.random() * 46;
-    this.spawnDropAt(this.player.x, this.player.y, id, count, a, sp);
+    // Élan plus fort + offset initial pour que l'objet atterrisse loin du joueur
+    const sp = 110 + Math.random() * 50;
+    const ox = d.x * 18; // décalage initial dans la direction regardée
+    const oy = d.y * 18;
+    this.spawnDropAt(this.player.x + ox, this.player.y + oy, id, count, a, sp);
   }
 
   // Fait apparaître un objet au sol à une position donnée.
@@ -860,7 +866,8 @@ export class Game {
       const distSq = dx * dx + dy * dy;
 
       // Ramassage direct dès qu'on marche dessus.
-      if (distSq < PICKUP_SQ) {
+      // Délai anti-ramassage instantané après un lâcher (Q en AZERTY).
+      if (distSq < PICKUP_SQ && (this.time - d.born) >= PICKUP_DELAY) {
         const added = this.inventory.add(d.id, d.count);
         if (added >= d.count) {
           d.gone = true;

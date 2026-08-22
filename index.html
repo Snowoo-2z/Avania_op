@@ -55,6 +55,7 @@
           <div class="inventory-emblem">🎒</div>
           <div>
             <h2>Inventaire</h2>
+            <p id="inventory-capacity" class="inventory-capacity">0/36 cases utilisées</p>
           </div>
         </div>
         <button id="inventory-close" class="craft-close" title="Fermer (E)">✕</button>
@@ -78,6 +79,9 @@
           </div>
         </div>
         <div class="inv-main">
+          <div class="inventory-toolbar">
+            <button id="inventory-sort" class="inventory-sort-btn" title="Trier l'inventaire">📦 Trier</button>
+          </div>
           <div class="inventory-grid-shell"><div id="inventory-grid" class="inventory-grid"></div></div>
           <div class="inventory-divider"><span></span><b>BARRE RAPIDE</b><span></span></div>
           <div class="inventory-hotbar-shell"><div id="inventory-hotbar" class="inventory-grid inventory-hotbar-grid"></div></div>
@@ -192,6 +196,84 @@
   <div id="slot-tooltip" class="slot-tooltip hidden" aria-hidden="true"></div>
 
   <div id="game-toast" class="game-toast" role="status"></div>
+
+  <!-- Panneau de paramètres -->
+  <section id="settings-panel" class="settings-panel hidden" aria-label="Paramètres">
+    <div class="panel-backdrop"></div>
+    <div class="settings-frame">
+      <header class="settings-header">
+        <div class="settings-brand">
+          <div class="settings-emblem">⚙️</div>
+          <div>
+            <h2>Paramètres</h2>
+            <p class="settings-subtitle">Contrôles & Options</p>
+          </div>
+        </div>
+        <button id="settings-close" class="craft-close" title="Fermer (Échap)">✕</button>
+      </header>
+      <div class="settings-body">
+        <div class="settings-section">
+          <div class="settings-section-title"><span class="settings-icon">🎮</span><h3>Contrôles</h3></div>
+          <div class="controls-grid">
+            <div class="control-row"><kbd>Z</kbd><kbd>Q</kbd><kbd>S</kbd><kbd>D</kbd><span>Se déplacer</span></div>
+            <div class="control-row"><kbd>Clic G</kbd><span>Miner / Attaquer</span></div>
+            <div class="control-row"><kbd>Clic D</kbd><span>Poser un bloc</span></div>
+            <div class="control-row"><kbd>1-9</kbd><span>Barre rapide</span></div>
+            <div class="control-row"><kbd>Molette</kbd><span>Changer d'objet</span></div>
+            <div class="control-row"><kbd>E</kbd><span>Inventaire</span></div>
+            <div class="control-row"><kbd>C</kbd><span>Établi (craft)</span></div>
+            <div class="control-row"><kbd>R</kbd><span>Trier l'inventaire</span></div>
+            <div class="control-row"><kbd>Q</kbd><span>Lâcher 1 objet</span></div>
+            <div class="control-row"><kbd>Ctrl+Q</kbd><span>Lâcher la pile</span></div>
+            <div class="control-row"><kbd>Shift+Clic</kbd><span>Craft rapide (max)</span></div>
+            <div class="control-row"><kbd>Échap</kbd><span>Fermer les panneaux</span></div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title"><span class="settings-icon">🖱️</span><h3>Souris & Sensibilité</h3></div>
+          <div class="settings-option">
+            <label><span>Sensibilité de la souris</span><span id="sensitivity-value" class="settings-value">100%</span></label>
+            <input type="range" id="sensitivity-range" min="25" max="300" value="100" step="5" />
+          </div>
+          <div class="settings-option">
+            <label><span>Style du curseur</span></label>
+            <div class="cursor-styles" id="cursor-styles">
+              <button class="cursor-style-btn active" data-cursor="crosshair" title="Crosshair pixel art">⊕</button>
+              <button class="cursor-style-btn" data-cursor="dot" title="Point simple">●</button>
+              <button class="cursor-style-btn" data-cursor="sword" title="Épée pixel art">⚔</button>
+              <button class="cursor-style-btn" data-cursor="pickaxe" title="Pioche pixel art">⛏</button>
+              <button class="cursor-style-btn" data-cursor="hand" title="Main">✋</button>
+            </div>
+          </div>
+          <div class="settings-option">
+            <label><span>Taille du curseur</span><span id="cursor-size-value" class="settings-value">24px</span></label>
+            <input type="range" id="cursor-size-range" min="16" max="48" value="24" step="2" />
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title"><span class="settings-icon">⚡</span><h3>Gameplay</h3></div>
+          <div class="settings-option">
+            <label><span>Zoom de la caméra</span><span id="zoom-value" class="settings-value">Auto</span></label>
+            <input type="range" id="zoom-range" min="1" max="4" value="2" step="0.5" />
+          </div>
+          <div class="settings-option toggle-option">
+            <label><span>Vignette d'ambiance</span><span class="settings-hint">Assombrit les bords de l'écran</span></label>
+            <button id="toggle-vignette" class="toggle-btn active" aria-pressed="true"><span class="toggle-knob"></span></button>
+          </div>
+          <div class="settings-option toggle-option">
+            <label><span>Particules de casse</span><span class="settings-hint">Débris quand on mine</span></label>
+            <button id="toggle-particles" class="toggle-btn active" aria-pressed="true"><span class="toggle-knob"></span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Curseur custom pixel art -->
+  <canvas id="custom-cursor" class="custom-cursor" width="32" height="32"></canvas>
+
+  <!-- Bouton paramètres -->
+  <button id="settings-btn" class="settings-btn hidden" title="Paramètres (O)">⚙️</button>
 
   <!-- Écran de création du personnage -->
   <div id="customization" class="overlay">

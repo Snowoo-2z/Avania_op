@@ -448,6 +448,45 @@ export class Inventory {
   }
 
   // ------------------------------------------------------------
+  //  Tri automatique de l'inventaire
+  // ------------------------------------------------------------
+
+  sortInventory() {
+    // Ordre de tri : type d'objet puis nom
+    const typeOrder = { resource: 0, material: 1, tool: 2, block: 3 };
+    const compare = (a, b) => {
+      if (!a && !b) return 0;
+      if (!a) return 1;
+      if (!b) return -1;
+      const defA = ITEM_DEFS[a.id];
+      const defB = ITEM_DEFS[b.id];
+      const typeA = typeOrder[defA?.type] ?? 99;
+      const typeB = typeOrder[defB?.type] ?? 99;
+      if (typeA !== typeB) return typeA - typeB;
+      return (defA?.label || a.id).localeCompare(defB?.label || b.id);
+    };
+
+    // Séparer barre rapide et stockage
+    const storage = this.slots.slice(0, this.hotbarStart).filter(Boolean);
+    const hotbar = this.slots.slice(this.hotbarStart).filter(Boolean);
+
+    // Trier chaque partie
+    storage.sort(compare);
+    hotbar.sort(compare);
+
+    // Reconstruire les slots
+    for (let i = 0; i < this.hotbarStart; i++) {
+      this.slots[i] = i < storage.length ? storage[i] : null;
+    }
+    for (let i = 0; i < this.hotbarSize; i++) {
+      this.slots[this.hotbarStart + i] = i < hotbar.length ? hotbar[i] : null;
+    }
+
+    this._touch();
+    return true;
+  }
+
+  // ------------------------------------------------------------
   //  Fabrication directe (API historique)
   // ------------------------------------------------------------
 
