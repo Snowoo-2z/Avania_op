@@ -9,6 +9,7 @@
 import { getItemSprite } from './icons.js';
 import { getTileCanvas, drawTreeObject, drawRockObject } from './tileset.js';
 import { drawCharacter } from './character.js';
+import { drawHeldItem } from './held.js';
 
 const ILL_W = 168;
 const ILL_H = 110;
@@ -90,6 +91,7 @@ function illMove(ctx, app) {
   backdrop(ctx);
   drawShadow(ctx, 56, 62, 12);
   drawCharacter(ctx, app, 56, 62, { facing: 'down', scale: 1.1 });
+  drawHeldItem(ctx, app, 'wooden_axe', 56, 62, { facing: 'down', scale: 1.1, time: 0.4 });
   // croix de touches ZQSD
   drawKey(ctx, 116, 22, 24, 22, 'Z');
   drawKey(ctx, 92, 48, 24, 22, 'Q');
@@ -104,26 +106,29 @@ function illMove(ctx, app) {
 
 function illGather(ctx, app) {
   backdrop(ctx);
-  drawTreeObject(ctx, 46, 62);
-  drawShadow(ctx, 108, 84, 13);
-  drawItem(ctx, 'wood', 100, 76, 26);
-  drawItem(ctx, 'wood', 118, 82, 26);
-  drawCursor(ctx, 130, 34);
-  // petit éclat "clic"
+  drawTreeObject(ctx, 40, 64);
+  drawShadow(ctx, 88, 86, 8);
+  drawShadow(ctx, 112, 72, 8);
+  drawShadow(ctx, 128, 90, 8);
+  drawItem(ctx, 'wood', 88, 78, 22);
+  drawItem(ctx, 'wood', 112, 64, 22);
+  drawItem(ctx, 'wood', 128, 82, 22);
+  drawCursor(ctx, 136, 30);
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
   ctx.font = 'bold 12px system-ui, sans-serif';
-  ctx.fillText('clic G', 128, 62);
+  ctx.fillText('clic G', 132, 58);
 }
 
 function illPlace(ctx, app) {
   backdrop(ctx);
-  // bloc posé
-  drawShadow(ctx, 70, 78, 15);
-  ctx.drawImage(getTileCanvas('wood'), 54, 46, 32, 32);
-  drawCursor(ctx, 96, 32);
+  drawShadow(ctx, 70, 82, 15);
+  ctx.drawImage(getTileCanvas('wood'), 54, 50, 32, 32);
+  drawCharacter(ctx, app, 118, 88, { facing: 'left', scale: 1.05 });
+  drawHeldItem(ctx, app, 'wood', 118, 88, { facing: 'left', scale: 1.05 });
+  drawCursor(ctx, 92, 28);
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
   ctx.font = 'bold 12px system-ui, sans-serif';
-  ctx.fillText('clic D', 96, 58);
+  ctx.fillText('clic D', 96, 54);
 }
 
 function illInventory(ctx, app) {
@@ -162,17 +167,15 @@ function illCraft(ctx, app) {
 
 function illBuild(ctx, app) {
   backdrop(ctx);
-  // petite maison en blocs
-  drawShadow(ctx, 84, 92, 44);
+  drawShadow(ctx, 84, 92, 40);
   ctx.drawImage(getTileCanvas('plank'), 52, 60, 32, 32);
   ctx.drawImage(getTileCanvas('plank'), 84, 60, 32, 32);
   ctx.drawImage(getTileCanvas('wood'), 52, 28, 32, 32);
   ctx.drawImage(getTileCanvas('wood'), 84, 28, 32, 32);
-  ctx.drawImage(getTileCanvas('glass'), 60, 60, 16, 16); // fenêtre
-  ctx.drawImage(getTileCanvas('brick'), 82, 60, 12, 20); // porte
-  ctx.drawImage(getTileCanvas('wood'), 44, 8, 80, 24); // toit
-  // personnage à côté
-  drawCharacter(ctx, app, 132, 88, { facing: 'left', scale: 1.1 });
+  ctx.drawImage(getTileCanvas('glass'), 60, 60, 16, 16);
+  ctx.drawImage(getTileCanvas('brick'), 82, 60, 12, 20);
+  drawCharacter(ctx, app, 132, 88, { facing: 'left', scale: 1.05 });
+  drawHeldItem(ctx, app, 'plank', 132, 88, { facing: 'left', scale: 1.05 });
 }
 
 const CARDS = [

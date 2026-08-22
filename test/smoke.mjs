@@ -7,7 +7,9 @@ import { World } from '../js/world.js';
 import { Player } from '../js/player.js';
 import { Inventory } from '../js/inventory.js';
 import { appearanceColors } from '../js/character.js';
-import { TILE } from '../js/config.js';
+import { TILE, BLOCK_EXTRUDE } from '../js/config.js';
+import { BLOCK_DEFS } from '../js/blocks.js';
+import { treeVariantAt, treeDropCount, treeBreakTime, TREE_VARIANTS } from '../js/tileset.js';
 
 let failures = 0;
 function assert(cond, msg) {
@@ -46,6 +48,7 @@ const treeIdx = w1.blocks.indexOf('tree');
 const ttx = treeIdx % 128, tty = Math.floor(treeIdx / 128);
 const drop = w1.breakBlock(ttx, tty);
 assert(drop === 'wood', 'casser un arbre donne du bois');
+assert(BLOCK_DEFS.tree.dropN === 3, 'un arbre lâche 3 bois');
 assert(w1.blocks[treeIdx] === null, 'le bloc cassé devient vide');
 
 // poser un bloc de bois sur une case d'herbe vide
@@ -101,6 +104,41 @@ assert(w3.floor[w3.idx(sandTx, sandTy)] === 'grass', 'la terre creusée devient 
 assert(w3.placeBlock(sandTx, sandTy, 'plank') === true, 'poser des planches réussit');
 assert(w3.blocks[w3.idx(sandTx, sandTy)] === 'plank', 'les planches sont posées');
 assert(w3.placeBlock(sandTx, sandTy, 'brick') === false, 'on ne pose pas sur un bloc occupé');
+
+console.log('▶ Arbres de tailles variées');
+assert(TREE_VARIANTS.join(',') === 'small,medium,large', '3 tailles d\'arbres');
+assert(treeVariantAt(4, 7) === treeVariantAt(4, 7), 'taille déterministe pour une case');
+const sizes = new Set([treeVariantAt(1, 1), treeVariantAt(2, 5), treeVariantAt(8, 3), treeVariantAt(11, 9), treeVariantAt(20, 14), treeVariantAt(33, 6)]);
+assert(sizes.size >= 2, 'plusieurs tailles apparaissent dans le monde');
+assert(treeDropCount('small') === 3 && treeDropCount('medium') === 4 && treeDropCount('large') === 5, 'plus l\'arbre est grand, plus il donne de bois');
+assert(treeBreakTime('large') > treeBreakTime('medium') && treeBreakTime('medium') > treeBreakTime('small'), 'un grand arbre se casse plus lentement');
+
+console.log('▶ Pose manuelle sur l\'établi');
+const bench = new Inventory();
+bench.add('wood', 4);
+const woodSlot = bench.slots.findIndex((s) => s && s.id === 'wood');
+assert(woodSlot >= 0, 'le bois est dans une case');
+assert(bench.clickInventorySlot(woodSlot, 'left') && bench.cursor?.id === 'wood', 'clic = prendre dans le curseur');
+assert(bench.clickCraftSlot(0, 'left') && bench.craftingGrid[0]?.id === 'wood', 'clic grille = poser');
+assert(bench.cursor === null, 'le curseur se vide après avoir tout posé');
+bench.add('plank', 2);
+const plankSlot = bench.slots.findIndex((s) => s && s.id === 'plank');
+bench.clickInventorySlot(plankSlot, 'left');
+bench.clickCraftSlot(0, 'right');
+assert(bench.craftingGrid[0]?.id === 'wood', 'clic droit ne remplace pas un autre objet');
+
+const sticks = new Inventory();
+sticks.add('plank', 2);
+const pSlot = sticks.slots.findIndex((s) => s && s.id === 'plank');
+sticks.clickInventorySlot(pSlot, 'left');
+sticks.clickCraftSlot(0, 'right');
+sticks.clickCraftSlot(3, 'right');
+const match = sticks.getMatchingRecipe();
+assert(match && match.id === 'stick', '2 planches en colonne = bâtons');
+
+console.log('▶ Construction 3D');
+assert(BLOCK_EXTRUDE >= 0, 'constante d\'extrusion définie');
+assert(BLOCK_DEFS.wood.kind === 'block' && BLOCK_DEFS.glass.kind === 'block', 'bois et verre sont des blocs constructibles');
 
 console.log('▶ Couleurs d\'apparence');
 const cols = appearanceColors({ skin: 'ebene', hairColor: 'roux', eyes: 'violet', shirt: 'noir', pants: 'jean' });

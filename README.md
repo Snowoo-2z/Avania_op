@@ -53,7 +53,7 @@ node server.js
 | Miner / récolter | Maintenir le clic gauche sur la ressource |
 | Pelleter (sable, terre) | Maintenir le clic gauche sur la plage / la terre |
 | Poser le bloc sélectionné | Clic droit |
-| Changer d'objet | Touches 1..9 / molette |
+| Changer d'objet | Touches 1..9 / molette (l'objet apparaît dans ta main) |
 | Ouvrir l'inventaire | Touche `E` |
 | Fabriquer (matériaux & outils) | Touche `C` ou bouton 🛠️ |
 | Déplacer une pile | Glisser-déposer ou deux clics dans l'inventaire |
@@ -83,7 +83,9 @@ js/
   utils.js       helpers (RNG seed, canvas…)
   input.js       clavier + souris
   camera.js      caméra (zoom + suivi)
-  tileset.js     tuiles & objets dessinés en code (pré-rendu)
+  tileset.js     tuiles, objets & cubes 3D dessinés en code (pré-rendu)
+  icons.js       icônes d'inventaire (outils + cubes isométriques)
+  held.js        objet tenu en main selon la sélection
   world.js       monde vide + casser/poser
   character.js   personnage carré personnalisable
   player.js      entité joueur + collisions

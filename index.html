@@ -4,12 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>AVANIA — Le village à construire</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; background: #0f1a13; color: #eef6ee; }
+    #boot-error { display: none; position: fixed; inset: 16px auto auto 16px; z-index: 999; max-width: min(520px, calc(100% - 32px)); padding: 12px 14px; background: #3a1c16; border: 1px solid #c96a55; border-radius: 10px; font: 700 13px system-ui, sans-serif; }
+    #boot-error.visible { display: block; }
+  </style>
+  <link rel="stylesheet" href="css/style.css?v=16" />
 </head>
 <body>
+  <div id="boot-error" role="alert"></div>
   <canvas id="game"></canvas>
 
   <!-- HUD en jeu -->
@@ -42,15 +45,10 @@
 
   <!-- Inventaire complet : 27 cases + barre rapide -->
   <section id="inventory-panel" class="inventory-panel hidden" aria-label="Inventaire">
-    <div class="inventory-ornament inventory-ornament--one"></div>
-    <div class="inventory-ornament inventory-ornament--two"></div>
     <header class="inventory-header">
       <div class="inventory-brand">
-        <div class="inventory-emblem">🎒</div>
         <div>
-          <span class="panel-eyebrow">AVANIA // ÉQUIPEMENT</span>
           <h2>Inventaire</h2>
-          <p>Tout ce que tu transportes pour bâtir ton monde.</p>
         </div>
       </div>
       <div class="inventory-head-actions">
@@ -61,24 +59,14 @@
         <button id="inventory-close" class="craft-close" title="Fermer">✕</button>
       </div>
     </header>
-    <div class="inventory-rule"><span>CONTENU DU SAC</span><i></i><span class="inventory-rule-dot">✦</span><i></i></div>
     <div class="inventory-content">
       <div class="inventory-storage">
-        <div class="inventory-section-head">
-          <div><span class="section-kicker">STOCKAGE</span><strong>Compartiment principal</strong></div>
-          <span class="section-badge">27 CASES</span>
-        </div>
         <div class="inventory-grid-shell"><div id="inventory-grid" class="inventory-grid"></div></div>
         <div class="inventory-divider"><span></span><b>BARRE RAPIDE</b><span></span></div>
-        <div class="inventory-section-head inventory-section-head--hotbar">
-          <div><span class="section-kicker">ACCÈS RAPIDE</span><strong>Objets prêts à utiliser</strong></div>
-          <span class="hotbar-hint"><kbd>1</kbd> à <kbd>9</kbd></span>
-        </div>
         <div class="inventory-hotbar-shell"><div id="inventory-hotbar" class="inventory-grid inventory-hotbar-grid"></div></div>
-        <p class="inventory-help"><span>✦</span> Glisse une pile, clique deux cases pour l'échanger ou utilise <b>Shift-clic</b> pour transférer.</p>
       </div>
       <aside class="inventory-detail">
-        <div class="detail-topline"><span class="detail-kicker">OBJET SÉLECTIONNÉ</span><span id="inventory-detail-slot" class="detail-slot">CASE 1</span></div>
+        <div class="detail-topline"><span id="inventory-detail-slot" class="detail-slot">CASE 1</span></div>
         <div id="inventory-detail-icon" class="detail-icon">＋</div>
         <h3 id="inventory-detail-name">Case sélectionnée vide</h3>
         <p id="inventory-detail-text">Choisis une case de la barre rapide ou déplace une pile par glisser-déposer.</p>
@@ -99,10 +87,14 @@
         <span class="panel-eyebrow">ÉTABLI PORTATIF</span>
         <strong>🛠️ Fabrication</strong>
       </div>
+      <nav class="craft-tabs" aria-label="Mode de fabrication">
+        <button type="button" id="craft-tab-book" class="craft-tab active" data-tab="book">📖 Livre</button>
+        <button type="button" id="craft-tab-inv" class="craft-tab" data-tab="inventory">🎒 Inventaire</button>
+      </nav>
       <button id="craft-close" class="craft-close" title="Fermer">✕</button>
     </header>
     <div class="crafting-layout">
-      <aside class="craft-recipe-book">
+      <aside class="craft-recipe-book" id="craft-pane-book">
         <div class="craft-book-header">
           <div>
             <span class="section-kicker">RECETTES</span>
@@ -112,6 +104,10 @@
         </div>
         <p class="craft-book-intro">Toutes les recettes connues. Les ingrédients manquants restent visibles en gris.</p>
         <div id="craft-list" class="craft-list"></div>
+      </aside>
+      <aside class="craft-inv-pane hidden" id="craft-pane-inv">
+        <div id="craft-inv-hotbar" class="inventory-grid inventory-hotbar-grid craft-player-hotbar"></div>
+        <div id="craft-inv-grid" class="inventory-grid craft-player-grid"></div>
       </aside>
       <main class="craft-main">
         <div class="craft-workbench">
@@ -129,9 +125,13 @@
           </div>
         </div>
         <p id="craft-status" class="craft-status">Sélectionne une recette à gauche pour remplir la grille.</p>
-        <div class="craft-howto"><span>1</span> Choisis une recette <i>→</i><span>2</span> récupère le résultat</div>
+        <div class="craft-howto" id="craft-howto"><span>1</span> Choisis une recette <i>→</i><span>2</span> récupère le résultat</div>
         <p class="craft-footnote">Les recettes verrouillées restent affichées : récolte leurs matériaux dans le monde pour les débloquer.</p>
       </main>
+    </div>
+    <div id="craft-cursor" class="craft-cursor hidden" aria-hidden="true">
+      <span class="slot-icon"></span>
+      <span class="slot-count"></span>
     </div>
   </section>
 
@@ -145,11 +145,8 @@
         <h1>AVANIA</h1>
         <p class="tagline">Un monde vide. <span>À toi de tout construire.</span></p>
         <div class="pills">
-          <span class="pill">🧍 Perso = un cube</span>
-          <span class="pill">💇 Coiffures & barbes</span>
-          <span class="pill">🧱 Monde à bâtir</span>
-          <span class="pill">🎒 Inventaire 36 cases</span>
-          <span class="pill pill-v">v0.5</span>
+          <span class="pill">Monde à bâtir</span>
+          <span class="pill">Inventaire 36 cases</span>
         </div>
       </header>
 
@@ -183,6 +180,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/main.js?v=7"></script>
+  <script type="module" src="js/main.js?v=16"></script>
 </body>
 </html>

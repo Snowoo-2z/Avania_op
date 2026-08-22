@@ -47,6 +47,7 @@ const server = http.createServer((req, res) => {
       'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
       'Pragma': 'no-cache',
       'Expires': '0',
+      'Access-Control-Allow-Origin': '*',
     });
     res.end(data);
   });

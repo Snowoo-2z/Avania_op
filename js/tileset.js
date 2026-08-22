@@ -130,27 +130,52 @@ function drawWater(ctx, rng, phase) {
   }
 }
 
-// --- Bloc "plein" (bois, pierre) : face dessus + côtés, aspect voxel ---
-function drawBlockTile(ctx, color, texture) {
-  const top = shade(color, 1.12);
-  const side = shade(color, 0.82);
+// --- Bloc posé : cube vu du dessus, STRICTEMENT dans la tuile 32×32.
+// Un bois posé doit rester plus petit qu'un arbre : on n'extrude plus
+// hors de la case, on suggère juste le volume par le biseau.
+function drawBlockTile(ctx, color, texture, opts = {}) {
+  const top = shade(color, 1.14);
+  const side = shade(color, 0.84);
   const sideDark = shade(color, 0.68);
-  // côtés (fond)
+  const alpha = opts.alpha;
+  if (alpha != null) {
+    ctx.clearRect(0, 0, S, S);
+    ctx.globalAlpha = alpha;
+  }
+
+  // Fond / côtés (toute la tuile, pour que les constructions se joignent)
   ctx.fillStyle = side;
   ctx.fillRect(0, 0, S, S);
-  // face supérieure
+
+  // Face supérieure (légèrement inset) = le dessus du cube
   ctx.fillStyle = top;
-  ctx.fillRect(3, 3, S - 6, S - 6);
-  // ombre basse et droite
+  ctx.fillRect(2, 2, S - 7, S - 7);
+
+  // Face avant (bande basse, dans la tuile)
   ctx.fillStyle = sideDark;
-  ctx.fillRect(3, S - 8, S - 6, 5);
-  ctx.fillRect(S - 8, 3, 5, S - 6);
-  // reflet haut + gauche
-  ctx.fillStyle = withAlpha('#ffffff', 0.28);
-  ctx.fillRect(3, 3, S - 6, 3);
-  ctx.fillRect(3, 3, 3, S - 6);
-  // texture
+  ctx.fillRect(2, S - 6, S - 4, 6);
+  // Face droite (bande, dans la tuile)
+  ctx.fillRect(S - 6, 2, 6, S - 2);
+
+  // Reflet haut-gauche
+  ctx.fillStyle = withAlpha('#ffffff', opts.shine ?? 0.26);
+  ctx.fillRect(2, 2, S - 8, 2);
+  ctx.fillRect(2, 2, 2, S - 8);
+
+  // Texture uniquement sur le dessus
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(2, 2, S - 8, S - 8);
+  ctx.clip();
   texture(ctx, top, sideDark);
+  ctx.restore();
+
+  // Contour net pour que les murs restent lisibles
+  ctx.strokeStyle = shade(color, 0.48);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, S - 1, S - 1);
+
+  ctx.globalAlpha = 1;
 }
 
 function woodGrain(ctx, top, dark) {
@@ -243,7 +268,7 @@ const DRAWERS = {
   stone:     (c) => drawBlockTile(c, BLOCK_DEFS.stone.color, stoneTexture),
   plank:     (c) => drawBlockTile(c, BLOCK_DEFS.plank.color, plankTexture),
   brick:     (c) => drawBlockTile(c, BLOCK_DEFS.brick.color, brickTexture),
-  glass:     (c) => drawBlockTile(c, BLOCK_DEFS.glass.color, glassTexture),
+  glass:     (c) => drawBlockTile(c, BLOCK_DEFS.glass.color, glassTexture, { alpha: 0.78, shine: 0.45 }),
   sandBlock: (c) => drawBlockTile(c, BLOCK_DEFS.sandBlock.color, sandBlockTexture),
   dirtBlock: (c) => drawBlockTile(c, BLOCK_DEFS.dirtBlock.color, dirtBlockTexture),
 };
@@ -310,29 +335,53 @@ function voxel(ctx, x, y, w, h, color) {
   ctx.fillRect(x + 1, y + h - 2, Math.max(0, w - 2), Math.min(2, h));
 }
 
-function drawTreeObjectRaw(ctx, x, y) {
-  softShadow(ctx, x, y + 1, 15, 6);
-  // tronc
+function drawTreeSmallRaw(ctx, x, y, shadow = true) {
+  // Ancienne taille « standard » : un vrai petit arbre, pas une pousse.
+  if (shadow) softShadow(ctx, x, y + 1, 15, 6);
   voxel(ctx, x - 4, y - 14, 8, 16, '#6e4426');
   ctx.fillStyle = '#8a5a34';
   ctx.fillRect(x - 4, y - 14, 3, 16);
-  // feuillage (cube)
   voxel(ctx, x - 15, y - 31, 30, 21, '#3f7d2c');
   voxel(ctx, x - 11, y - 35, 22, 22, '#4f9337');
   voxel(ctx, x - 6, y - 39, 12, 6, '#63a845');
-  // reflet sur le dessus du feuillage
   ctx.fillStyle = 'rgba(255,255,255,0.18)';
   ctx.fillRect(x - 6, y - 39, 12, 3);
 }
 
-function drawRockObjectRaw(ctx, x, y) {
-  softShadow(ctx, x, y + 1, 14, 5);
+function drawTreeMediumRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 1, 16, 6);
+  voxel(ctx, x - 4, y - 16, 8, 18, '#6e4426');
+  ctx.fillStyle = '#8a5a34';
+  ctx.fillRect(x - 4, y - 16, 3, 18);
+  voxel(ctx, x - 16, y - 36, 32, 22, '#3f7d2c');
+  voxel(ctx, x - 12, y - 41, 24, 24, '#4f9337');
+  voxel(ctx, x - 7, y - 46, 14, 8, '#63a845');
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.fillRect(x - 7, y - 46, 14, 3);
+}
+
+function drawTreeLargeRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 2, 22, 8);
+  voxel(ctx, x - 6, y - 26, 12, 28, '#5a361c');
+  ctx.fillStyle = '#7a4a28';
+  ctx.fillRect(x - 6, y - 26, 4, 28);
+  ctx.fillStyle = withAlpha('#000000', 0.18);
+  ctx.fillRect(x + 3, y - 22, 2, 10);
+  voxel(ctx, x - 24, y - 52, 48, 30, '#2f6a24');
+  voxel(ctx, x - 19, y - 60, 38, 32, '#3f7d2c');
+  voxel(ctx, x - 13, y - 68, 26, 22, '#4f9337');
+  voxel(ctx, x - 7, y - 74, 14, 10, '#63a845');
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fillRect(x - 7, y - 74, 14, 3);
+}
+
+function drawRockObjectRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 1, 14, 5);
   voxel(ctx, x - 13, y - 20, 26, 21, '#7a7a82');
   voxel(ctx, x - 11, y - 25, 22, 19, '#8d8d94');
   voxel(ctx, x - 8, y - 29, 16, 6, '#a5a5ac');
   ctx.fillStyle = 'rgba(255,255,255,0.2)';
   ctx.fillRect(x - 8, y - 29, 16, 3);
-  // fissures
   ctx.strokeStyle = 'rgba(0,0,0,0.18)';
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -342,22 +391,61 @@ function drawRockObjectRaw(ctx, x, y) {
 }
 
 function makeObjectSprite(width, height, anchorX, anchorY, draw) {
-  const c = makeCanvas(width, height);
-  const ctx = c.getContext('2d');
+  const canvas = makeCanvas(width, height);
+  const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
-  draw(ctx, anchorX, anchorY);
-  return { canvas: c, anchorX, anchorY };
+  draw(ctx, anchorX, anchorY, true);
+
+  const mask = makeCanvas(width, height);
+  const mctx = mask.getContext('2d');
+  mctx.imageSmoothingEnabled = false;
+  draw(mctx, anchorX, anchorY, false);
+
+  return { canvas, mask, anchorX, anchorY };
+}
+
+export const TREE_VARIANTS = ['small', 'medium', 'large'];
+
+// Petits (taille d'avant) partout, moyens rares, grands très rares.
+export function treeVariantAt(tx, ty) {
+  const h = (Math.imul(tx + 3, 374761393) ^ Math.imul(ty + 7, 668265263)) >>> 0;
+  const r = h % 100;
+  if (r < 80) return 'small';
+  if (r < 95) return 'medium';
+  return 'large';
+}
+
+export function treeDropCount(variant) {
+  if (variant === 'small') return 3;
+  if (variant === 'large') return 5;
+  return 4;
+}
+
+export function treeBreakTime(variant) {
+  if (variant === 'large') return 3.4;
+  if (variant === 'medium') return 1.45;
+  return 0.9;
+}
+
+function treeCacheKey(variant) {
+  return `tree:${variant || 'small'}`;
 }
 
 function buildObjectSprites() {
-  objectCache.tree = makeObjectSprite(44, 52, 22, 42, drawTreeObjectRaw);
+  objectCache['tree:small'] = makeObjectSprite(44, 52, 22, 42, drawTreeSmallRaw);
+  objectCache['tree:medium'] = makeObjectSprite(48, 58, 24, 48, drawTreeMediumRaw);
+  objectCache['tree:large'] = makeObjectSprite(72, 88, 36, 76, drawTreeLargeRaw);
+  objectCache.tree = objectCache['tree:small'];
   objectCache.rock = makeObjectSprite(40, 40, 20, 32, drawRockObjectRaw);
 }
 
-// Dimensions + ancrage du sprite d'un objet (arbre, rocher). Utile pour
-// dessiner les fissures de minage sur TOUT le corps de l'objet.
-export function getObjectSpriteInfo(kind) {
-  const sprite = objectCache[kind];
+export function getObjectSprite(kind, variant) {
+  const key = kind === 'tree' ? treeCacheKey(variant) : kind;
+  return objectCache[key] || objectCache[kind] || null;
+}
+
+export function getObjectSpriteInfo(kind, variant) {
+  const sprite = getObjectSprite(kind, variant);
   if (!sprite) return null;
   return {
     w: sprite.canvas.width,
@@ -367,9 +455,9 @@ export function getObjectSpriteInfo(kind) {
   };
 }
 
-export function drawTreeObject(ctx, x, y) {
-  const sprite = objectCache.tree;
-  if (!sprite) return drawTreeObjectRaw(ctx, x, y);
+export function drawTreeObject(ctx, x, y, variant = 'small') {
+  const sprite = getObjectSprite('tree', variant);
+  if (!sprite) return drawTreeSmallRaw(ctx, x, y);
   ctx.drawImage(sprite.canvas, x - sprite.anchorX, y - sprite.anchorY);
 }
 
@@ -377,4 +465,14 @@ export function drawRockObject(ctx, x, y) {
   const sprite = objectCache.rock;
   if (!sprite) return drawRockObjectRaw(ctx, x, y);
   ctx.drawImage(sprite.canvas, x - sprite.anchorX, y - sprite.anchorY);
+}
+
+export function isExtrudedBlock(id) {
+  return Boolean(id && BLOCK_DEFS[id] && BLOCK_DEFS[id].kind === 'block');
+}
+
+export function drawExtrudedBlock(ctx, id, x, y) {
+  const tile = cache[id];
+  if (!tile) return;
+  ctx.drawImage(tile, x, y);
 }
