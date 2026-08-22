@@ -13,6 +13,7 @@ import {
 import { SlotManager } from './slots.js';
 import { initIcons } from './icons.js';
 import { isLowPowerDevice } from './utils.js';
+import { Settings } from './settings.js';
 
 function showBootError(err) {
   const el = document.getElementById('boot-error');
@@ -74,6 +75,10 @@ async function boot() {
   document.getElementById('controls-hint').classList.remove('hidden');
   document.getElementById('craft-btn').classList.remove('hidden');
 
+  const settings = new Settings();
+  document.getElementById('settings-btn').classList.remove('hidden');
+  document.getElementById('settings-btn').onclick = () => settings.toggle();
+
   const tutorial = new Tutorial(appearance);
   const closeTutorial = () => {
     tutorial.hide();
@@ -107,7 +112,7 @@ async function boot() {
   let crafting;
   let furnacePanel;
   const syncPause = () => game.setPaused(Boolean(
-    inventoryPanel?.isOpen || crafting?.isOpen || furnacePanel?.isOpen,
+    inventoryPanel?.isOpen || crafting?.isOpen || furnacePanel?.isOpen || settings?.isOpen,
   ));
 
   inventoryPanel = new InventoryPanel(
@@ -160,11 +165,26 @@ async function boot() {
       e.preventDefault();
       if (furnacePanel.isOpen) furnacePanel.close();
       else crafting.toggle();
+    } else if (key === 'r' && inventoryPanel.isOpen) {
+      // Touche R pour trier l'inventaire quand le panneau est ouvert
+      e.preventDefault();
+      game.inventory.sortInventory();
+      inventoryPanel.toast('Inventaire trié !');
+    } else if (key === 'o') {
+      e.preventDefault();
+      if (inventoryPanel.isOpen) inventoryPanel.close();
+      if (crafting.isOpen) crafting.close();
+      if (furnacePanel.isOpen) furnacePanel.close();
+      settings.toggle();
+      syncPause();
     } else if (key === 'escape') {
-      inventoryPanel.close();
-      crafting.close();
-      furnacePanel.close();
-      if (tutorial.isOpen) closeTutorial();
+      if (settings.isOpen) { settings.close(); syncPause(); }
+      else {
+        inventoryPanel.close();
+        crafting.close();
+        furnacePanel.close();
+        if (tutorial.isOpen) closeTutorial();
+      }
     }
   });
 

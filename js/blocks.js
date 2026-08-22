@@ -232,10 +232,6 @@ export const RECIPES = [
     inputs: { ironIngot: 2, stick: 1 }, pattern: [['ironIngot'], ['ironIngot'], ['stick']], category: 'outils',
   },
   {
-    id: 'ironIngot', label: 'Lingot de fer', out: 'ironIngot', outN: 1,
-    inputs: { rawIron: 1 }, pattern: [['rawIron']], category: 'matériaux',
-  },
-  {
     id: 'ironBlock', label: 'Bloc de fer', out: 'ironBlock', outN: 1,
     inputs: { ironIngot: 9 }, pattern: [['ironIngot', 'ironIngot', 'ironIngot'], ['ironIngot', 'ironIngot', 'ironIngot'], ['ironIngot', 'ironIngot', 'ironIngot']], category: 'construction',
   },

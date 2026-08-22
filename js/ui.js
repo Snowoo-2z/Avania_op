@@ -406,6 +406,7 @@ export class InventoryPanel {
     this.outputEl = document.getElementById('inventory-craft-output');
     this.outputIcon = document.getElementById('inventory-craft-output-icon');
     this.outputName = document.getElementById('inventory-craft-output-name');
+    this.capacityEl = document.getElementById('inventory-capacity');
     this.slots = [];
     this.hotbarSlots = [];
     this.craftSlots = [];
@@ -427,12 +428,32 @@ export class InventoryPanel {
     }
     bindOutputButton(
       this.outputEl,
-      () => this.inventory.craftFromSmallGrid({ toCursor: true }),
+      () => {
+        const result = this.inventory.craftFromSmallGrid({ toCursor: true });
+        if (result) {
+          this.outputEl.classList.add('just-crafted');
+          setTimeout(() => this.outputEl.classList.remove('just-crafted'), 300);
+        }
+        return result;
+      },
       () => {
         const n = this.inventory.craftFromSmallGridMax({ toCursor: false });
-        if (n > 0) this.toast(`${n} objet${n > 1 ? 's' : ''} fabriqué${n > 1 ? 's' : ''} !`);
+        if (n > 0) {
+          this.toast(`${n} objet${n > 1 ? 's' : ''} fabriqué${n > 1 ? 's' : ''} !`, 'success');
+          this.outputEl.classList.add('just-crafted');
+          setTimeout(() => this.outputEl.classList.remove('just-crafted'), 300);
+        }
       },
     );
+
+    // Bouton de tri
+    const sortBtn = document.getElementById('inventory-sort');
+    if (sortBtn) {
+      sortBtn.onclick = () => {
+        this.inventory.sortInventory();
+        this.toast('Inventaire trié !');
+      };
+    }
 
     this.gridRoot.innerHTML = '';
     this.hotbarRoot.innerHTML = '';
@@ -510,11 +531,11 @@ export class InventoryPanel {
     this.charRaf = 0;
   }
 
-  toast(message) {
+  toast(message, type = '') {
     const el = document.getElementById('game-toast');
     if (!el) return;
     el.textContent = message;
-    el.classList.add('visible');
+    el.className = 'game-toast visible' + (type ? ` ${type}` : '');
     clearTimeout(el._timer);
     el._timer = setTimeout(() => el.classList.remove('visible'), 1700);
   }
@@ -531,6 +552,13 @@ export class InventoryPanel {
       updateSlotVisual(el, this.inventory.getSlot(index), this.inventory, index);
       el.classList.toggle('selected', this.inventory.selected === i);
     });
+
+    // Mettre à jour le compteur de capacité
+    if (this.capacityEl) {
+      const used = this.inventory.usedSlots;
+      const total = this.inventory.slotCount;
+      this.capacityEl.textContent = `${used}/${total} cases utilisées`;
+    }
 
     const recipe = this.inventory.getMatchingRecipeSmall();
     const out = recipe && ITEM_DEFS[recipe.out];
@@ -764,10 +792,21 @@ export class Crafting {
     }
     bindOutputButton(
       this.outputEl,
-      () => this.inventory.craftFromGrid({ toCursor: true }),
+      () => {
+        const result = this.inventory.craftFromGrid({ toCursor: true });
+        if (result) {
+          this.outputEl.classList.add('just-crafted');
+          setTimeout(() => this.outputEl.classList.remove('just-crafted'), 300);
+        }
+        return result;
+      },
       () => {
         const n = this.inventory.craftFromGridMax({ toCursor: false });
-        if (n > 0) this.setStatus(`${n} objet${n > 1 ? 's' : ''} fabriqué${n > 1 ? 's' : ''} !`, 'success');
+        if (n > 0) {
+          this.setStatus(`${n} objet${n > 1 ? 's' : ''} fabriqué${n > 1 ? 's' : ''} !`, 'success');
+          this.outputEl.classList.add('just-crafted');
+          setTimeout(() => this.outputEl.classList.remove('just-crafted'), 300);
+        }
       },
     );
 
@@ -796,11 +835,34 @@ export class Crafting {
     this.listRoot.innerHTML = '';
     this.cards = [];
     let category = '';
+
+    // Créer les onglets de catégorie
+    const categories = [...new Set(RECIPES.map(r => r.category))];
+    const tabsContainer = document.createElement('div');
+    tabsContainer.className = 'recipe-tabs';
+    
+    const allTab = document.createElement('button');
+    allTab.className = 'recipe-tab active';
+    allTab.textContent = 'Tout';
+    allTab.onclick = () => this.filterByCategory(null, allTab);
+    tabsContainer.appendChild(allTab);
+
+    for (const cat of categories) {
+      const tab = document.createElement('button');
+      tab.className = 'recipe-tab';
+      tab.textContent = cat.charAt(0).toUpperCase() + cat.slice(1);
+      tab.onclick = () => this.filterByCategory(cat, tab);
+      tabsContainer.appendChild(tab);
+    }
+    this.listRoot.appendChild(tabsContainer);
+
+    // Créer les cartes de recettes
     for (const recipe of RECIPES) {
       if (recipe.category !== category) {
         category = recipe.category;
         const heading = document.createElement('div');
         heading.className = 'recipe-category';
+        heading.dataset.category = category;
         heading.textContent = category.charAt(0).toUpperCase() + category.slice(1);
         this.listRoot.appendChild(heading);
       }
@@ -809,11 +871,27 @@ export class Crafting {
     this.applySearch();
   }
 
+  filterByCategory(category, activeTab) {
+    // Mettre à jour les onglets actifs
+    this.listRoot.querySelectorAll('.recipe-tab').forEach(tab => tab.classList.remove('active'));
+    activeTab.classList.add('active');
+
+    // Filtrer les recettes
+    this.listRoot.querySelectorAll('.recipe-category').forEach(heading => {
+      heading.style.display = (!category || heading.dataset.category === category) ? '' : 'none';
+    });
+    this.cards.forEach(({ recipe, card }) => {
+      const show = !category || recipe.category === category;
+      card.style.display = show ? '' : 'none';
+    });
+  }
+
   buildRecipeCard(recipe) {
     const out = ITEM_DEFS[recipe.out];
     const card = document.createElement('button');
     card.type = 'button';
     card.className = 'recipe';
+    card.dataset.recipeId = recipe.id;
 
     const icon = document.createElement('span');
     icon.className = 'recipe-icon';
@@ -825,23 +903,76 @@ export class Crafting {
     name.textContent = `${out.label} ×${recipe.outN}`;
     const cost = document.createElement('span');
     cost.className = 'recipe-cost';
-    cost.textContent = Object.entries(recipe.inputs)
-      .map(([id, n]) => `${n} ${ITEM_DEFS[id].label.toLowerCase()}`)
-      .join(' + ');
+    
+    // Afficher les compteurs possédé/requis pour chaque ingrédient
+    const costParts = Object.entries(recipe.inputs).map(([id, n]) => {
+      const have = this.inventory.count(id);
+      const label = ITEM_DEFS[id].label.toLowerCase();
+      const span = document.createElement('span');
+      span.className = 'recipe-ingredient';
+      span.innerHTML = `<span class="recipe-have ${have >= n ? 'enough' : ''}">${have}</span>/<span class="recipe-need">${n}</span> ${label}`;
+      return span;
+    });
+    cost.append(...costParts);
     text.append(name, cost);
 
     const state = document.createElement('span');
     state.className = 'recipe-state';
 
+    // Barre de progression (combien d'ingrédients on possède)
+    const totalNeeded = Object.values(recipe.inputs).reduce((a, b) => a + b, 0);
+    const totalHave = Object.entries(recipe.inputs)
+      .reduce((sum, [id, n]) => sum + Math.min(this.inventory.count(id), n), 0);
+    const progressWrap = document.createElement('div');
+    progressWrap.className = 'recipe-progress';
+    const progressBar = document.createElement('div');
+    progressBar.className = 'recipe-progress-bar';
+    const progressFill = document.createElement('div');
+    progressFill.className = 'recipe-progress-fill';
+    progressFill.style.width = `${totalNeeded > 0 ? (totalHave / totalNeeded * 100) : 0}%`;
+    progressBar.appendChild(progressFill);
+    const progressText = document.createElement('span');
+    progressText.className = 'recipe-progress-text';
+    progressText.textContent = `${Math.round(totalHave / totalNeeded * 100)}%`;
+    progressText.dataset.progress = 'true';
+    progressWrap.append(progressBar, progressText);
+    text.appendChild(progressWrap);
+
     card.append(icon, text, state);
+    card.title = 'Clic = placer dans la grille | Clic droit = craft rapide';
     card.onclick = () => this.prepareFromBook(recipe);
-    this.cards.push({ recipe, card, stateEl: state });
+    card.oncontextmenu = (e) => {
+      e.preventDefault();
+      this.quickCraftFromBook(recipe);
+    };
+    this.cards.push({ recipe, card, stateEl: state, progressFill, progressText });
     return card;
+  }
+
+  quickCraftFromBook(recipe) {
+    // Essayer de remplir la grille et craft directement
+    if (this.inventory.prepareRecipe(recipe)) {
+      // Tenter de crafter immédiatement
+      const result = this.inventory.craftFromGrid({ toCursor: true });
+      if (result) {
+        this.setStatus(`${ITEM_DEFS[recipe.out].label} ×${recipe.outN} fabriqué !`, 'success');
+      } else {
+        this.setStatus('Ingrédients placés. Cliquez sur le résultat.', 'success');
+      }
+    } else {
+      const missing = Object.entries(recipe.inputs)
+        .filter(([id, n]) => this.inventory.count(id) < n)
+        .map(([id, n]) => `${ITEM_DEFS[id].label} ×${n - this.inventory.count(id)}`)
+        .join(', ');
+      this.setStatus(missing
+        ? `Il manque : ${missing}.`
+        : 'Vide la grille d\'abord.', 'error');
+    }
   }
 
   prepareFromBook(recipe) {
     if (this.inventory.prepareRecipe(recipe)) {
-      this.setStatus('Ingrédients placés.', 'success');
+      this.setStatus('Ingrédients placés. Cliquez sur le résultat pour crafter.', 'success');
     } else {
       const missing = Object.entries(recipe.inputs)
         .filter(([id, n]) => this.inventory.count(id) < n)
@@ -858,7 +989,10 @@ export class Crafting {
     for (const { recipe, card } of this.cards) {
       const label = ITEM_DEFS[recipe.out].label.toLowerCase();
       const id = recipe.id.toLowerCase();
-      card.classList.toggle('search-hidden', Boolean(q) && !label.includes(q) && !id.includes(q));
+      // Rechercher aussi dans les ingrédients
+      const ingredients = Object.keys(recipe.inputs).map(i => ITEM_DEFS[i]?.label?.toLowerCase() || i).join(' ');
+      const matches = !q || label.includes(q) || id.includes(q) || ingredients.includes(q);
+      card.classList.toggle('search-hidden', !matches);
     }
   }
 
@@ -895,16 +1029,35 @@ export class Crafting {
       this.outputEl.title = '';
     }
 
-    for (const { recipe: cardRecipe, card, stateEl } of this.cards) {
+    for (const { recipe: cardRecipe, card, stateEl, progressFill, progressText } of this.cards) {
       const available = this.inventory.canCraft(cardRecipe);
       card.classList.toggle('recipe-locked', !available);
       stateEl.textContent = available ? '✓' : '🔒';
-      card.title = available
-        ? ''
-        : `Il manque : ${Object.entries(cardRecipe.inputs)
-          .filter(([id, n]) => this.inventory.count(id) < n)
-          .map(([id, n]) => `${ITEM_DEFS[id].label} ×${n - this.inventory.count(id)}`)
-          .join(', ') || 'ingrédients'}`;
+      
+      // Mettre à jour les compteurs d'ingrédients
+      const ingredients = card.querySelectorAll('.recipe-ingredient');
+      const inputs = Object.entries(cardRecipe.inputs);
+      ingredients.forEach((el, i) => {
+        if (i < inputs.length) {
+          const [id, n] = inputs[i];
+          const have = this.inventory.count(id);
+          const haveEl = el.querySelector('.recipe-have');
+          if (haveEl) {
+            haveEl.textContent = have;
+            haveEl.className = `recipe-have ${have >= n ? 'enough' : ''}`;
+          }
+        }
+      });
+
+      // Mettre à jour la barre de progression
+      if (progressFill && progressText) {
+        const totalNeeded = Object.values(cardRecipe.inputs).reduce((a, b) => a + b, 0);
+        const totalHave = Object.entries(cardRecipe.inputs)
+          .reduce((sum, [id, n]) => sum + Math.min(this.inventory.count(id), n), 0);
+        const pct = totalNeeded > 0 ? (totalHave / totalNeeded * 100) : 0;
+        progressFill.style.width = `${pct}%`;
+        progressText.textContent = `${Math.round(pct)}%`;
+      }
     }
     if (this.recipeCountEl) this.recipeCountEl.textContent = `${this.cards.length}`;
     this.slotManager.updateCursor((icon, id) => applyItemIcon(icon, id));
