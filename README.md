@@ -77,6 +77,7 @@ node server.js
 ```bash
 npm test                        # test de fumée (logique pure, sans navigateur)
 node scripts/render-preview.mjs # régénère les aperçus PNG (preview/)
+node scripts/preview-mobs.mjs   # planches des mobs (orientations, marche, scène)
 node scripts/frame-bench.mjs    # benchmark de la boucle de jeu (ms/frame)
 node scripts/frame-bench.mjs --shots /tmp/shots  # + captures PNG par scénario
 node scripts/diff-shots.mjs /tmp/avant /tmp/après  # compare deux dossiers de captures
