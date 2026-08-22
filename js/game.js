@@ -24,7 +24,7 @@ import { getItemSprite } from './icons.js';
 import { drawHeldItem, heldItemIsBehind } from './held.js';
 import { isLowPowerDevice, makeCanvas } from './utils.js';
 import { updateFurnace, makeFurnaceEntry } from './furnace.js';
-import { MOB_DEFS, spawnMobs, updateMob, drawMob, mobDrops } from './mobs.js';
+import { MOB_DEFS, spawnMobs, updateMob, drawMob, mobDrops } from './mobs/index.js';
 
 const REACH_SQ = REACH * REACH;
 const SORT_BY_Y = (a, b) => a.sortY - b.sortY;

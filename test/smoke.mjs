@@ -377,7 +377,7 @@ for (let i = 0; i < 160; i++) updateFurnace(f5, 0.1);
 assert(f5.output[0]?.count === 2, '2 sables → 2 verres');
 
 console.log('▶ Mobs : moutons & vaches');
-const { MOB_DEFS, spawnMobs, updateMob, mobDrops } = await import('../js/mobs.js');
+const { MOB_DEFS, spawnMobs, updateMob, mobDrops } = await import('../js/mobs/index.js');
 assert(MOB_DEFS.sheep && MOB_DEFS.cow, 'mouton et vache définis');
 const wmob = new World(20260821);
 const mobs = spawnMobs(wmob, { sheep: 6, cow: 4 });

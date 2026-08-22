@@ -78,6 +78,7 @@ node server.js
 npm test                        # test de fumée (logique pure, sans navigateur)
 node scripts/render-preview.mjs # régénère les aperçus PNG (preview/)
 node scripts/preview-mobs.mjs   # planches des mobs (orientations, marche, scène)
+node scripts/preview-items.mjs  # planches des icônes d'objets (inventaire)
 node scripts/frame-bench.mjs    # benchmark de la boucle de jeu (ms/frame)
 node scripts/frame-bench.mjs --shots /tmp/shots  # + captures PNG par scénario
 node scripts/diff-shots.mjs /tmp/avant /tmp/après  # compare deux dossiers de captures
@@ -150,7 +151,9 @@ js/
   character.js   personnage carré personnalisable
   player.js      entité joueur + collisions
   furnace.js     logique du four (recettes, combustibles, cuisson)
-  mobs.js        moutons & vaches (IA d'errance, rendu, butin)
+  mobs/          moteur des animaux (core.js, render-utils.js) + un
+                 sous-dossier par espèce avec tout son nécessaire
+                 (sheep/sheep.js, cow/cow.js : définition, palettes, dessin)
   ui.js          création du personnage + HUD + barre rapide + écrans E/C + four
   game.js        boucle de jeu, rendu, interactions
   main.js        point d'entrée

@@ -14,7 +14,7 @@ globalThis.document = {
 };
 globalThis.window = globalThis;
 
-import { Mob, drawMob, MOB_DEFS } from '../js/mobs.js';
+import { Mob, drawMob, MOB_DEFS } from '../js/mobs/index.js';
 import { buildTileset, getTileCanvas, getWaterFrame, drawTreeObject } from '../js/tileset.js';
 import { drawCharacter } from '../js/character.js';
 import { World } from '../js/world.js';
@@ -24,7 +24,8 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 mkdirSync('preview', { recursive: true });
 
 const KINDS = ['sheep', 'cow'];
-const FACINGS = ['down', 'left', 'up', 'right'];
+// Les animaux sont toujours vus de profil (gauche ou miroir droit).
+const FACINGS = ['left', 'right'];
 // Étapes de marche représentatives : repos, descente, montée.
 const STEPS = [
   { label: 'repos', phase: 0, moving: false },
@@ -191,11 +192,11 @@ function renderScene() {
     };
     put('sheep', 4, 3, 'right', Math.PI / 3, true);
     put('cow', 9, 2, 'left', -Math.PI / 3, true);
-    put('sheep', 14, 4, 'down');
-    put('cow', 17, 6, 'down', Math.PI / 2, true);
+    put('sheep', 14, 4, 'right');
+    put('cow', 17, 6, 'left', Math.PI / 2, true);
     put('sheep', 7, 7, 'left');
-    put('cow', 12, 9, 'up', -Math.PI / 2, true);
-    put('sheep', 2, 6, 'up');
+    put('cow', 12, 9, 'right', -Math.PI / 2, true);
+    put('sheep', 2, 6, 'left');
 
     actors.push({
       x: 10.5 * TILE, y: 5.5 * TILE, isPlayer: true,

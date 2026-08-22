@@ -10,7 +10,7 @@ import { getItemSprite } from './icons.js';
 import { getTileCanvas, getFurnaceCanvas, drawTreeObject, drawRockObject } from './tileset.js';
 import { drawCharacter } from './character.js';
 import { drawHeldItem } from './held.js';
-import { Mob, drawMob } from './mobs.js';
+import { Mob, drawMob } from './mobs/index.js';
 
 const ILL_W = 168;
 const ILL_H = 110;
