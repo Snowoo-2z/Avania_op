@@ -21,6 +21,7 @@ let ready = false;
 const TOOL_COLORS = {
   wood:  { base: '#c48642', light: '#e8b46a', dark: '#7a4a22', mid: '#a86a32', edge: '#f0d090' },
   stone: { base: '#a4a4ac', light: '#d8d8de', dark: '#5a5a64', mid: '#888890', edge: '#f0f0f4' },
+  iron:  { base: '#c6ccd2', light: '#eef2f6', dark: '#676f78', mid: '#96a0a9', edge: '#ffffff' },
   stick: { base: '#c89a5e', light: '#e8c888', dark: '#6e4426', mid: '#a87a42', edge: '#f2d8a0' },
   wrap:  { base: '#6a3a1e', light: '#8a5a32', dark: '#3a1e10', mid: '#5a2e16', edge: '#a87848' },
 };
@@ -102,33 +103,41 @@ function drawHandle(ctx, x, y, w, h, wood) {
 function drawPickaxe(ctx, head, handle) {
   withItemPose(ctx, () => {
     drawHandle(ctx, 14, 10, 4, 20, handle);
-    // Tête en arche : barre + deux dents
-    voxel(ctx, 4, 3, 24, 5, head);
-    voxel(ctx, 4, 8, 6, 8, head);
-    voxel(ctx, 22, 8, 6, 8, head);
-    // Pointe des dents
-    voxel(ctx, 3, 14, 5, 4, head);
-    voxel(ctx, 24, 14, 5, 4, head);
-    // Socket / rivet
-    px(ctx, 15, 5, 2, 3, head.dark);
+    // Tête en arche façon Minecraft : barre + deux dents qui s'écartent
+    voxel(ctx, 3, 2, 26, 5, head);
+    voxel(ctx, 3, 7, 7, 8, head);
+    voxel(ctx, 22, 7, 7, 8, head);
+    // Pointes des dents (légèrement rentrées vers l'intérieur)
+    voxel(ctx, 2, 14, 6, 4, head);
+    voxel(ctx, 24, 14, 6, 4, head);
+    px(ctx, 4, 17, 2, 1, head.dark);
+    px(ctx, 26, 17, 2, 1, head.dark);
+    // Socket où le manche rejoint la tête
+    voxel(ctx, 13, 5, 6, 4, head.dark);
     px(ctx, 14, 6, 4, 2, head.light);
-    // Fil tranchant
-    px(ctx, 4, 3, 24, 1, head.edge);
-    px(ctx, 3, 16, 5, 1, head.edge);
-    px(ctx, 24, 16, 5, 1, head.edge);
+    // Fil tranchant + reflets
+    px(ctx, 3, 2, 26, 1, head.edge);
+    px(ctx, 3, 7, 2, 8, head.edge);
+    px(ctx, 27, 7, 2, 8, head.edge);
+    px(ctx, 2, 14, 1, 4, head.edge);
+    px(ctx, 29, 14, 1, 4, head.edge);
   });
 }
 
 function drawAxe(ctx, head, handle) {
   withItemPose(ctx, () => {
     drawHandle(ctx, 16, 10, 4, 20, handle);
-    // Lame large à gauche, légèrement évasée
-    voxel(ctx, 5, 4, 15, 6, head);
-    voxel(ctx, 3, 9, 17, 6, head);
-    voxel(ctx, 5, 14, 12, 4, head);
+    // Lame large et haute à gauche, comme la hache de Minecraft
+    voxel(ctx, 3, 3, 17, 7, head);
+    voxel(ctx, 1, 8, 19, 7, head);
+    voxel(ctx, 4, 14, 14, 5, head);
+    // Arrondi supérieur de la lame
+    px(ctx, 4, 3, 5, 1, head.light);
+    px(ctx, 6, 2, 4, 1, head.light);
     // Tranchant (bord gauche)
-    px(ctx, 3, 9, 1, 6, head.edge);
-    px(ctx, 5, 4, 1, 6, head.light);
+    px(ctx, 1, 8, 1, 7, head.edge);
+    px(ctx, 3, 3, 1, 6, head.edge);
+    px(ctx, 4, 14, 1, 5, head.edge);
     // Rivet sur le manche
     px(ctx, 16, 11, 4, 3, head.dark);
     px(ctx, 17, 12, 2, 1, head.light);
@@ -140,36 +149,41 @@ function drawShovel(ctx, head, handle) {
     drawHandle(ctx, 14, 2, 4, 16, handle);
     // Col
     voxel(ctx, 13, 16, 6, 3, head);
-    // Pelle évasée
-    voxel(ctx, 8, 18, 16, 7, head);
-    voxel(ctx, 10, 25, 12, 4, head);
+    // Pelle évasée (bêche) avec un bord légèrement arrondi
+    voxel(ctx, 7, 18, 18, 8, head);
+    voxel(ctx, 9, 26, 14, 4, head);
+    voxel(ctx, 11, 30, 10, 2, head.dark);
     // Creux de la pelle (l'intérieur)
-    px(ctx, 11, 20, 10, 4, head.dark);
-    px(ctx, 12, 21, 8, 2, withAlpha(head.light, 0.35));
+    px(ctx, 10, 20, 12, 5, head.dark);
+    px(ctx, 11, 21, 10, 2, withAlpha(head.light, 0.35));
     // Fil du bord
-    px(ctx, 8, 18, 16, 1, head.edge);
-    px(ctx, 10, 28, 12, 1, head.dark);
+    px(ctx, 7, 18, 18, 1, head.edge);
+    px(ctx, 9, 29, 14, 1, head.edge);
   });
 }
 
 function drawSword(ctx, blade, handle) {
   withItemPose(ctx, () => {
-    // Lame longue, arête centrale
-    voxel(ctx, 14, 1, 4, 20, blade);
-    px(ctx, 15, 2, 1, 18, blade.edge);
-    px(ctx, 17, 3, 1, 17, blade.dark);
+    // Lame longue qui s'affine vers la pointe, comme l'épée de Minecraft
+    voxel(ctx, 13, 0, 6, 6, blade);
+    voxel(ctx, 14, 6, 5, 6, blade);
+    voxel(ctx, 14, 12, 4, 8, blade);
     // Pointe
-    voxel(ctx, 15, 0, 2, 2, blade);
-    px(ctx, 15, 0, 2, 1, blade.edge);
+    voxel(ctx, 15, -1, 2, 1, blade);
+    px(ctx, 15, -1, 2, 1, blade.edge);
+    // Arête centrale brillante
+    px(ctx, 14, 1, 1, 18, blade.edge);
+    px(ctx, 17, 2, 1, 17, blade.dark);
     // Garde
     voxel(ctx, 8, 20, 16, 3, handle);
     px(ctx, 8, 20, 16, 1, handle.light);
-    // Poignée
+    // Poignée en cuir
     voxel(ctx, 14, 23, 4, 6, TOOL_COLORS.wrap);
     px(ctx, 14, 24, 4, 1, TOOL_COLORS.wrap.light);
     px(ctx, 14, 26, 4, 1, TOOL_COLORS.wrap.light);
     // Pommeau
     voxel(ctx, 13, 28, 6, 3, handle);
+    px(ctx, 14, 29, 3, 1, handle.light);
   });
 }
 
@@ -186,16 +200,176 @@ function drawStick(ctx, c) {
   ctx.restore();
 }
 
+// --- Fer brut : galet gris tacheté de rouille (comme Minecraft) ---
+function drawRawIron(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.rotate(-0.18);
+  // amas irrégulier
+  const blobs = [
+    [-8, -3, 12, 10, '#9a948e'], [-2, -7, 12, 12, '#a8a29c'],
+    [4, -1, 10, 10, '#8f8983'], [-5, 3, 12, 9, '#a39d97'],
+  ];
+  for (const [x, y, w, h, c] of blobs) {
+    ctx.fillStyle = c;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = withAlpha('#ffffff', 0.18);
+    ctx.fillRect(x, y, w, Math.max(1, Math.floor(h * 0.3)));
+    ctx.fillStyle = withAlpha('#000000', 0.14);
+    ctx.fillRect(x, y + h - 1, w, 1);
+  }
+  // taches de rouille
+  ctx.fillStyle = '#b8865b';
+  ctx.fillRect(-6, -1, 4, 3);
+  ctx.fillRect(3, 3, 5, 4);
+  ctx.fillRect(-2, -6, 3, 2);
+  ctx.fillStyle = '#d8a06e';
+  ctx.fillRect(-6, -1, 4, 1);
+  ctx.fillRect(3, 3, 5, 1);
+  ctx.restore();
+}
+
+// --- Lingot de fer : barre arrondie au reflet métallique ---
+function drawIronIngot(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.rotate(0.06);
+  ctx.fillStyle = '#aeb6be';
+  ctx.fillRect(-11, -5, 22, 10);
+  ctx.fillStyle = '#c6ccd2';
+  ctx.fillRect(-10, -4, 20, 8);
+  ctx.fillStyle = '#eef2f6';
+  ctx.fillRect(-9, -3, 18, 3);
+  // encoche du lingot
+  ctx.fillStyle = '#8a939b';
+  ctx.fillRect(-2, 2, 5, 3);
+  ctx.fillStyle = withAlpha('#000000', 0.2);
+  ctx.fillRect(-11, 4, 22, 1);
+  ctx.restore();
+}
+
+// --- Laine : boule blanche duveteuse ---
+function drawWool(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  const blobs = [
+    [-8, -5, 8, 8], [-2, -8, 8, 8], [4, -5, 8, 8],
+    [-7, 1, 8, 8], [0, 0, 8, 8], [6, 2, 8, 8], [-2, 6, 8, 8],
+  ];
+  for (const [x, y, w, h] of blobs) {
+    ctx.fillStyle = '#f2f2f2';
+    ctx.beginPath();
+    ctx.arc(x + w / 2, y + h / 2, w / 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = withAlpha('#ffffff', 0.8);
+  ctx.beginPath();
+  ctx.arc(-3, -3, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = withAlpha('#c9c9c9', 0.5);
+  ctx.beginPath();
+  ctx.arc(4, 5, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// --- Bœuf cru : tranche rouge ---
+function drawRawBeef(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.rotate(-0.22);
+  ctx.fillStyle = '#c0504a';
+  ctx.fillRect(-10, -7, 20, 14);
+  ctx.fillStyle = '#a83c36';
+  ctx.fillRect(-9, -2, 18, 8);
+  ctx.fillStyle = '#e0705a';
+  ctx.fillRect(-8, -6, 16, 3);
+  // gras
+  ctx.fillStyle = '#f2e2c8';
+  ctx.beginPath();
+  ctx.arc(-4, 4, 2.6, 0, Math.PI * 2);
+  ctx.arc(3, 5, 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = withAlpha('#000000', 0.2);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-10.5, -7.5, 21, 15);
+  ctx.restore();
+}
+
+// --- Steak cuit : marron grillé ---
+function drawCookedBeef(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.rotate(-0.22);
+  ctx.fillStyle = '#8a5a34';
+  ctx.fillRect(-10, -7, 20, 14);
+  ctx.fillStyle = '#6e4528';
+  ctx.fillRect(-9, -2, 18, 8);
+  ctx.fillStyle = '#a4683c';
+  ctx.fillRect(-8, -6, 16, 3);
+  // stries de cuisson
+  ctx.strokeStyle = withAlpha('#3c2412', 0.6);
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.moveTo(-8 + i * 6, -6);
+    ctx.lineTo(-6 + i * 6, 6);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = withAlpha('#000000', 0.25);
+  ctx.strokeRect(-10.5, -7.5, 21, 15);
+  ctx.restore();
+}
+
+// --- Porte : vue de face avec poignée (icône d'objet) ---
+function drawDoorIcon(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.scale(0.62, 1.05);
+  ctx.fillStyle = shade('#c89a5e', 0.9);
+  ctx.fillRect(-14, -13, 28, 26);
+  ctx.fillStyle = shade('#c89a5e', 1.12);
+  ctx.fillRect(-12, -11, 24, 22);
+  ctx.fillStyle = shade('#c89a5e', 0.72);
+  ctx.fillRect(-14, -13, 3, 26);
+  ctx.fillRect(11, -13, 3, 26);
+  ctx.strokeStyle = withAlpha('#5a3a1e', 0.5);
+  ctx.lineWidth = 1;
+  for (let x = -8; x < 12; x += 6) {
+    ctx.beginPath();
+    ctx.moveTo(x, -11);
+    ctx.lineTo(x, 11);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#3a3a3e';
+  ctx.fillRect(7, -2, 3, 3);
+  ctx.fillStyle = withAlpha('#ffffff', 0.3);
+  ctx.fillRect(7, -2, 1, 3);
+  ctx.strokeStyle = shade('#c89a5e', 0.5);
+  ctx.strokeRect(-15, -14, 30, 28);
+  ctx.restore();
+}
+
 const TOOL_DRAWERS = {
   wooden_pickaxe: (ctx) => drawPickaxe(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
   stone_pickaxe:  (ctx) => drawPickaxe(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
+  iron_pickaxe:   (ctx) => drawPickaxe(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
   wooden_axe:     (ctx) => drawAxe(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
   stone_axe:      (ctx) => drawAxe(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
+  iron_axe:       (ctx) => drawAxe(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
   wooden_shovel:  (ctx) => drawShovel(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
   stone_shovel:   (ctx) => drawShovel(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
+  iron_shovel:    (ctx) => drawShovel(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
   wooden_sword:   (ctx) => drawSword(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
   stone_sword:    (ctx) => drawSword(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
+  iron_sword:     (ctx) => drawSword(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
   stick:          (ctx) => drawStick(ctx, TOOL_COLORS.stick),
+  rawIron:        (ctx) => drawRawIron(ctx),
+  ironIngot:      (ctx) => drawIronIngot(ctx),
+  door:           (ctx) => drawDoorIcon(ctx),
+  wool:           (ctx) => drawWool(ctx),
+  rawBeef:        (ctx) => drawRawBeef(ctx),
+  cookedBeef:     (ctx) => drawCookedBeef(ctx),
 };
 
 export function isHeldTool(id) {
@@ -379,6 +553,92 @@ function paintDirt(ctx) {
   });
 }
 
+function paintIronBlock(ctx) {
+  clipFace(ctx, isoTop, () => {
+    ctx.strokeStyle = withAlpha('#ffffff', 0.5);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(5, 7); ctx.lineTo(15, 4); ctx.lineTo(26, 8);
+    ctx.moveTo(7, 12); ctx.lineTo(18, 9);
+    ctx.stroke();
+    ctx.fillStyle = withAlpha('#7a838c', 0.45);
+    ctx.fillRect(11, 12, 5, 3);
+  });
+  clipFace(ctx, isoLeft, () => {
+    ctx.strokeStyle = withAlpha('#ffffff', 0.3);
+    ctx.beginPath();
+    ctx.moveTo(4, 16); ctx.lineTo(13, 22);
+    ctx.stroke();
+  });
+  clipFace(ctx, isoRight, () => {
+    ctx.fillStyle = withAlpha('#000000', 0.14);
+    ctx.fillRect(20, 20, 5, 3);
+  });
+}
+
+function paintIronOre(ctx) {
+  clipFace(ctx, isoTop, () => {
+    ctx.fillStyle = '#b8865b';
+    ctx.fillRect(7, 6, 6, 4);
+    ctx.fillRect(16, 10, 5, 3);
+    ctx.fillRect(11, 13, 4, 3);
+    ctx.fillStyle = '#d8a06e';
+    ctx.fillRect(7, 6, 6, 1);
+    ctx.fillRect(16, 10, 5, 1);
+  });
+  clipFace(ctx, isoLeft, () => {
+    ctx.fillStyle = '#b8865b';
+    ctx.fillRect(4, 15, 4, 4);
+  });
+  clipFace(ctx, isoRight, () => {
+    ctx.fillStyle = '#a8774c';
+    ctx.fillRect(19, 17, 5, 4);
+  });
+}
+
+function paintFurnace(ctx) {
+  clipFace(ctx, isoTop, () => {
+    ctx.fillStyle = '#2a2b2e';
+    ctx.fillRect(10, 9, 12, 12);
+    ctx.fillStyle = '#1d1e21';
+    ctx.fillRect(11, 10, 10, 10);
+    ctx.fillStyle = '#4e5056';
+    ctx.fillRect(6, 5, 2, 2);
+    ctx.fillRect(24, 5, 2, 2);
+    ctx.fillRect(6, 24, 2, 2);
+    ctx.fillRect(24, 24, 2, 2);
+  });
+  clipFace(ctx, isoLeft, () => {
+    ctx.fillStyle = withAlpha('#000000', 0.16);
+    ctx.fillRect(4, 18, 4, 4);
+  });
+  clipFace(ctx, isoRight, () => {
+    ctx.fillStyle = withAlpha('#000000', 0.12);
+    ctx.fillRect(20, 19, 5, 3);
+  });
+}
+
+function paintWoolBlock(ctx) {
+  clipFace(ctx, isoTop, () => {
+    ctx.fillStyle = withAlpha('#ffffff', 0.6);
+    for (let i = 0; i < 6; i++) {
+      const x = 5 + ((i * 7) % 20);
+      const y = 5 + ((i * 5) % 12);
+      ctx.beginPath();
+      ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = withAlpha('#c8c8c8', 0.45);
+    for (let i = 0; i < 4; i++) {
+      const x = 8 + ((i * 8) % 14);
+      const y = 8 + ((i * 6) % 8);
+      ctx.beginPath();
+      ctx.arc(x, y, 1.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+}
+
 const BLOCK_PAINTERS = {
   wood: paintWood,
   stone: paintStone,
@@ -387,6 +647,10 @@ const BLOCK_PAINTERS = {
   glass: paintGlass,
   sandBlock: paintSand,
   dirtBlock: paintDirt,
+  ironBlock: paintIronBlock,
+  ironOre: paintIronOre,
+  furnace: paintFurnace,
+  woolBlock: paintWoolBlock,
 };
 
 function drawBlockCubeIcon(ctx, blockId) {
@@ -441,20 +705,12 @@ function renderIcon(id) {
   const { c, ctx } = createIconCanvas();
   clearCanvas(ctx);
 
-  if (def.place && BLOCK_DEFS[def.place]) {
+  // Les icônes « personnalisées » (outils, lingot, porte…) passent d'abord.
+  const drawer = TOOL_DRAWERS[id];
+  if (drawer) {
+    dropShadow(ctx, () => drawer(ctx));
+  } else if (def.place && BLOCK_DEFS[def.place]) {
     drawBlockCubeIcon(ctx, def.place);
-  } else {
-    const drawer = TOOL_DRAWERS[id];
-    if (drawer) {
-      dropShadow(ctx, (shadow) => {
-        if (shadow) {
-          ctx.fillStyle = '#000';
-          drawer(ctx);
-        } else {
-          drawer(ctx);
-        }
-      });
-    }
   }
 
   spriteCache.set(id, c);

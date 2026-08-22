@@ -23,6 +23,8 @@ export class World {
     this.floor = new Array(W * H).fill('grass');
     // Couche "blocs" posés dessus : null = vide, sinon id de bloc
     this.blocks = new Array(W * H).fill(null);
+    // État des portes : 0 = fermée (obstacle), 1 = ouverte (praticable)
+    this.doorOpen = new Uint8Array(W * H);
 
     this.spawn = { x: (W / 2) * TILE + TILE / 2, y: (H / 2) * TILE + TILE / 2 };
     this.generate();
@@ -59,12 +61,13 @@ export class World {
       }
     }
 
-    // 3) ressources naturelles éparpillées (arbres + rochers)
+    // 3) ressources naturelles éparpillées (arbres + rochers + minerai de fer)
     for (let ty = 3; ty < H - 3; ty++) {
       for (let tx = 3; tx < W - 3; tx++) {
         const r = this.rng();
         if (r < 0.030) this.setBlock(tx, ty, 'tree');
         else if (r < 0.050) this.setBlock(tx, ty, 'rock');
+        else if (r < 0.0575) this.setBlock(tx, ty, 'ironOre');
       }
     }
 
@@ -76,6 +79,8 @@ export class World {
     this.setBlock(cx + 4, cy - 2, 'rock');
     this.setBlock(cx - 4, cy - 3, 'rock');
     this.setBlock(cx - 2, cy + 4, 'rock');
+    this.setBlock(cx + 2, cy - 4, 'ironOre');
+    this.setBlock(cx - 3, cy - 4, 'ironOre');
   }
 
   setBlock(tx, ty, id) {
@@ -90,8 +95,26 @@ export class World {
     if (!this.inBounds(tx, ty)) return true; // hors monde = solide
     if (this.floor[this.idx(tx, ty)] === 'water') return true;
     const b = this.blocks[this.idx(tx, ty)];
-    if (b && BLOCK_DEFS[b].solid) return true;
-    return false;
+    if (!b) return false;
+    const def = BLOCK_DEFS[b];
+    if (!def.solid) return false;
+    // Une porte ouverte ne bloque pas le passage.
+    if (def.kind === 'door' && this.doorOpen[this.idx(tx, ty)]) return false;
+    return true;
+  }
+
+  // Ouvre / ferme une porte en (tx,ty). Retourne le nouvel état (true = ouverte).
+  toggleDoor(tx, ty) {
+    if (!this.inBounds(tx, ty)) return false;
+    const i = this.idx(tx, ty);
+    if (this.blocks[i] !== 'door') return false;
+    this.doorOpen[i] = this.doorOpen[i] ? 0 : 1;
+    return this.doorOpen[i] === 1;
+  }
+
+  isDoorOpen(tx, ty) {
+    if (!this.inBounds(tx, ty)) return false;
+    return this.blocks[this.idx(tx, ty)] === 'door' && this.doorOpen[this.idx(tx, ty)] === 1;
   }
 
   isSolidAt(px, py) {
@@ -132,6 +155,7 @@ export class World {
       const def = BLOCK_DEFS[b];
       if (!def.breakable) return null;
       this.blocks[i] = null;
+      this.doorOpen[i] = 0;
       return def.drop;
     }
     // sol creusable à la pelle

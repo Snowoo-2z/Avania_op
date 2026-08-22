@@ -9,7 +9,7 @@
     #boot-error { display: none; position: fixed; inset: 16px auto auto 16px; z-index: 999; max-width: min(520px, calc(100% - 32px)); padding: 12px 14px; background: #3a1c16; border: 1px solid #c96a55; border-radius: 10px; font: 700 13px system-ui, sans-serif; }
     #boot-error.visible { display: block; }
   </style>
-  <link rel="stylesheet" href="css/style.css?v=16" />
+  <link rel="stylesheet" href="css/style.css?v=19" />
 </head>
 <body>
   <div id="boot-error" role="alert"></div>
@@ -33,6 +33,8 @@
     <div class="ctrl"><kbd>Maintenir clic G</kbd><span>Miner / pelleter</span></div>
     <div class="ctrl"><kbd>Clic D</kbd><span>Poser</span></div>
     <div class="ctrl"><kbd>1·9</kbd><span>Barre rapide</span></div>
+    <div class="ctrl"><kbd>Q</kbd><span>Lâcher un objet</span></div>
+    <div class="ctrl"><kbd>Ctrl+Q</kbd><span>Lâcher toute la pile</span></div>
     <div class="ctrl"><kbd>E</kbd><span>Inventaire</span></div>
     <div class="ctrl"><kbd>C</kbd><span>Fabriquer</span></div>
   </div>
@@ -43,97 +45,151 @@
   <!-- Actions d'interface -->
   <button id="craft-btn" class="craft-btn hidden" title="Fabriquer (C)">🛠️ <span>Fabriquer</span><kbd>C</kbd></button>
 
-  <!-- Inventaire complet : 27 cases + barre rapide -->
+  <!-- Inventaire complet façon Minecraft : personnage + grille 2×2,
+       27 cases de stockage + 9 cases de barre rapide -->
   <section id="inventory-panel" class="inventory-panel hidden" aria-label="Inventaire">
-    <header class="inventory-header">
-      <div class="inventory-brand">
-        <div>
-          <h2>Inventaire</h2>
+    <div class="panel-backdrop"></div>
+    <div class="panel-frame">
+      <header class="inventory-header">
+        <div class="inventory-brand">
+          <div class="inventory-emblem">🎒</div>
+          <div>
+            <h2>Inventaire</h2>
+          </div>
+        </div>
+        <button id="inventory-close" class="craft-close" title="Fermer (E)">✕</button>
+      </header>
+      <div class="inventory-content">
+        <div class="inv-left">
+          <div class="inv-player-card">
+            <canvas id="inventory-char" width="132" height="150"></canvas>
+            <div id="inventory-char-name" class="inv-player-name">Aventurier</div>
+          </div>
+          <div class="inv-craft2">
+            <div class="section-kicker">FABRICATION 2 × 2</div>
+            <div class="craft2-row">
+              <div id="inventory-craft-grid" class="craft-grid craft-grid--small"></div>
+              <div class="craft-arrow">➜</div>
+              <button id="inventory-craft-output" class="craft-output craft-output--small" disabled>
+                <span id="inventory-craft-output-icon" class="slot-icon">?</span>
+                <span id="inventory-craft-output-name">Résultat</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="inv-main">
+          <div class="inventory-grid-shell"><div id="inventory-grid" class="inventory-grid"></div></div>
+          <div class="inventory-divider"><span></span><b>BARRE RAPIDE</b><span></span></div>
+          <div class="inventory-hotbar-shell"><div id="inventory-hotbar" class="inventory-grid inventory-hotbar-grid"></div></div>
         </div>
       </div>
-      <div class="inventory-head-actions">
-        <div class="capacity-stat">
-          <div class="capacity-line"><span><b id="inventory-used">0</b> cases occupées</span><small><b id="inventory-capacity">36</b> max</small></div>
-          <div class="capacity-meter"><i id="inventory-capacity-bar"></i></div>
-        </div>
-        <button id="inventory-close" class="craft-close" title="Fermer">✕</button>
-      </div>
-    </header>
-    <div class="inventory-content">
-      <div class="inventory-storage">
-        <div class="inventory-grid-shell"><div id="inventory-grid" class="inventory-grid"></div></div>
-        <div class="inventory-divider"><span></span><b>BARRE RAPIDE</b><span></span></div>
-        <div class="inventory-hotbar-shell"><div id="inventory-hotbar" class="inventory-grid inventory-hotbar-grid"></div></div>
-      </div>
-      <aside class="inventory-detail">
-        <div class="detail-topline"><span id="inventory-detail-slot" class="detail-slot">CASE 1</span></div>
-        <div id="inventory-detail-icon" class="detail-icon">＋</div>
-        <h3 id="inventory-detail-name">Case sélectionnée vide</h3>
-        <p id="inventory-detail-text">Choisis une case de la barre rapide ou déplace une pile par glisser-déposer.</p>
-        <div class="detail-stats">
-          <div><span>CATÉGORIE</span><b id="inventory-detail-type">—</b></div>
-          <div><span>QUANTITÉ</span><b id="inventory-detail-stack">—</b></div>
-          <div><span>DURABILITÉ</span><b id="inventory-detail-durability">—</b></div>
-        </div>
-        <div class="detail-tip"><span>✧</span><p>Les matériaux s'empilent. Les outils gardent leur propre durabilité.</p></div>
-      </aside>
     </div>
   </section>
 
-  <!-- Panneau de fabrication centré façon Minecraft -->
+  <!-- Établi façon Minecraft : livre de recettes (repliable) + grille 3×3
+       + inventaire du joueur en bas -->
   <section id="crafting" class="crafting hidden" aria-label="Fabrication">
-    <header class="crafting-header">
-      <div>
-        <span class="panel-eyebrow">ÉTABLI PORTATIF</span>
-        <strong>🛠️ Fabrication</strong>
+    <div class="panel-backdrop"></div>
+    <div class="panel-frame panel-frame--craft">
+      <header class="crafting-header">
+        <div>
+          <span class="panel-eyebrow">ÉTABLI</span>
+          <strong>🛠️ Fabrication</strong>
+        </div>
+        <div class="crafting-header-actions">
+          <button type="button" id="craft-book-toggle" class="craft-book-toggle" title="Ouvrir / fermer le livre de recettes">
+            📖<span id="craft-recipe-count" class="craft-recipe-badge">0</span>
+          </button>
+          <button id="craft-close" class="craft-close" title="Fermer (C)">✕</button>
+        </div>
+      </header>
+      <div class="crafting-layout">
+        <aside id="craft-pane-book" class="craft-recipe-book hidden" aria-label="Recettes">
+          <div class="craft-book-header">
+            <div>
+              <span class="section-kicker">RECETTES</span>
+              <strong>Livre de recettes</strong>
+            </div>
+          </div>
+          <input id="craft-search" class="craft-search" type="text" placeholder="Rechercher une recette…" autocomplete="off" spellcheck="false" />
+          <div id="craft-list" class="craft-list"></div>
+        </aside>
+        <main class="craft-main">
+          <div class="craft-workbench">
+            <div>
+              <div class="section-title">Grille 3 × 3</div>
+              <div id="craft-grid" class="craft-grid"></div>
+            </div>
+            <div class="craft-arrow">➜</div>
+            <div class="craft-result-wrap">
+              <div class="section-title">Résultat</div>
+              <button id="craft-output" class="craft-output" disabled>
+                <span id="craft-output-icon" class="slot-icon">?</span>
+                <span id="craft-output-name">Résultat</span>
+              </button>
+            </div>
+          </div>
+          <p id="craft-status" class="craft-status">Choisis une recette.</p>
+          <div class="craft-inventory">
+            <div class="inventory-grid-shell"><div id="craft-inv-grid" class="inventory-grid"></div></div>
+            <div class="inventory-divider"><span></span><b>BARRE RAPIDE</b><span></span></div>
+            <div class="inventory-hotbar-shell"><div id="craft-inv-hotbar" class="inventory-grid inventory-hotbar-grid"></div></div>
+          </div>
+        </main>
       </div>
-      <nav class="craft-tabs" aria-label="Mode de fabrication">
-        <button type="button" id="craft-tab-book" class="craft-tab active" data-tab="book">📖 Livre</button>
-        <button type="button" id="craft-tab-inv" class="craft-tab" data-tab="inventory">🎒 Inventaire</button>
-      </nav>
-      <button id="craft-close" class="craft-close" title="Fermer">✕</button>
-    </header>
-    <div class="crafting-layout">
-      <aside class="craft-recipe-book" id="craft-pane-book">
-        <div class="craft-book-header">
-          <div>
-            <span class="section-kicker">RECETTES</span>
-            <strong>Livre de recettes</strong>
-          </div>
-          <span id="craft-recipe-count" class="craft-recipe-count">0</span>
-        </div>
-        <p class="craft-book-intro">Toutes les recettes connues. Les ingrédients manquants restent visibles en gris.</p>
-        <div id="craft-list" class="craft-list"></div>
-      </aside>
-      <aside class="craft-inv-pane hidden" id="craft-pane-inv">
-        <div id="craft-inv-hotbar" class="inventory-grid inventory-hotbar-grid craft-player-hotbar"></div>
-        <div id="craft-inv-grid" class="inventory-grid craft-player-grid"></div>
-      </aside>
-      <main class="craft-main">
-        <div class="craft-workbench">
-          <div>
-            <div class="section-title">Grille 3 × 3</div>
-            <div id="craft-grid" class="craft-grid"></div>
-          </div>
-          <div class="craft-arrow">➜</div>
-          <div class="craft-result-wrap">
-            <div class="section-title">Résultat</div>
-            <button id="craft-output" class="craft-output" disabled>
-              <span id="craft-output-icon" class="slot-icon">?</span>
-              <span id="craft-output-name">Résultat</span>
-            </button>
-          </div>
-        </div>
-        <p id="craft-status" class="craft-status">Sélectionne une recette à gauche pour remplir la grille.</p>
-        <div class="craft-howto" id="craft-howto"><span>1</span> Choisis une recette <i>→</i><span>2</span> récupère le résultat</div>
-        <p class="craft-footnote">Les recettes verrouillées restent affichées : récolte leurs matériaux dans le monde pour les débloquer.</p>
-      </main>
-    </div>
-    <div id="craft-cursor" class="craft-cursor hidden" aria-hidden="true">
-      <span class="slot-icon"></span>
-      <span class="slot-count"></span>
     </div>
   </section>
+
+  <!-- Four : entrée + combustible + sortie + inventaire du joueur -->
+  <section id="furnace" class="crafting furnace hidden" aria-label="Four">
+    <div class="panel-backdrop"></div>
+    <div class="panel-frame panel-frame--furnace">
+      <header class="crafting-header">
+        <div>
+          <span class="panel-eyebrow">FOUR</span>
+          <strong>🔥 Four</strong>
+        </div>
+        <div class="crafting-header-actions">
+          <button id="furnace-close" class="craft-close" title="Fermer">✕</button>
+        </div>
+      </header>
+      <div class="furnace-body">
+        <div class="furnace-workbench">
+          <div class="furnace-cols">
+            <div class="furnace-input-col">
+              <div class="furnace-label">ENTRÉE</div>
+              <div id="furnace-input" class="furnace-slot-wrap"></div>
+            </div>
+            <div class="furnace-flame" aria-hidden="true"><i id="furnace-flame-fill"></i></div>
+            <div class="furnace-fuel-col">
+              <div class="furnace-label">COMBUSTIBLE</div>
+              <div id="furnace-fuel" class="furnace-slot-wrap"></div>
+            </div>
+          </div>
+          <div class="furnace-arrow-wrap" aria-hidden="true">
+            <div class="furnace-arrow"><i id="furnace-arrow-fill"></i></div>
+          </div>
+          <div class="furnace-out-col">
+            <div class="furnace-label">SORTIE</div>
+            <div id="furnace-output" class="furnace-slot-wrap"></div>
+          </div>
+        </div>
+        <p id="furnace-status" class="craft-status">Mets un objet à fondre.</p>
+        <div class="craft-inventory">
+          <div class="inventory-grid-shell"><div id="furnace-inv-grid" class="inventory-grid"></div></div>
+          <div class="inventory-divider"><span></span><b>BARRE RAPIDE</b><span></span></div>
+          <div class="inventory-hotbar-shell"><div id="furnace-inv-hotbar" class="inventory-grid inventory-hotbar-grid"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pile flottante (curseur) + infobulle, façon Minecraft -->
+  <div id="cursor-stack" class="cursor-stack hidden" aria-hidden="true">
+    <span class="slot-icon"></span>
+    <span class="slot-count"></span>
+  </div>
+  <div id="slot-tooltip" class="slot-tooltip hidden" aria-hidden="true"></div>
 
   <div id="game-toast" class="game-toast" role="status"></div>
 
@@ -143,11 +199,7 @@
       <header class="panel-header">
         <div class="logo-mark">◼</div>
         <h1>AVANIA</h1>
-        <p class="tagline">Un monde vide. <span>À toi de tout construire.</span></p>
-        <div class="pills">
-          <span class="pill">Monde à bâtir</span>
-          <span class="pill">Inventaire 36 cases</span>
-        </div>
+        <p class="tagline">Un monde à construire.</p>
       </header>
 
       <div class="creator">
@@ -180,6 +232,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/main.js?v=16"></script>
+  <script type="module" src="js/main.js?v=19"></script>
 </body>
 </html>

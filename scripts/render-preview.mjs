@@ -14,7 +14,11 @@ globalThis.document = {
 globalThis.window = globalThis;
 
 import { World } from '../js/world.js';
-import { buildTileset, getTileCanvas, getWaterFrame, drawTreeObject, drawRockObject } from '../js/tileset.js';
+import {
+  buildTileset, getTileCanvas, getDoorCanvas, getFurnaceCanvas, getWaterFrame,
+  drawTreeObject, drawRockObject, drawIronOreObject,
+} from '../js/tileset.js';
+import { Mob, drawMob } from '../js/mobs.js';
 import { drawCharacter } from '../js/character.js';
 import { BLOCK_DEFS } from '../js/blocks.js';
 import { TILE, DEFAULT_APPEARANCE, HAIR_STYLES, HATS, GLASSES, FACIAL_HAIR } from '../js/config.js';
@@ -54,7 +58,14 @@ function renderWorld() {
       if (b) {
         const sx = (tx - cx + R) * TILE + TILE / 2;
         const sy = (ty - cy + R) * TILE + TILE / 2;
-        drawables.push({ sortY: sy, draw: () => b === 'tree' ? drawTreeObject(ctx, sx, sy) : drawRockObject(ctx, sx, sy) });
+        drawables.push({
+          sortY: sy,
+          draw: () => {
+            if (b === 'tree') drawTreeObject(ctx, sx, sy);
+            else if (b === 'rock') drawRockObject(ctx, sx, sy);
+            else drawIronOreObject(ctx, sx, sy);
+          },
+        });
       }
     }
   }
@@ -122,17 +133,46 @@ function renderCharacter() {
 // ---------- 3. Planche des blocs ----------
 function renderBlocks() {
   buildTileset();
-  const keys = ['grass', 'water', 'wood', 'stone', 'plank', 'brick', 'glass', 'sandBlock', 'dirtBlock'];
+  const keys = ['grass', 'water', 'wood', 'stone', 'plank', 'brick', 'glass', 'sandBlock', 'dirtBlock', 'ironBlock', 'furnace', 'furnaceLit', 'woolBlock', 'door', 'doorOpen'];
   const canvas = createCanvas(keys.length * 44, 48);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#0e1712';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  keys.forEach((k, i) => ctx.drawImage(getTileCanvas(k), i * 44, 0));
+  keys.forEach((k, i) => {
+    const tile = k === 'door' || k === 'doorOpen' ? getDoorCanvas(k === 'doorOpen')
+      : k.startsWith('furnace') ? getFurnaceCanvas(k === 'furnaceLit')
+      : getTileCanvas(k);
+    ctx.drawImage(tile, i * 44, 0);
+  });
+  // minerai de fer à côté des blocs
+  drawIronOreObject(ctx, keys.length * 44 + 22, 24);
   writeFileSync('preview/blocs.png', canvas.toBuffer('image/png'));
   console.log('✔ preview/blocs.png');
+}
+
+// ---------- 4. Mobs (moutons & vaches) ----------
+function renderMobs() {
+  const canvas = createCanvas(320, 110);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#7cae4e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#6b9c42';
+  for (let i = 0; i < 60; i++) ctx.fillRect((i * 37) % 320, (i * 23) % 110, 2, 2);
+  const sheep = new Mob('sheep', 60, 60);
+  drawMob(ctx, sheep);
+  const sheepL = new Mob('sheep', 130, 60);
+  sheepL.facing = 'left';
+  drawMob(ctx, sheepL);
+  drawMob(ctx, new Mob('cow', 220, 60));
+  const cowL = new Mob('cow', 285, 60);
+  cowL.facing = 'left';
+  drawMob(ctx, cowL);
+  writeFileSync('preview/mobs.png', canvas.toBuffer('image/png'));
+  console.log('✔ preview/mobs.png');
 }
 
 renderWorld();
 renderCharacter();
 renderBlocks();
+renderMobs();
 console.log('✅ Aperçus générés dans /preview');

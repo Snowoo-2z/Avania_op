@@ -28,6 +28,8 @@ export class Input {
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) {
         e.preventDefault();
       }
+      // Ctrl+Q lâche toute la pile : on empêche le navigateur de le prendre.
+      if (k === 'q' && (e.ctrlKey || e.metaKey)) e.preventDefault();
     };
     this.onKeyUp = (e) => {
       this.keys.delete(e.key.toLowerCase());

@@ -222,28 +222,6 @@ kbd {
 .panel-header .tagline { color: var(--muted); font-size: 15.5px; margin-top: 8px; }
 .panel-header .tagline span { color: var(--text); font-weight: 800; }
 
-.pills {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 16px;
-}
-.pill {
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--muted);
-  padding: 6px 13px;
-  border-radius: 999px;
-  background: rgba(124, 207, 106, 0.08);
-  border: 1px solid var(--border);
-}
-.pill-v {
-  color: var(--accent-2);
-  background: rgba(242, 193, 78, 0.12);
-  border-color: rgba(242, 193, 78, 0.4);
-}
-
 .creator {
   display: grid;
   grid-template-columns: 300px 1fr;
@@ -1605,4 +1583,554 @@ html.low-power .craft-output.ready {
   .craft-inv-pane { border-right: 0; border-top: 2px solid rgba(25,27,29,0.55); max-height: 38vh; }
   .crafting.craft-mode-inventory .craft-main { order: 1; }
   .crafting.craft-mode-inventory .craft-inv-pane { order: 2; }
+}
+
+/* ============================================================
+   Écrans Inventaire (E) & Établi (C) — v3 façon Minecraft
+   Plein écran assombri, panneau « pierre » au centre, cases
+   carrées avec bevel, pile flottante et infobulle.
+   ============================================================ */
+
+/* --- Panneaux plein écran + voile --- */
+.inventory-panel,
+.crafting {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  transform: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 18px;
+  background: rgba(6, 8, 10, 0.66);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  animation: none;
+}
+.inventory-panel::before,
+.inventory-panel::after,
+.crafting::before,
+.crafting::after {
+  display: none;
+}
+.panel-backdrop {
+  position: absolute;
+  inset: 0;
+  cursor: default;
+}
+
+/* --- Cadre « pierre » commun --- */
+.panel-frame {
+  position: relative;
+  z-index: 1;
+  width: min(880px, calc(100vw - 24px));
+  max-height: min(94vh, 820px);
+  overflow: auto;
+  padding: 20px 22px 20px;
+  border: 2px solid #1e2022;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #707579, #4b4f53 55%, #383b3f);
+  box-shadow:
+    0 30px 90px rgba(0,0,0,0.8),
+    0 0 0 1px #a1a5a8,
+    0 0 0 4px #36393d,
+    inset 0 1px 0 rgba(255,255,255,0.36),
+    inset 0 -3px 0 rgba(0,0,0,0.28);
+}
+.panel-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 5px;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.045) 25%, transparent 25%) 0 0 / 6px 6px,
+    linear-gradient(315deg, rgba(0,0,0,0.035) 25%, transparent 25%) 0 0 / 6px 6px;
+  opacity: 0.7;
+}
+.panel-frame::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  z-index: 0;
+  border: 1px solid rgba(235,235,235,0.18);
+  border-radius: 3px;
+  pointer-events: none;
+}
+.panel-frame > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* --- Inventaire (E) --- */
+.inventory-content {
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr);
+  gap: 20px;
+  padding-top: 16px;
+}
+.inv-left {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.inv-player-card {
+  padding: 10px 10px 12px;
+  border: 2px solid #25282a;
+  border-radius: 4px;
+  background: #35383b;
+  box-shadow: inset 2px 2px 0 rgba(0,0,0,0.32), inset -1px -1px 0 rgba(255,255,255,0.12);
+  text-align: center;
+}
+.inv-player-card canvas {
+  display: block;
+  width: 100%;
+  max-width: 150px;
+  height: auto;
+  margin: 0 auto;
+  image-rendering: pixelated;
+}
+.inv-player-name {
+  margin-top: 8px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  text-shadow: 2px 2px 0 rgba(0,0,0,0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inv-craft2 {
+  padding: 12px;
+  border: 2px solid #25282a;
+  border-radius: 4px;
+  background: #3c3f43;
+  box-shadow: inset 2px 2px 0 rgba(0,0,0,0.28), inset -1px -1px 0 rgba(255,255,255,0.1);
+}
+.craft2-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+.craft-grid--small {
+  grid-template-columns: repeat(2, 46px);
+}
+.craft-grid--small .craft-slot {
+  width: 46px;
+  height: 46px;
+}
+.craft-output--small {
+  width: 64px;
+  height: 64px;
+}
+.craft-output--small .slot-icon {
+  width: 34px;
+  height: 34px;
+}
+.inv-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.inv-main .inventory-grid-shell,
+.inv-main .inventory-hotbar-shell {
+  width: 100%;
+}
+
+/* --- Établi (C) --- */
+.panel-frame--craft {
+  width: min(880px, calc(100vw - 24px));
+}
+.crafting-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.crafting-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.craft-book-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 2px solid #222426;
+  border-radius: 3px;
+  background: #61666a;
+  color: #fff;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 900;
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.25), inset -1px -1px 0 rgba(0,0,0,0.35);
+  cursor: pointer;
+}
+.craft-book-toggle:hover { filter: brightness(1.12); }
+.craft-book-toggle.active {
+  border-color: #fff4a3;
+  background: #73787c;
+  box-shadow: 0 0 0 2px rgba(33,35,37,0.75), inset 1px 1px 0 rgba(255,255,255,0.4), inset -1px -1px 0 rgba(0,0,0,0.35);
+}
+.craft-recipe-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid #292b2e;
+  border-radius: 3px;
+  background: #3f4346;
+  color: #fff0a0;
+  font-size: 9px;
+  font-weight: 900;
+}
+.crafting-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  height: min(72vh, 600px);
+  min-height: 0;
+  margin-top: 14px;
+}
+.crafting.book-open .crafting-layout {
+  grid-template-columns: minmax(248px, 300px) minmax(0, 1fr);
+}
+.craft-recipe-book {
+  min-height: 0;
+  border-right: 2px solid rgba(25,27,29,0.55);
+  background: linear-gradient(180deg, rgba(50,53,56,0.82), rgba(38,41,44,0.92));
+  box-shadow: inset -1px 0 rgba(255,255,255,0.12), inset 4px 0 rgba(255,255,255,0.04);
+}
+.craft-search {
+  margin: 2px 12px 10px;
+  padding: 7px 9px;
+  border: 2px solid #222426;
+  border-radius: 3px;
+  background: #35383b;
+  color: #fff;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: inset 1px 1px 0 rgba(0,0,0,0.35);
+  outline: none;
+}
+.craft-search::placeholder { color: #9aa0a3; }
+.craft-search:focus { border-color: #fff4a3; }
+
+/* Cartes de recettes : clic = placer les ingrédients dans la grille */
+.craft-recipe-book .recipe {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 7px;
+  padding: 7px 9px;
+  text-align: left;
+  border: 2px solid #2b2e31;
+  border-radius: 3px;
+  background: #565b5f;
+  color: inherit;
+  font-family: var(--font);
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.17), inset -1px -1px 0 rgba(0,0,0,0.3);
+  cursor: pointer;
+}
+.craft-recipe-book .recipe:hover { border-color: #f3d36a; filter: brightness(1.06); }
+.recipe-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+.recipe-text b {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recipe-cost {
+  color: #d5d8da;
+  font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recipe-state {
+  color: #d7e997;
+  font-size: 11px;
+}
+.recipe-locked { opacity: 0.6; }
+.recipe-locked .recipe-icon { filter: grayscale(0.8); }
+.recipe-locked .recipe-state { color: #9aa0a3; }
+.recipe.search-hidden { display: none; }
+
+/* Colonne principale : grille 3×3 + résultat + inventaire du joueur */
+.craft-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.craft-main .craft-workbench {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px;
+  border-bottom: 2px solid rgba(25,27,29,0.55);
+  background: radial-gradient(360px 180px at 15% 30%, rgba(105,203,146,0.08), transparent 72%), rgba(38,41,44,0.26);
+}
+.craft-inventory {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px 16px;
+}
+.craft-inventory .inventory-grid-shell,
+.craft-inventory .inventory-hotbar-shell {
+  width: min(100%, 520px);
+  flex: 0 0 auto;
+}
+.craft-inventory .slot {
+  height: 44px;
+}
+.craft-status {
+  margin: 10px 16px 4px;
+}
+
+/* --- Pile flottante (curseur) --- */
+.cursor-stack {
+  position: fixed;
+  z-index: 90;
+  width: 42px;
+  height: 42px;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+.cursor-stack .slot-icon {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  box-shadow:
+    inset 1px 1px 0 rgba(255,255,255,0.38),
+    inset -3px -3px 0 rgba(0,0,0,0.25),
+    0 3px 6px rgba(0,0,0,0.4);
+}
+.cursor-stack .slot-count {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 2px 2px 0 rgba(0,0,0,0.8);
+}
+
+/* --- Infobulle façon Minecraft --- */
+.slot-tooltip {
+  position: fixed;
+  z-index: 95;
+  max-width: 230px;
+  padding: 6px 9px;
+  pointer-events: none;
+  background: rgba(16, 0, 16, 0.95);
+  border: 1px solid #3f003f;
+  border-radius: 2px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+}
+.slot-tooltip .tt-name {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.7);
+}
+.slot-tooltip .tt-line {
+  margin-top: 3px;
+  color: #c9c9c9;
+  font-size: 10px;
+  font-weight: 700;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.7);
+}
+
+/* --- Surbrillance pendant un glisser --- */
+.mc-slot.drag-source {
+  border-color: #fff4a3 !important;
+  box-shadow:
+    0 0 0 2px rgba(33,35,37,0.75),
+    inset 2px 2px 0 rgba(255,255,255,0.5),
+    inset -2px -2px 0 rgba(0,0,0,0.4) !important;
+  transform: none !important;
+}
+
+@media (max-width: 760px) {
+  .inventory-panel,
+  .crafting { padding: 10px; }
+  .panel-frame { padding: 14px 12px 14px; }
+  .inventory-content { grid-template-columns: 1fr; gap: 14px; }
+  .inv-left { flex-direction: row; align-items: stretch; }
+  .inv-player-card { flex: 0 0 auto; width: 120px; }
+  .inv-craft2 { flex: 1 1 auto; }
+  .crafting-layout,
+  .crafting.book-open .crafting-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+  .craft-recipe-book {
+    border-right: 0;
+    border-top: 2px solid rgba(25,27,29,0.55);
+    max-height: 36vh;
+  }
+  .craft-main { min-height: 0; }
+  .craft-inventory { overflow: visible; }
+  .craft-inventory .inventory-grid-shell,
+  .craft-inventory .inventory-hotbar-shell { width: 100%; }
+  .craft-grid { grid-template-columns: repeat(3, minmax(30px, 1fr)); width: 100%; }
+  .craft-grid--small { grid-template-columns: repeat(2, minmax(30px, 1fr)); width: auto; }
+  .craft-slot { width: 100%; height: 38px; }
+  .craft-grid--small .craft-slot { width: 42px; height: 42px; }
+}
+
+/* Cases survolées pendant un glisser-répartir */
+.mc-slot.drag-target {
+  border-color: #fff4a3 !important;
+  box-shadow:
+    0 0 0 2px rgba(33,35,37,0.75),
+    inset 2px 2px 0 rgba(255,255,255,0.42),
+    inset -2px -2px 0 rgba(0,0,0,0.38) !important;
+  filter: brightness(1.18);
+}
+
+/* ============================================================
+   Four — panneau façon Minecraft (entrée, combustible, sortie)
+   ============================================================ */
+.panel-frame--furnace {
+  width: min(640px, calc(100vw - 24px));
+}
+.furnace-body {
+  margin-top: 14px;
+}
+.furnace-workbench {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  padding: 18px 16px;
+  border-bottom: 2px solid rgba(25,27,29,0.55);
+  background: radial-gradient(360px 180px at 15% 30%, rgba(240,160,80,0.07), transparent 72%), rgba(38,41,44,0.26);
+}
+.furnace-cols {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.furnace-input-col,
+.furnace-fuel-col,
+.furnace-out-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+}
+.furnace-label {
+  color: #c9ccce;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.4);
+}
+.furnace-slot-wrap .craft-slot {
+  width: 50px;
+  height: 50px;
+}
+.furnace-output-slot {
+  border-color: #3a3d40 !important;
+}
+.furnace-flame {
+  position: relative;
+  width: 16px;
+  height: 40px;
+  border: 2px solid #222426;
+  border-radius: 2px;
+  background: #2b2d30;
+  box-shadow: inset 1px 1px 0 rgba(0,0,0,0.4);
+  overflow: hidden;
+}
+.furnace-flame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 78%, rgba(255,180,60,0.9) 0 3px, transparent 4px),
+    radial-gradient(circle at 40% 45%, rgba(255,120,30,0.8) 0 3px, transparent 4px);
+  opacity: 0.35;
+  pointer-events: none;
+}
+.furnace-flame i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0%;
+  background: linear-gradient(180deg, #ffd28a, #ff9a3c 55%, #e05a1a);
+  transition: height 0.12s linear;
+}
+.furnace-arrow-wrap {
+  display: flex;
+  align-items: center;
+}
+.furnace-arrow {
+  position: relative;
+  width: 46px;
+  height: 20px;
+  border: 2px solid #222426;
+  border-radius: 2px;
+  background: #2b2d30;
+  box-shadow: inset 1px 1px 0 rgba(0,0,0,0.4);
+  overflow: hidden;
+}
+.furnace-arrow::after {
+  content: '➜';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9aa0a3;
+  font-size: 11px;
+}
+.furnace-arrow i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0%;
+  background: linear-gradient(90deg, #62d5b2, #9ce374);
+  opacity: 0.85;
+  transition: width 0.12s linear;
+}
+.furnace .craft-inventory {
+  padding-top: 10px;
+}
+.furnace .furnace-slot-wrap .slot-icon img {
+  image-rendering: pixelated;
 }
