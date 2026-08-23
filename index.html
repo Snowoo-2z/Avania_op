@@ -9,7 +9,7 @@
     #boot-error { display: none; position: fixed; inset: 16px auto auto 16px; z-index: 999; max-width: min(520px, calc(100% - 32px)); padding: 12px 14px; background: #3a1c16; border: 1px solid #c96a55; border-radius: 10px; font: 700 13px system-ui, sans-serif; }
     #boot-error.visible { display: block; }
   </style>
-  <link rel="stylesheet" href="css/style.css?v=19" />
+  <link rel="stylesheet" href="css/style.css?v=23" />
 </head>
 <body>
   <div id="boot-error" role="alert"></div>
@@ -18,7 +18,7 @@
   <!-- HUD en jeu -->
   <div id="hud" class="hud hidden">
     <div class="hud-card">
-      <span class="hud-label">👤</span>
+      <span class="hud-label" data-icon="user"></span>
       <span id="hud-name">—</span>
     </div>
     <div class="hud-card hud-card--ghost">
@@ -43,7 +43,7 @@
   <div id="hotbar" class="hotbar"></div>
 
   <!-- Actions d'interface -->
-  <button id="craft-btn" class="craft-btn hidden" title="Fabriquer (C)">🛠️ <span>Fabriquer</span><kbd>C</kbd></button>
+  <button id="craft-btn" class="craft-btn hidden" title="Fabriquer"><span class="ic" data-icon="hammer"></span> <span>Fabriquer</span><kbd>C</kbd></button>
 
   <!-- Inventaire complet façon Minecraft : personnage + grille 2×2,
        27 cases de stockage + 9 cases de barre rapide -->
@@ -52,13 +52,13 @@
     <div class="panel-frame">
       <header class="inventory-header">
         <div class="inventory-brand">
-          <div class="inventory-emblem">🎒</div>
+          <div class="inventory-emblem" data-icon="backpack"></div>
           <div>
             <h2>Inventaire</h2>
             <p id="inventory-capacity" class="inventory-capacity">0/36 cases utilisées</p>
           </div>
         </div>
-        <button id="inventory-close" class="craft-close" title="Fermer (E)">✕</button>
+        <button id="inventory-close" class="craft-close" title="Fermer (E)"><span class="ic" data-icon="close"></span></button>
       </header>
       <div class="inventory-content">
         <div class="inv-left">
@@ -70,7 +70,7 @@
             <div class="section-kicker">FABRICATION 2 × 2</div>
             <div class="craft2-row">
               <div id="inventory-craft-grid" class="craft-grid craft-grid--small"></div>
-              <div class="craft-arrow">➜</div>
+              <div class="craft-arrow" data-icon="arrowRight"></div>
               <button id="inventory-craft-output" class="craft-output craft-output--small" disabled>
                 <span id="inventory-craft-output-icon" class="slot-icon">?</span>
                 <span id="inventory-craft-output-name">Résultat</span>
@@ -80,7 +80,7 @@
         </div>
         <div class="inv-main">
           <div class="inventory-toolbar">
-            <button id="inventory-sort" class="inventory-sort-btn" title="Trier l'inventaire">📦 Trier</button>
+            <button id="inventory-sort" class="inventory-sort-btn" title="Trier l'inventaire"><span class="ic" data-icon="package"></span> Trier</button>
           </div>
           <div class="inventory-grid-shell"><div id="inventory-grid" class="inventory-grid"></div></div>
           <div class="inventory-divider"><span></span><b>BARRE RAPIDE</b><span></span></div>
@@ -98,13 +98,13 @@
       <header class="crafting-header">
         <div>
           <span class="panel-eyebrow">ÉTABLI</span>
-          <strong>🛠️ Fabrication</strong>
+          <strong><span class="ic" data-icon="hammer"></span> Fabrication</strong>
         </div>
         <div class="crafting-header-actions">
           <button type="button" id="craft-book-toggle" class="craft-book-toggle" title="Ouvrir / fermer le livre de recettes">
-            📖<span id="craft-recipe-count" class="craft-recipe-badge">0</span>
+            <span class="ic" data-icon="book"></span><span id="craft-recipe-count" class="craft-recipe-badge">0</span>
           </button>
-          <button id="craft-close" class="craft-close" title="Fermer (C)">✕</button>
+          <button id="craft-close" class="craft-close" title="Fermer (C)"><span class="ic" data-icon="close"></span></button>
         </div>
       </header>
       <div class="crafting-layout">
@@ -124,7 +124,7 @@
               <div class="section-title">Grille 3 × 3</div>
               <div id="craft-grid" class="craft-grid"></div>
             </div>
-            <div class="craft-arrow">➜</div>
+            <div class="craft-arrow" data-icon="arrowRight"></div>
             <div class="craft-result-wrap">
               <div class="section-title">Résultat</div>
               <button id="craft-output" class="craft-output" disabled>
@@ -151,10 +151,10 @@
       <header class="crafting-header">
         <div>
           <span class="panel-eyebrow">FOUR</span>
-          <strong>🔥 Four</strong>
+          <strong><span class="ic" data-icon="fire"></span> Four</strong>
         </div>
         <div class="crafting-header-actions">
-          <button id="furnace-close" class="craft-close" title="Fermer">✕</button>
+          <button id="furnace-close" class="craft-close" title="Fermer"><span class="ic" data-icon="close"></span></button>
         </div>
       </header>
       <div class="furnace-body">
@@ -203,46 +203,33 @@
     <div class="settings-frame">
       <header class="settings-header">
         <div class="settings-brand">
-          <div class="settings-emblem">⚙️</div>
+          <div class="settings-emblem" data-icon="gear"></div>
           <div>
             <h2>Paramètres</h2>
             <p class="settings-subtitle">Contrôles & Options</p>
           </div>
         </div>
-        <button id="settings-close" class="craft-close" title="Fermer (Échap)">✕</button>
+        <button id="settings-close" class="craft-close" title="Fermer (Échap)"><span class="ic" data-icon="close"></span></button>
       </header>
       <div class="settings-body">
         <div class="settings-section">
-          <div class="settings-section-title"><span class="settings-icon">🎮</span><h3>Contrôles</h3></div>
-          <div class="controls-grid">
-            <div class="control-row"><kbd>Z</kbd><kbd>Q</kbd><kbd>S</kbd><kbd>D</kbd><span>Se déplacer</span></div>
-            <div class="control-row"><kbd>Clic G</kbd><span>Miner / Attaquer</span></div>
-            <div class="control-row"><kbd>Clic D</kbd><span>Poser un bloc</span></div>
-            <div class="control-row"><kbd>1-9</kbd><span>Barre rapide</span></div>
-            <div class="control-row"><kbd>Molette</kbd><span>Changer d'objet</span></div>
-            <div class="control-row"><kbd>E</kbd><span>Inventaire</span></div>
-            <div class="control-row"><kbd>C</kbd><span>Établi (craft)</span></div>
-            <div class="control-row"><kbd>R</kbd><span>Trier l'inventaire</span></div>
-            <div class="control-row"><kbd>Q</kbd><span>Lâcher 1 objet</span></div>
-            <div class="control-row"><kbd>Ctrl+Q</kbd><span>Lâcher la pile</span></div>
-            <div class="control-row"><kbd>Shift+Clic</kbd><span>Craft rapide (max)</span></div>
-            <div class="control-row"><kbd>Échap</kbd><span>Fermer les panneaux</span></div>
+          <div class="settings-section-title"><span class="settings-icon" data-icon="gamepad"></span><h3>Raccourcis</h3></div>
+          <div class="keybinds-head">
+            <span class="keybinds-hint">Cliquez une touche pour la modifier · Échap pour annuler</span>
+            <button type="button" id="keybinds-reset" class="keybinds-reset" title="Restaurer les touches par défaut">Réinitialiser</button>
           </div>
+          <div id="keybinds" class="keybinds"></div>
         </div>
         <div class="settings-section">
-          <div class="settings-section-title"><span class="settings-icon">🖱️</span><h3>Souris & Sensibilité</h3></div>
-          <div class="settings-option">
-            <label><span>Sensibilité de la souris</span><span id="sensitivity-value" class="settings-value">100%</span></label>
-            <input type="range" id="sensitivity-range" min="25" max="300" value="100" step="5" />
-          </div>
+          <div class="settings-section-title"><span class="settings-icon" data-icon="mouse"></span><h3>Curseur</h3></div>
           <div class="settings-option">
             <label><span>Style du curseur</span></label>
             <div class="cursor-styles" id="cursor-styles">
-              <button class="cursor-style-btn active" data-cursor="crosshair" title="Crosshair pixel art">⊕</button>
-              <button class="cursor-style-btn" data-cursor="dot" title="Point simple">●</button>
-              <button class="cursor-style-btn" data-cursor="sword" title="Épée pixel art">⚔</button>
-              <button class="cursor-style-btn" data-cursor="pickaxe" title="Pioche pixel art">⛏</button>
-              <button class="cursor-style-btn" data-cursor="hand" title="Main">✋</button>
+              <button type="button" class="cursor-style-btn active" data-cursor="crosshair" title="Crosshair pixel art"></button>
+              <button type="button" class="cursor-style-btn" data-cursor="dot" title="Point simple"></button>
+              <button type="button" class="cursor-style-btn" data-cursor="sword" title="Épée pixel art"></button>
+              <button type="button" class="cursor-style-btn" data-cursor="pickaxe" title="Pioche pixel art"></button>
+              <button type="button" class="cursor-style-btn" data-cursor="hand" title="Main"></button>
             </div>
           </div>
           <div class="settings-option">
@@ -251,9 +238,9 @@
           </div>
         </div>
         <div class="settings-section">
-          <div class="settings-section-title"><span class="settings-icon">⚡</span><h3>Gameplay</h3></div>
+          <div class="settings-section-title"><span class="settings-icon" data-icon="bolt"></span><h3>Gameplay</h3></div>
           <div class="settings-option">
-            <label><span>Zoom de la caméra</span><span id="zoom-value" class="settings-value">Auto</span></label>
+            <label><span>Zoom de la caméra</span><span id="zoom-value" class="settings-value">2×</span></label>
             <input type="range" id="zoom-range" min="1" max="4" value="2" step="0.5" />
           </div>
           <div class="settings-option toggle-option">
@@ -264,6 +251,10 @@
             <label><span>Particules de casse</span><span class="settings-hint">Débris quand on mine</span></label>
             <button id="toggle-particles" class="toggle-btn active" aria-pressed="true"><span class="toggle-knob"></span></button>
           </div>
+          <div class="settings-option toggle-option">
+            <label><span>Aim assist (animaux)</span><span class="settings-hint">Ciblage plus facile des moutons &amp; vaches</span></label>
+            <button id="toggle-aimassist" class="toggle-btn active" aria-pressed="true"><span class="toggle-knob"></span></button>
+          </div>
         </div>
       </div>
     </div>
@@ -273,7 +264,7 @@
   <canvas id="custom-cursor" class="custom-cursor" width="32" height="32"></canvas>
 
   <!-- Bouton paramètres -->
-  <button id="settings-btn" class="settings-btn hidden" title="Paramètres (O)">⚙️</button>
+  <button id="settings-btn" class="settings-btn hidden" title="Paramètres"><span class="ic" data-icon="gear"></span></button>
 
   <!-- Écran de création du personnage -->
   <div id="customization" class="overlay">
@@ -289,10 +280,10 @@
         <div class="preview-col">
           <canvas id="char-preview" width="260" height="320"></canvas>
           <div class="facing-controls">
-            <button data-facing="up" title="Vue de dos">▲</button>
-            <button data-facing="left" title="Gauche">◀</button>
-            <button data-facing="down" title="Vue de face">▼</button>
-            <button data-facing="right" title="Droite">▶</button>
+            <button data-facing="up" title="Vue de dos"><span class="ic" data-icon="chevronUp"></span></button>
+            <button data-facing="left" title="Gauche"><span class="ic" data-icon="chevronLeft"></span></button>
+            <button data-facing="down" title="Vue de face"><span class="ic" data-icon="chevronDown"></span></button>
+            <button data-facing="right" title="Droite"><span class="ic" data-icon="chevronRight"></span></button>
           </div>
         </div>
 
@@ -300,20 +291,20 @@
         <div class="options-col">
           <div class="name-row">
             <input id="char-name" type="text" maxlength="16" placeholder="Ton nom…" />
-            <button id="name-random" class="btn-icon" title="Nom aléatoire">🎲</button>
+            <button id="name-random" class="btn-icon" title="Nom aléatoire"><span class="ic" data-icon="dice"></span></button>
           </div>
 
           <div id="char-sections" class="sections"></div>
 
           <div class="actions">
-            <button id="char-random" class="btn btn-secondary">🎲 Surprise !</button>
-            <button id="char-start" class="btn btn-primary">Entrer dans le monde →</button>
+            <button id="char-random" class="btn btn-secondary"><span class="ic" data-icon="dice"></span> Surprise !</button>
+            <button id="char-start" class="btn btn-primary">Entrer dans le monde <span class="ic" data-icon="chevronRight"></span></button>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <script type="module" src="js/main.js?v=19"></script>
+  <script type="module" src="js/main.js?v=23"></script>
 </body>
 </html>

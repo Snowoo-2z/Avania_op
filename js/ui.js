@@ -13,6 +13,7 @@ import { drawCharacter } from './character.js';
 import { getItemIconURL } from './icons.js';
 import { SMELT_RECIPES } from './furnace.js';
 import { isLowPowerDevice, pick } from './utils.js';
+import { icon } from './svgicons.js';
 
 const SAVE_KEY = 'avania.personnage';
 
@@ -1032,7 +1033,7 @@ export class Crafting {
     for (const { recipe: cardRecipe, card, stateEl, progressFill, progressText } of this.cards) {
       const available = this.inventory.canCraft(cardRecipe);
       card.classList.toggle('recipe-locked', !available);
-      stateEl.textContent = available ? '✓' : '🔒';
+      stateEl.innerHTML = available ? icon('check') : icon('lock');
       
       // Mettre à jour les compteurs d'ingrédients
       const ingredients = card.querySelectorAll('.recipe-ingredient');

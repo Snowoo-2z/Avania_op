@@ -1,6 +1,14 @@
 // ============================================================
-//  AVANIA — Paramètres, curseur custom pixel art & sensibilité
+//  AVANIA — Paramètres : curseur custom pixel art + raccourcis
+//  Toutes les valeurs sont appliquées au jeu (le Game lit cet objet
+//  chaque frame) et persistées dans localStorage.
 // ============================================================
+
+import {
+  KEY_ACTIONS, bindings, saveBindings, resetBindings,
+  formatTrigger, actionUsingTrigger,
+  triggerFromKey, triggerFromMouse, triggerFromWheel,
+} from './keys.js';
 
 const SAVE_KEY = 'avania.settings';
 
@@ -16,44 +24,34 @@ function saveSettings(s) {
 }
 
 // --- Curseur pixel art pré-rendu en canvas ---
-const CURSOR_SIZE = 32;
-
 function drawCrosshair(ctx, s) {
   const c = s / 2;
   const t = Math.max(2, s / 8);
-  // Croix avec contour sombre
   ctx.strokeStyle = '#000';
   ctx.lineWidth = t + 2;
   ctx.beginPath();
-  ctx.moveTo(c, 4); ctx.lineTo(c, s - 4);
-  ctx.moveTo(4, c); ctx.lineTo(s - 4, c);
+  ctx.moveTo(c, s * 0.12); ctx.lineTo(c, s - s * 0.12);
+  ctx.moveTo(s * 0.12, c); ctx.lineTo(s - s * 0.12, c);
   ctx.stroke();
   ctx.strokeStyle = '#fff';
   ctx.lineWidth = t;
   ctx.beginPath();
-  ctx.moveTo(c, 4); ctx.lineTo(c, s - 4);
-  ctx.moveTo(4, c); ctx.lineTo(s - 4, c);
+  ctx.moveTo(c, s * 0.12); ctx.lineTo(c, s - s * 0.12);
+  ctx.moveTo(s * 0.12, c); ctx.lineTo(s - s * 0.12, c);
   ctx.stroke();
-  // Point central
   ctx.fillStyle = '#7ccf6a';
-  ctx.fillRect(c - 1.5, c - 1.5, 3, 3);
+  ctx.fillRect(c - t * 0.6, c - t * 0.6, t * 1.2, t * 1.2);
 }
 
 function drawDot(ctx, s) {
   const c = s / 2;
   const r = s / 5;
   ctx.fillStyle = '#000';
-  ctx.beginPath();
-  ctx.arc(c, c, r + 1.5, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.beginPath(); ctx.arc(c, c, r + 1.5, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#fff';
-  ctx.beginPath();
-  ctx.arc(c, c, r, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.beginPath(); ctx.arc(c, c, r, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#7ccf6a';
-  ctx.beginPath();
-  ctx.arc(c, c, r * 0.45, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.beginPath(); ctx.arc(c, c, r * 0.45, 0, Math.PI * 2); ctx.fill();
 }
 
 function drawSword(ctx, s) {
@@ -61,21 +59,16 @@ function drawSword(ctx, s) {
   ctx.save();
   ctx.translate(c, c);
   ctx.rotate(-Math.PI / 4);
+  const u = s / 32; // unité relative (le motif est dessiné pour 32px)
   // Lame
-  ctx.fillStyle = '#000';
-  ctx.fillRect(-2.5, -c + 3, 5, c - 3);
-  ctx.fillStyle = '#c6ccd2';
-  ctx.fillRect(-1.5, -c + 4, 3, c - 6);
-  ctx.fillStyle = '#eef2f6';
-  ctx.fillRect(-0.5, -c + 5, 1, c - 8);
+  ctx.fillStyle = '#000'; ctx.fillRect(-2.5 * u, -c + 3 * u, 5 * u, c - 3 * u);
+  ctx.fillStyle = '#c6ccd2'; ctx.fillRect(-1.5 * u, -c + 4 * u, 3 * u, c - 6 * u);
+  ctx.fillStyle = '#eef2f6'; ctx.fillRect(-0.5 * u, -c + 5 * u, 1 * u, c - 8 * u);
   // Garde
-  ctx.fillStyle = '#000';
-  ctx.fillRect(-5, 1, 10, 4);
-  ctx.fillStyle = '#f2c14e';
-  ctx.fillRect(-4, 2, 8, 2);
+  ctx.fillStyle = '#000'; ctx.fillRect(-5 * u, 1 * u, 10 * u, 4 * u);
+  ctx.fillStyle = '#f2c14e'; ctx.fillRect(-4 * u, 2 * u, 8 * u, 2 * u);
   // Poignée
-  ctx.fillStyle = '#6a3a1e';
-  ctx.fillRect(-1.5, 5, 3, 5);
+  ctx.fillStyle = '#6a3a1e'; ctx.fillRect(-1.5 * u, 5 * u, 3 * u, 5 * u);
   ctx.restore();
 }
 
@@ -84,22 +77,14 @@ function drawPickaxe(ctx, s) {
   ctx.save();
   ctx.translate(c, c);
   ctx.rotate(-Math.PI / 4);
-  // Manche
-  ctx.fillStyle = '#000';
-  ctx.fillRect(-1.5, -2, 3, c);
-  ctx.fillStyle = '#c89a5e';
-  ctx.fillRect(-1, -1, 2, c - 2);
-  // Tête
-  ctx.fillStyle = '#000';
-  ctx.fillRect(-8, -c + 3, 16, 5);
-  ctx.fillStyle = '#a4a4ac';
-  ctx.fillRect(-7, -c + 4, 14, 3);
-  ctx.fillStyle = '#d8d8de';
-  ctx.fillRect(-6, -c + 4, 12, 1);
-  // Dents
-  ctx.fillStyle = '#888890';
-  ctx.fillRect(-7, -c + 7, 4, 3);
-  ctx.fillRect(3, -c + 7, 4, 3);
+  const u = s / 32;
+  ctx.fillStyle = '#000'; ctx.fillRect(-1.5 * u, -2 * u, 3 * u, c);
+  ctx.fillStyle = '#c89a5e'; ctx.fillRect(-1 * u, -1 * u, 2 * u, c - 2 * u);
+  ctx.fillStyle = '#000'; ctx.fillRect(-8 * u, -c + 3 * u, 16 * u, 5 * u);
+  ctx.fillStyle = '#a4a4ac'; ctx.fillRect(-7 * u, -c + 4 * u, 14 * u, 3 * u);
+  ctx.fillStyle = '#d8d8de'; ctx.fillRect(-6 * u, -c + 4 * u, 12 * u, 1 * u);
+  ctx.fillStyle = '#888890'; ctx.fillRect(-7 * u, -c + 7 * u, 4 * u, 3 * u);
+  ctx.fillRect(3 * u, -c + 7 * u, 4 * u, 3 * u);
   ctx.restore();
 }
 
@@ -107,40 +92,21 @@ function drawHand(ctx, s) {
   const c = s / 2;
   ctx.save();
   ctx.translate(c, c);
-  // Contour
+  const u = s / 32;
   ctx.fillStyle = '#000';
   ctx.beginPath();
-  ctx.moveTo(-3, -c + 4);
-  ctx.lineTo(-3, -2);
-  ctx.lineTo(-6, -2);
-  ctx.lineTo(-6, 4);
-  ctx.lineTo(-3, 4);
-  ctx.lineTo(-3, 2);
-  ctx.lineTo(3, 2);
-  ctx.lineTo(3, 4);
-  ctx.lineTo(6, 4);
-  ctx.lineTo(6, -2);
-  ctx.lineTo(3, -2);
-  ctx.lineTo(3, -c + 4);
-  ctx.closePath();
-  ctx.fill();
-  // Remplissage
+  ctx.moveTo(-3 * u, -c + 4 * u); ctx.lineTo(-3 * u, -2 * u); ctx.lineTo(-6 * u, -2 * u);
+  ctx.lineTo(-6 * u, 4 * u); ctx.lineTo(-3 * u, 4 * u); ctx.lineTo(-3 * u, 2 * u);
+  ctx.lineTo(3 * u, 2 * u); ctx.lineTo(3 * u, 4 * u); ctx.lineTo(6 * u, 4 * u);
+  ctx.lineTo(6 * u, -2 * u); ctx.lineTo(3 * u, -2 * u); ctx.lineTo(3 * u, -c + 4 * u);
+  ctx.closePath(); ctx.fill();
   ctx.fillStyle = '#f7d7b5';
   ctx.beginPath();
-  ctx.moveTo(-2, -c + 5);
-  ctx.lineTo(-2, -1);
-  ctx.lineTo(-5, -1);
-  ctx.lineTo(-5, 3);
-  ctx.lineTo(-2, 3);
-  ctx.lineTo(-2, 3);
-  ctx.lineTo(2, 3);
-  ctx.lineTo(2, 3);
-  ctx.lineTo(5, 3);
-  ctx.lineTo(5, -1);
-  ctx.lineTo(2, -1);
-  ctx.lineTo(2, -c + 5);
-  ctx.closePath();
-  ctx.fill();
+  ctx.moveTo(-2 * u, -c + 5 * u); ctx.lineTo(-2 * u, -1 * u); ctx.lineTo(-5 * u, -1 * u);
+  ctx.lineTo(-5 * u, 3 * u); ctx.lineTo(-2 * u, 3 * u); ctx.lineTo(2 * u, 3 * u);
+  ctx.lineTo(5 * u, 3 * u); ctx.lineTo(5 * u, -1 * u); ctx.lineTo(2 * u, -1 * u);
+  ctx.lineTo(2 * u, -c + 5 * u);
+  ctx.closePath(); ctx.fill();
   ctx.restore();
 }
 
@@ -156,75 +122,87 @@ const CURSOR_DRAWERS = {
 export class Settings {
   constructor() {
     const saved = loadSettings() || {};
-    this.sensitivity = saved.sensitivity ?? 100;
     this.cursorStyle = saved.cursorStyle ?? 'crosshair';
     this.cursorSize = saved.cursorSize ?? 24;
     this.zoom = saved.zoom ?? 2;
     this.vignette = saved.vignette ?? true;
     this.particles = saved.particles ?? true;
+    this.aimAssist = saved.aimAssist ?? true;
 
     this.cursorCanvas = document.getElementById('custom-cursor');
     this.cursorCtx = this.cursorCanvas?.getContext('2d');
     this.panel = document.getElementById('settings-panel');
     this.btn = document.getElementById('settings-btn');
 
+    // Appelé à chaque ouverture/fermeture (main.js s'en sert pour (dé)pauser).
+    this.onToggle = null;
+    this._rebind = null; // rebind en cours : { actionId, btn, cleanup }
+
+    this._renderCursorPreviews();
     this._renderCursor();
     this._bindUI();
+    this._buildKeybinds();
   }
 
   _save() {
     saveSettings({
-      sensitivity: this.sensitivity,
       cursorStyle: this.cursorStyle,
       cursorSize: this.cursorSize,
       zoom: this.zoom,
       vignette: this.vignette,
       particles: this.particles,
+      aimAssist: this.aimAssist,
     });
   }
 
+  // Dessine le curseur À LA TAILLE CHOISIE (avant, la taille fixe de 32px
+  // rendait le réglage « Taille du curseur » totalement inerte).
   _renderCursor() {
     const c = this.cursorCanvas;
     if (!c) return;
+    const size = Math.max(8, Math.min(64, this.cursorSize || 24));
+    c.width = size;
+    c.height = size;
     const ctx = this.cursorCtx;
-    ctx.clearRect(0, 0, CURSOR_SIZE, CURSOR_SIZE);
+    ctx.clearRect(0, 0, size, size);
     ctx.imageSmoothingEnabled = false;
     const drawer = CURSOR_DRAWERS[this.cursorStyle] || drawCrosshair;
-    drawer(ctx, CURSOR_SIZE);
-    // Appliquer comme curseur CSS via data URL
+    drawer(ctx, size);
     const url = c.toDataURL('image/png');
-    const hotspot = CURSOR_SIZE / 2;
+    const hotspot = Math.round(size / 2);
     document.body.style.cursor = `url(${url}) ${hotspot} ${hotspot}, crosshair`;
   }
 
+  // Remplace les symboles des boutons de style par un vrai aperçu du curseur.
+  _renderCursorPreviews() {
+    document.querySelectorAll('.cursor-style-btn').forEach((btn) => {
+      const style = btn.dataset.cursor;
+      const drawer = CURSOR_DRAWERS[style] || drawCrosshair;
+      const s = 28;
+      const cv = document.createElement('canvas');
+      cv.width = s; cv.height = s;
+      const cx = cv.getContext('2d');
+      cx.imageSmoothingEnabled = false;
+      drawer(cx, s);
+      btn.textContent = '';
+      const img = document.createElement('img');
+      img.src = cv.toDataURL('image/png');
+      img.className = 'cursor-preview-img';
+      img.alt = style;
+      btn.appendChild(img);
+    });
+  }
+
   _bindUI() {
-    // Fermer
     document.getElementById('settings-close')?.addEventListener('click', () => this.close());
     this.panel?.querySelector('.panel-backdrop')?.addEventListener('click', () => this.close());
 
-    // Sensibilité
-    const sensRange = document.getElementById('sensitivity-range');
-    const sensVal = document.getElementById('sensitivity-value');
-    if (sensRange) {
-      sensRange.value = this.sensitivity;
-      sensVal.textContent = `${this.sensitivity}%`;
-      sensRange.addEventListener('input', () => {
-        this.sensitivity = Number(sensRange.value);
-        sensVal.textContent = `${this.sensitivity}%`;
-        this._save();
-      });
-    }
-
-    // Style curseur
+    // Style du curseur
     const styleBtns = document.querySelectorAll('.cursor-style-btn');
-    styleBtns.forEach(btn => {
-      if (btn.dataset.cursor === this.cursorStyle) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
+    styleBtns.forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.cursor === this.cursorStyle);
       btn.addEventListener('click', () => {
-        styleBtns.forEach(b => b.classList.remove('active'));
+        styleBtns.forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         this.cursorStyle = btn.dataset.cursor;
         this._renderCursor();
@@ -232,7 +210,7 @@ export class Settings {
       });
     });
 
-    // Taille curseur
+    // Taille du curseur
     const sizeRange = document.getElementById('cursor-size-range');
     const sizeVal = document.getElementById('cursor-size-value');
     if (sizeRange) {
@@ -241,6 +219,7 @@ export class Settings {
       sizeRange.addEventListener('input', () => {
         this.cursorSize = Number(sizeRange.value);
         sizeVal.textContent = `${this.cursorSize}px`;
+        this._renderCursor();
         this._save();
       });
     }
@@ -261,6 +240,13 @@ export class Settings {
     // Toggles
     this._bindToggle('toggle-vignette', 'vignette');
     this._bindToggle('toggle-particles', 'particles');
+    this._bindToggle('toggle-aimassist', 'aimAssist');
+
+    // Bouton « Réinitialiser les touches »
+    document.getElementById('keybinds-reset')?.addEventListener('click', () => {
+      resetBindings();
+      this._buildKeybinds();
+    });
   }
 
   _bindToggle(btnId, key) {
@@ -276,14 +262,115 @@ export class Settings {
     });
   }
 
+  // ------------------------------------------------------------
+  //  Raccourcis personnalisables : construction de l'UI + rebind
+  // ------------------------------------------------------------
+  _buildKeybinds() {
+    const container = document.getElementById('keybinds');
+    if (!container) return;
+    container.innerHTML = '';
+    const groups = {};
+    for (const a of KEY_ACTIONS) (groups[a.group] ||= []).push(a);
+    for (const [groupName, actions] of Object.entries(groups)) {
+      const sec = document.createElement('div');
+      sec.className = 'keybind-group';
+      const title = document.createElement('div');
+      title.className = 'keybind-group-title';
+      title.textContent = groupName;
+      sec.appendChild(title);
+      for (const a of actions) {
+        const row = document.createElement('div');
+        row.className = 'keybind-row';
+        const label = document.createElement('span');
+        label.className = 'keybind-label';
+        label.textContent = a.label;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'keybind-key';
+        btn.dataset.action = a.id;
+        btn.textContent = formatTrigger(bindings[a.id]);
+        btn.addEventListener('click', () => this._startRebind(a.id, btn));
+        row.appendChild(label);
+        row.appendChild(btn);
+        sec.appendChild(row);
+      }
+      container.appendChild(sec);
+    }
+  }
+
+  _refreshKeybindBtn(actionId) {
+    const btn = this.panel.querySelector(`.keybind-key[data-action="${actionId}"]`);
+    if (btn && !btn.classList.contains('listening')) {
+      btn.textContent = formatTrigger(bindings[actionId]);
+    }
+  }
+
+  _startRebind(actionId, btn) {
+    this._cancelRebind();
+    this._rebind = { actionId, btn, cleanup: null };
+    btn.classList.add('listening');
+    btn.textContent = 'Appuyez…';
+
+    const onKey = (e) => {
+      if ((e.key || '').toLowerCase() === 'escape') { e.preventDefault(); this._cancelRebind(); return; }
+      const t = triggerFromKey(e);
+      if (!t) return; // modificateur seul : on attend une vraie touche
+      e.preventDefault(); e.stopPropagation();
+      this._assign(actionId, t);
+    };
+    const onMouse = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      this._assign(actionId, triggerFromMouse(e));
+    };
+    const onWheel = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      this._assign(actionId, triggerFromWheel(e));
+    };
+    // Phase de capture : on intercepte l'entrée AVANT le jeu (Input/main).
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('mousedown', onMouse, true);
+    window.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    this._rebind.cleanup = () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('mousedown', onMouse, true);
+      window.removeEventListener('wheel', onWheel, { capture: true, passive: false });
+    };
+  }
+
+  _cancelRebind() {
+    if (!this._rebind) return;
+    const { btn, actionId, cleanup } = this._rebind;
+    cleanup?.();
+    btn.classList.remove('listening');
+    btn.textContent = formatTrigger(bindings[actionId]);
+    this._rebind = null;
+  }
+
+  // Assigne un déclencheur à une action. En cas de conflit avec une autre
+  // action, on ÉCHANGE les déclencheurs (aucune action ne se retrouve sans
+  // touche) — comportement classique des jeux.
+  _assign(actionId, trigger) {
+    const old = bindings[actionId];
+    const other = actionUsingTrigger(trigger, actionId);
+    if (other) bindings[other] = old;
+    bindings[actionId] = trigger;
+    saveBindings();
+    this._cancelRebind();
+    this._refreshKeybindBtn(actionId);
+    if (other) this._refreshKeybindBtn(other);
+  }
+
   open() {
     if (!this.panel) return;
     this.panel.classList.remove('hidden');
+    this.onToggle?.();
   }
 
   close() {
     if (!this.panel) return;
+    this._cancelRebind();
     this.panel.classList.add('hidden');
+    this.onToggle?.();
   }
 
   toggle() {

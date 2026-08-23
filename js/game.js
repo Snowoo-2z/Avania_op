@@ -35,8 +35,6 @@ const DRAW_OBJECT = 0; // ressource statique (arbre, rocher, minerai)
 const DRAW_DROP = 1;   // objet lâché au sol
 const DRAW_MOB = 2;    // animal
 const DRAW_PLAYER = 3; // joueur
-// Touches 1..9 pré-générées : évite neuf conversions String par frame.
-const HOTBAR_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 // Vitesse du balancement de l'outil pendant le minage (rad/s) : un va-et-
 // vient complet ≈ 0,66 s, comme le geste de la main dans Minecraft.
 const SWING_SPEED = 9.5;
@@ -183,7 +181,7 @@ function isStoneLike(blockId) {
 }
 
 export class Game {
-  constructor(canvas, appearance) {
+  constructor(canvas, appearance, settings = null) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
     this.ctx.imageSmoothingEnabled = false;
@@ -191,11 +189,13 @@ export class Game {
     this.player = new Player(this.world.spawn.x, this.world.spawn.y, appearance);
     this.input = new Input();
     this.inventory = new Inventory();
+    this.settings = settings; // paramètres utilisateur (zoom, vignette, particules…)
 
     this.viewW = window.innerWidth;
     this.viewH = window.innerHeight;
     this.camera = new Camera(this.viewW, this.viewH, WORLD_W * TILE, WORLD_H * TILE);
     this.camera.snapTo(this.player.x, this.player.y);
+    if (settings && settings.zoom) this.camera.zoom = settings.zoom;
 
     this.player.dy = DRAW_PLAYER; // tag de rendu (tri sans allocation)
     this.otherPlayers = []; // futurs joueurs en ligne
@@ -246,6 +246,9 @@ export class Game {
     this.staticObjectsByChunk = new Map();
     this.waterTilesByChunk = new Map();
     this.rebuildStaticObjects();
+    // Pré-construit les chunks de sol de la zone de départ (vue + marge)
+    // AVANT la première frame : rien à rasteriser à la volée au démarrage.
+    this.prewarmFloorChunks(Infinity);
     this.drawables = [];
     this.nameTagCache = new Map();
     // Sprites pré-rendus : surbrillance de la cible et ombres ovales
@@ -366,6 +369,23 @@ export class Game {
     }
   }
 
+  // Particules activées ? (réglage utilisateur ; le mode performance réduit
+  // déjà leur nombre, on ne fait ici que respecter l'interrupteur.)
+  _particlesEnabled() {
+    return this.settings ? this.settings.particles !== false : true;
+  }
+
+  // Vignette activée ? (réglage utilisateur ; le mode performance la coupe.)
+  _vignetteOn() {
+    return this.settings ? this.settings.vignette !== false : true;
+  }
+
+  // Aim assist activé ? (réglage utilisateur : agrandit la zone de toucher
+  // des animaux pour qu'ils soient plus faciles à cibler au clic.)
+  _aimAssist() {
+    return this.settings ? this.settings.aimAssist !== false : true;
+  }
+
   resizeView() {
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -380,11 +400,18 @@ export class Game {
     this.actionCooldown = Math.max(0, this.actionCooldown - dt);
     // Les fours cuisent en continu, même panneau ouvert (la barre avance).
     this.updateFurnaces(dt);
-    if (this.paused) return;
+    if (this.paused) { this.input.endFrame(); return; }
+
+    // Le zoom est un réglage utilisateur (panneau Paramètres).
+    if (this.settings && this.settings.zoom) this.camera.zoom = this.settings.zoom;
 
     const dir = this.input.getDirection();
     this.player.update(dir, dt, this.world);
     this.camera.follow(this.player.x, this.player.y, dt);
+    // Pré-construit par petits lots les chunks qui vont entrer dans la vue :
+    // c'est le correctif des saccades au déplacement (plus de rasterisation
+    // synchrone de chunk dans la boucle de rendu).
+    this.prewarmFloorChunks(PERFORMANCE.CHUNK_PREWARM_BUDGET_MS);
     this.updateDroppedItems(dt);
     this.updateParticles(dt);
     this.updateHeldItem(dt);
@@ -394,6 +421,8 @@ export class Game {
     this.handleHotbarKeys();
     this.handleDropKey();
     this.handleClicks(dt);
+    // Jette les edges non consommés (clic sans holder, molette inutilisée…).
+    this.input.endFrame();
   }
 
   // ------------------------------------------------------------
@@ -428,11 +457,16 @@ export class Game {
   }
 
   // Trouve un mob sous le curseur (dans la portée d'interaction).
+  // L'aim assist agrandit le rayon de toucher : un clic « à côté » d'un
+  // mouton compte quand même, ce qui rend les animaux beaucoup plus faciles
+  // à toucher (réglable dans les paramètres).
   mobUnderCursor() {
     const m = this.input.mouse;
     const zoom = this.camera.zoom;
     const wx = this.camera.x + m.x / zoom;
     const wy = this.camera.y + m.y / zoom;
+    const hitR = this._aimAssist() ? 30 : 15;
+    const hitRSq = hitR * hitR;
     let best = null;
     let bestDist = Infinity;
     for (const mob of this.mobs) {
@@ -440,7 +474,7 @@ export class Game {
       const dx = mob.x - wx;
       const dy = mob.y - wy;
       const distSq = dx * dx + dy * dy;
-      if (distSq < 15 * 15 && distSq < bestDist) {
+      if (distSq < hitRSq && distSq < bestDist) {
         best = mob;
         bestDist = distSq;
       }
@@ -489,6 +523,7 @@ export class Game {
   }
 
   spawnHitParticles(x, y) {
+    if (!this._particlesEnabled()) return;
     if (this.particles.length > MAX_PARTICLES) return;
     const count = this.performanceMode ? 3 : 5;
     for (let i = 0; i < count; i++) {
@@ -512,8 +547,8 @@ export class Game {
   //  Q = un seul objet · Ctrl+Q = toute la pile sélectionnée
   // ------------------------------------------------------------
   handleDropKey() {
-    if (!this.input.isDown('q')) return;
-    this.input.keys.delete('q');
+    if (!this.input.pressed('drop')) return;
+    // Ctrl / Shift en complément = toute la pile (convention Minecraft).
     const wholeStack = this.input.isDown('control') || this.input.isDown('shift');
     this.dropSelected(wholeStack ? Infinity : 1);
   }
@@ -594,41 +629,27 @@ export class Game {
   handleHotbarKeys() {
     const n = this.inventory.hotbarSize;
     for (let i = 0; i < n; i++) {
-      const key = HOTBAR_KEYS[i]; // constantes partagées : pas d'allocation
-      if (this.input.isDown(key)) {
-        this.input.keys.delete(key);
-        this.inventory.select(i);
-      }
+      if (this.input.pressed('hotbar' + (i + 1))) this.inventory.select(i);
     }
-    if (this.input.mouse.wheel !== 0) {
-      this.inventory.cycle(this.input.mouse.wheel);
-      this.input.mouse.wheel = 0;
-    }
+    if (this.input.pressed('cycleForward')) this.inventory.cycle(1);
+    else if (this.input.pressed('cycleBackward')) this.inventory.cycle(-1);
   }
 
   // ------------------------------------------------------------
   //  Casser (maintenir clic gauche) / Poser (clic droit)
   // ------------------------------------------------------------
   handleClicks(dt) {
-    const clickedLeft = this.input.mouse.leftClicked;
-    const clickedRight = this.input.mouse.rightClicked;
-    const holdingLeft = this.input.mouse.leftDown;
-    const holdingRight = this.input.mouse.rightDown;
-
-    // Les clics ponctuels sont consommés ici. Pour miner, le joueur doit
-    // garder le bouton gauche enfoncé : le bloc se fissure progressivement.
-    this.input.mouse.leftClicked = false;
-    this.input.mouse.rightClicked = false;
-
-    if (holdingLeft) {
-      // Le clic gauche frappe d'abord les animaux sous le curseur
-      // (comme dans Minecraft), sinon il mine la tuile.
+    // Minage / attaque : on maintient l'action « miner » (clic gauche par
+    // défaut, mais rebindable). Frappe d'abord les animaux sous le curseur
+    // (comme dans Minecraft), sinon mine la tuile.
+    if (this.input.down('mine')) {
       if (!this.tryAttackMob(dt)) this.mineTarget(dt);
-    } else if (clickedLeft || this.mining.progress > 0) {
+    } else if (this.mining.progress > 0) {
       this.resetMining();
     }
 
-    if (clickedRight || holdingRight) this.interactTarget();
+    // Poser (clic droit par défaut) : un appui suffit, le maintien aussi.
+    if (this.input.pressed('place') || this.input.down('place')) this.interactTarget();
   }
 
   // Frappe un mob sous le curseur si possible. Retourne true si un mob
@@ -666,6 +687,7 @@ export class Game {
 
   // Petite bouffée de particules quand une porte s'ouvre / se ferme.
   spawnDoorPuff(tx, ty, open) {
+    if (!this._particlesEnabled()) return;
     if (this.particles.length > MAX_PARTICLES) return;
     const cx = tx * TILE + TILE / 2;
     const cy = ty * TILE + TILE / 2;
@@ -942,6 +964,7 @@ export class Game {
   //  quelques dizaines d'objets éphémères, un simple fillRect chacun.
   // ------------------------------------------------------------
   spawnBreakParticles(tx, ty, blockId) {
+    if (!this._particlesEnabled()) return;
     if (this.particles.length > MAX_PARTICLES) return;
     const colors = BREAK_PARTICLE_COLORS[blockId]
       || [BLOCK_DEFS[blockId]?.color || '#cfcfcf'];
@@ -1078,9 +1101,9 @@ export class Game {
 
     ctx.restore();
 
-    // 6) vignette d'ambiance. Elle est cachée en mode performance et
-    // pré-rendue sinon, pour éviter un radialGradient à chaque frame.
-    if (!this.performanceMode) {
+    // 6) vignette d'ambiance. Cachée en mode performance ou si le joueur
+    // l'a désactivée dans les paramètres. Pré-rendue sinon.
+    if (!this.performanceMode && this._vignetteOn()) {
       ctx.drawImage(this.getVignette(W, H), 0, 0, W, H);
     }
   }
@@ -1121,14 +1144,51 @@ export class Game {
   invalidateFloorChunk(tx, ty) {
     const cx = Math.floor(tx / this.chunkTiles);
     const cy = Math.floor(ty / this.chunkTiles);
+    // Reconstruit tout de suite le chunk modifié (creuser un sable/terre) :
+    // un seul chunk (~256 drawImage, négligeable) évite une micro-saccade
+    // sur la frame qui suit l'action.
     this.floorChunkCache.delete(this.floorChunkKey(cx, cy));
+    this.buildFloorChunk(cx, cy);
   }
 
-  getFloorChunk(cx, cy) {
-    const key = cy * 64 + cx;
-    const cached = this.floorChunkCache.get(key);
-    if (cached) return cached;
+  // Pré-construit (met en cache) les chunks de sol de la zone autour de la
+  // caméra qui ne le sont pas encore, en respectant un budget de temps par
+  // frame. C'est LA clé de la fluidité au déplacement : auparavant, chaque
+  // chunk était rasterisé à la volée dans drawFloorChunks (16×16 = 256
+  // drawImage d'un seul coup), et quand plusieurs chunks entraient ensemble
+  // dans la vue en marchant, la frame explosait → saccade.
+  //
+  // Ici on construit les chunks avec un anneau d'avance, étalé sur plusieurs
+  // frames : quand un chunk défile à l'écran, il est en cache depuis
+  // longtemps, le rendu ne fait plus qu'un drawImage très léger.
+  prewarmFloorChunks(maxMs) {
+    const ct = this.chunkTiles;
+    const cam = this.camera;
+    const zoom = cam.zoom;
+    const chunkPx = ct * TILE; // côté d'un chunk en pixels monde
+    const margin = 1; // un anneau de chunks construits en avance
+    const chunkL = Math.max(0, Math.floor(cam.x / chunkPx) - margin);
+    const chunkT = Math.max(0, Math.floor(cam.y / chunkPx) - margin);
+    const chunkR = Math.min(Math.ceil(WORLD_W / ct) - 1,
+      Math.floor((cam.x + this.viewW / zoom) / chunkPx) + margin);
+    const chunkB = Math.min(Math.ceil(WORLD_H / ct) - 1,
+      Math.floor((cam.y + this.viewH / zoom) / chunkPx) + margin);
 
+    const cache = this.floorChunkCache;
+    const deadline = performance.now() + maxMs; // Infinity au démarrage
+    for (let cy = chunkT; cy <= chunkB; cy++) {
+      const rowBase = cy * 64;
+      for (let cx = chunkL; cx <= chunkR; cx++) {
+        if (cache.has(rowBase + cx)) continue; // déjà en cache : gratuit
+        this.buildFloorChunk(cx, cy);
+        // Budget écoulé ? On remettra le reste à la frame suivante.
+        if (performance.now() >= deadline) return;
+      }
+    }
+  }
+
+  buildFloorChunk(cx, cy) {
+    const key = cy * 64 + cx;
     const ct = this.chunkTiles;
     const startTx = cx * ct;
     const startTy = cy * ct;
@@ -1138,18 +1198,26 @@ export class Game {
     const cctx = c.getContext('2d');
     cctx.imageSmoothingEnabled = false;
 
+    const floor = this.world.floor;
     for (let y = 0; y < tilesH; y++) {
+      const rowBase = (startTy + y) * WORLD_W + startTx;
       for (let x = 0; x < tilesW; x++) {
-        const tx = startTx + x;
-        const ty = startTy + y;
-        const floor = this.world.floor[this.world.idx(tx, ty)];
-        const img = floor === 'water' ? getWaterFrame(0) : getTileCanvas(floor);
+        const f = floor[rowBase + x];
+        const img = f === 'water' ? getWaterFrame(0) : getTileCanvas(f);
         cctx.drawImage(img, x * TILE, y * TILE);
       }
     }
 
     this.floorChunkCache.set(key, c);
     return c;
+  }
+
+  getFloorChunk(cx, cy) {
+    const key = cy * 64 + cx;
+    const cached = this.floorChunkCache.get(key);
+    // Les chunks sont normalement déjà en cache (pré-construits). Ce chemin
+    // paresseux ne sert quasiment plus que de filet de sécurité.
+    return cached || this.buildFloorChunk(cx, cy);
   }
 
   drawPlacedBlocks(ctx, minTx, minTy, maxTx, maxTy) {

@@ -75,8 +75,8 @@ export const BLOCK_DEFS = {
 // Les objets que le joueur peut posséder. maxStack reprend le principe
 // Minecraft : les matériaux s'empilent, un outil occupe sa propre case.
 export const ITEM_DEFS = {
-  wood:  { id: 'wood',  label: 'Bois brut', color: '#b07a3c', icon: '🪵', type: 'resource', maxStack: 64, place: 'wood' },
-  stone: { id: 'stone', label: 'Pierre',    color: '#9a9aa3', icon: '🪨', type: 'resource', maxStack: 64, place: 'stone' },
+  wood:  { id: 'wood',  label: 'Bois brut', color: '#b07a3c', icon: 'wood', type: 'resource', maxStack: 64, place: 'wood' },
+  stone: { id: 'stone', label: 'Pierre',    color: '#9a9aa3', icon: 'rock', type: 'resource', maxStack: 64, place: 'stone' },
   sand:  { id: 'sand',  label: 'Sable',     color: '#e2c88a', icon: '▪',  type: 'resource', maxStack: 64, place: 'sandBlock' },
   dirt:  { id: 'dirt',  label: 'Terre',     color: '#8a6a46', icon: '▪',  type: 'resource', maxStack: 64, place: 'dirtBlock' },
   rawIron: { id: 'rawIron', label: 'Fer brut', color: '#b0875f', type: 'resource', maxStack: 64 },
@@ -94,51 +94,51 @@ export const ITEM_DEFS = {
   stick: { id: 'stick', label: 'Bâtons',   color: '#c89a5e', icon: '╱',  type: 'material', maxStack: 64 },
 
   wooden_pickaxe: {
-    id: 'wooden_pickaxe', label: 'Pioche en bois', color: '#b07a3c', icon: '⛏', type: 'tool', maxStack: 1,
+    id: 'wooden_pickaxe', label: 'Pioche en bois', color: '#b07a3c', icon: 'pickaxe', type: 'tool', maxStack: 1,
     toolType: 'pickaxe', tier: 'wood', durability: 45, efficiency: 1.8,
   },
   stone_pickaxe: {
-    id: 'stone_pickaxe', label: 'Pioche en pierre', color: '#9a9aa3', icon: '⛏', type: 'tool', maxStack: 1,
+    id: 'stone_pickaxe', label: 'Pioche en pierre', color: '#9a9aa3', icon: 'pickaxe', type: 'tool', maxStack: 1,
     toolType: 'pickaxe', tier: 'stone', durability: 110, efficiency: 2.8,
   },
   iron_pickaxe: {
-    id: 'iron_pickaxe', label: 'Pioche en fer', color: '#d8dde2', icon: '⛏', type: 'tool', maxStack: 1,
+    id: 'iron_pickaxe', label: 'Pioche en fer', color: '#d8dde2', icon: 'pickaxe', type: 'tool', maxStack: 1,
     toolType: 'pickaxe', tier: 'iron', durability: 250, efficiency: 5,
   },
   wooden_axe: {
-    id: 'wooden_axe', label: 'Hache en bois', color: '#b07a3c', icon: '🪓', type: 'tool', maxStack: 1,
+    id: 'wooden_axe', label: 'Hache en bois', color: '#b07a3c', icon: 'axe', type: 'tool', maxStack: 1,
     toolType: 'axe', tier: 'wood', durability: 45, efficiency: 1.8,
   },
   stone_axe: {
-    id: 'stone_axe', label: 'Hache en pierre', color: '#9a9aa3', icon: '🪓', type: 'tool', maxStack: 1,
+    id: 'stone_axe', label: 'Hache en pierre', color: '#9a9aa3', icon: 'axe', type: 'tool', maxStack: 1,
     toolType: 'axe', tier: 'stone', durability: 110, efficiency: 2.8,
   },
   iron_axe: {
-    id: 'iron_axe', label: 'Hache en fer', color: '#d8dde2', icon: '🪓', type: 'tool', maxStack: 1,
+    id: 'iron_axe', label: 'Hache en fer', color: '#d8dde2', icon: 'axe', type: 'tool', maxStack: 1,
     toolType: 'axe', tier: 'iron', durability: 250, efficiency: 5,
   },
   wooden_shovel: {
-    id: 'wooden_shovel', label: 'Pelle en bois', color: '#b07a3c', icon: '⚒', type: 'tool', maxStack: 1,
+    id: 'wooden_shovel', label: 'Pelle en bois', color: '#b07a3c', icon: 'shovel', type: 'tool', maxStack: 1,
     toolType: 'shovel', tier: 'wood', durability: 45, efficiency: 2.2,
   },
   stone_shovel: {
-    id: 'stone_shovel', label: 'Pelle en pierre', color: '#9a9aa3', icon: '⚒', type: 'tool', maxStack: 1,
+    id: 'stone_shovel', label: 'Pelle en pierre', color: '#9a9aa3', icon: 'shovel', type: 'tool', maxStack: 1,
     toolType: 'shovel', tier: 'stone', durability: 110, efficiency: 3.2,
   },
   iron_shovel: {
-    id: 'iron_shovel', label: 'Pelle en fer', color: '#d8dde2', icon: '⚒', type: 'tool', maxStack: 1,
+    id: 'iron_shovel', label: 'Pelle en fer', color: '#d8dde2', icon: 'shovel', type: 'tool', maxStack: 1,
     toolType: 'shovel', tier: 'iron', durability: 250, efficiency: 5,
   },
   wooden_sword: {
-    id: 'wooden_sword', label: 'Épée en bois', color: '#b07a3c', icon: '⚔', type: 'tool', maxStack: 1,
+    id: 'wooden_sword', label: 'Épée en bois', color: '#b07a3c', icon: 'sword', type: 'tool', maxStack: 1,
     toolType: 'sword', tier: 'wood', durability: 55, efficiency: 1,
   },
   stone_sword: {
-    id: 'stone_sword', label: 'Épée en pierre', color: '#9a9aa3', icon: '⚔', type: 'tool', maxStack: 1,
+    id: 'stone_sword', label: 'Épée en pierre', color: '#9a9aa3', icon: 'sword', type: 'tool', maxStack: 1,
     toolType: 'sword', tier: 'stone', durability: 130, efficiency: 1,
   },
   iron_sword: {
-    id: 'iron_sword', label: 'Épée en fer', color: '#d8dde2', icon: '⚔', type: 'tool', maxStack: 1,
+    id: 'iron_sword', label: 'Épée en fer', color: '#d8dde2', icon: 'sword', type: 'tool', maxStack: 1,
     toolType: 'sword', tier: 'iron', durability: 250, efficiency: 1,
   },
 };

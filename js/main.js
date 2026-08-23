@@ -14,6 +14,11 @@ import { SlotManager } from './slots.js';
 import { initIcons } from './icons.js';
 import { isLowPowerDevice } from './utils.js';
 import { Settings } from './settings.js';
+import { mountIcons } from './svgicons.js';
+import { bindings, triggerFromKey, triggerFromMouse } from './keys.js';
+
+// Remplace tous les emojis de l'interface par de vraies icônes SVG.
+try { mountIcons(); } catch (err) { console.error('AVANIA: icônes SVG', err); }
 
 function showBootError(err) {
   const el = document.getElementById('boot-error');
@@ -69,15 +74,21 @@ async function boot() {
     import('./tutorial.js'),
   ]);
 
-  const game = new Game(canvas, appearance);
+  // Les paramètres sont créés AVANT le Game : le jeu les lit chaque frame
+  // (zoom, vignette, particules) et applique aussitôt les changements.
+  const settings = new Settings();
+
+  const game = new Game(canvas, appearance, settings);
   game.start();
   hud.show();
   document.getElementById('controls-hint').classList.remove('hidden');
   document.getElementById('craft-btn').classList.remove('hidden');
 
-  const settings = new Settings();
   document.getElementById('settings-btn').classList.remove('hidden');
-  document.getElementById('settings-btn').onclick = () => settings.toggle();
+  document.getElementById('settings-btn').onclick = () => {
+    settings.toggle();
+    syncPause();
+  };
 
   const tutorial = new Tutorial(appearance);
   const closeTutorial = () => {
@@ -114,6 +125,8 @@ async function boot() {
   const syncPause = () => game.setPaused(Boolean(
     inventoryPanel?.isOpen || crafting?.isOpen || furnacePanel?.isOpen || settings?.isOpen,
   ));
+  // Fermer les paramètres (croix, fond, Échap) doit aussi dé-pauser le jeu.
+  settings.onToggle = syncPause;
 
   inventoryPanel = new InventoryPanel(
     document.getElementById('inventory-panel'),
@@ -154,30 +167,36 @@ async function boot() {
   document.getElementById('craft-btn').onclick = () => crafting.toggle();
   document.getElementById('craft-close').onclick = () => crafting.close();
   document.getElementById('furnace-close').onclick = () => furnacePanel.close();
-  window.addEventListener('keydown', (e) => {
-    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-    const key = e.key.toLowerCase();
-    if (key === 'e') {
+  // Dispatch des actions d'interface (rebindables) : clavier ET souris.
+  const handlePanelTrigger = (e, t) => {
+    let acted = false;
+    if (bindings.inventory === t) {
       e.preventDefault();
       if (furnacePanel.isOpen) furnacePanel.close();
       else inventoryPanel.toggle();
-    } else if (key === 'c') {
+      acted = true;
+    } else if (bindings.craft === t) {
       e.preventDefault();
       if (furnacePanel.isOpen) furnacePanel.close();
       else crafting.toggle();
-    } else if (key === 'r' && inventoryPanel.isOpen) {
-      // Touche R pour trier l'inventaire quand le panneau est ouvert
+      acted = true;
+    } else if (bindings.sort === t && inventoryPanel.isOpen) {
       e.preventDefault();
       game.inventory.sortInventory();
       inventoryPanel.toast('Inventaire trié !');
-    } else if (key === 'o') {
+    } else if (bindings.settings === t) {
       e.preventDefault();
       if (inventoryPanel.isOpen) inventoryPanel.close();
       if (crafting.isOpen) crafting.close();
       if (furnacePanel.isOpen) furnacePanel.close();
       settings.toggle();
-      syncPause();
-    } else if (key === 'escape') {
+      acted = true;
+    }
+    if (acted) syncPause();
+  };
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if ((e.key || '').toLowerCase() === 'escape') {
       if (settings.isOpen) { settings.close(); syncPause(); }
       else {
         inventoryPanel.close();
@@ -185,7 +204,16 @@ async function boot() {
         furnacePanel.close();
         if (tutorial.isOpen) closeTutorial();
       }
+      return;
     }
+    const t = triggerFromKey(e);
+    if (t) handlePanelTrigger(e, t);
+  });
+  // Actions d'interface bindées à la souris (ex. Inventaire sur un clic).
+  window.addEventListener('mousedown', (e) => {
+    if (e.target && e.target.tagName === 'CANVAS') return; // clic de jeu
+    const t = triggerFromMouse(e);
+    handlePanelTrigger(e, t);
   });
 
   function refreshHUD() {
