@@ -103,7 +103,8 @@ assert(w3.floor[w3.idx(sandTx, sandTy)] === 'grass', 'la terre creusée devient 
 // poser les nouveaux blocs
 assert(w3.placeBlock(sandTx, sandTy, 'plank') === true, 'poser des planches réussit');
 assert(w3.blocks[w3.idx(sandTx, sandTy)] === 'plank', 'les planches sont posées');
-assert(w3.placeBlock(sandTx, sandTy, 'brick') === false, 'on ne pose pas sur un bloc occupé');
+assert(w3.placeBlock(sandTx, sandTy, 'brick') === true, 'poser des briques sur les planches (empilement) réussit');
+assert(w3.placeBlock(sandTx, sandTy, 'stone') === false, 'impossible d\'empiler plus de 2 blocs');
 
 console.log('▶ Arbres de tailles variées');
 assert(TREE_VARIANTS.join(',') === 'small,medium,large', '3 tailles d\'arbres');
@@ -203,10 +204,10 @@ dist.add('wood', 64);
 const d1 = dist.slots.findIndex((s) => s && s.id === 'wood');
 dist.clickInventorySlot(d1, 'left');
 assert(dist.cursor?.count === 64, '64 bois dans le curseur');
-dist.beginDragDistribute('left');
+dist.beginDragDistribute('left', true);
 for (let i = 0; i < 3; i++) dist.dragDistributeEnter(dist.slots, i);
 assert(dist.endDragDistribute() === true, 'répartition au relâchement');
-const shares = dist.slots.slice(0, 3).map((s) => s.count);
+const shares = dist.slots.slice(0, 3).map((s) => s ? s.count : 0);
 assert(shares.join(',') === '22,21,21', `répartition ceil : 22,21,21 (reçu ${shares.join(',')})`);
 assert(dist.cursor === null, 'curseur vidé');
 
@@ -214,7 +215,7 @@ const distR = new Inventory();
 distR.add('wood', 10);
 const dr1 = distR.slots.findIndex((s) => s && s.id === 'wood');
 distR.clickInventorySlot(dr1, 'left');
-distR.beginDragDistribute('right');
+distR.beginDragDistribute('right', true);
 for (let i = 0; i < 3; i++) distR.dragDistributeEnter(distR.slots, i);
 distR.endDragDistribute();
 assert(distR.slots[0].count === 1 && distR.slots[1].count === 1 && distR.slots[2].count === 1, 'clic droit glissé = 1 par case');

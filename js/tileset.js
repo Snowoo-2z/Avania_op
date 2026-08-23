@@ -4,7 +4,7 @@
 //  L'eau possède plusieurs frames pour une animation douce.
 // ============================================================
 
-import { TILE } from './config.js';
+import { TILE, BLOCK_EXTRUDE, BLOCK_SIDE } from './config.js';
 import { BLOCK_DEFS } from './blocks.js';
 import { makeCanvas, mulberry32 } from './utils.js';
 
@@ -130,41 +130,39 @@ function drawWater(ctx, rng, phase) {
   }
 }
 
-// --- Bloc posé : cube vu du dessus, STRICTEMENT dans la tuile 32×32.
-// Un bois posé doit rester plus petit qu'un arbre : on n'extrude plus
-// hors de la case, on suggère juste le volume par le biseau.
+// --- Bloc posé : cube vu du dessus, avec extrusion 3D pour la profondeur.
+// Un bois posé doit avoir du volume et de la hauteur pour former de beaux
+// murs de maison 3D qui s'empilent bien.
 function drawBlockTile(ctx, color, texture, opts = {}) {
   const top = shade(color, 1.14);
   const side = shade(color, 0.84);
   const sideDark = shade(color, 0.68);
   const alpha = opts.alpha;
+  const H = S + BLOCK_EXTRUDE; // 40 px de haut
   if (alpha != null) {
-    ctx.clearRect(0, 0, S, S);
+    ctx.clearRect(0, 0, S, H);
     ctx.globalAlpha = alpha;
   }
 
   // Fond / côtés (toute la tuile, pour que les constructions se joignent)
   ctx.fillStyle = side;
-  ctx.fillRect(0, 0, S, S);
+  ctx.fillRect(0, 0, S, H);
 
-  // Face supérieure (légèrement inset) = le dessus du cube
+  // Face supérieure (le dessus du cube)
   ctx.fillStyle = top;
   ctx.fillRect(2, 2, S - 7, S - 7);
 
-  // Face avant (bande basse, dans la tuile)
+  // Face avant (bande basse)
   ctx.fillStyle = sideDark;
-  ctx.fillRect(2, S - 6, S - 4, 6);
-  // Face droite (bande, dans la tuile)
-  ctx.fillRect(S - 6, 2, 6, S - 2);
+  ctx.fillRect(2, S - 6, S - 4, 6 + BLOCK_EXTRUDE);
+  // Face droite (bande latérale)
+  ctx.fillRect(S - 6, 2, 6, S - 2 + BLOCK_EXTRUDE);
 
   // Reflet haut-gauche
   ctx.fillStyle = withAlpha('#ffffff', opts.shine ?? 0.26);
   ctx.fillRect(2, 2, S - 8, 2);
   ctx.fillRect(2, 2, 2, S - 8);
 
-  // La matière continue sur les trois faces. Auparavant, les côtés étaient
-  // de simples aplats : à l'écran le bois et la pierre ressemblaient donc à
-  // des carrés colorés. Chaque peintre reçoit maintenant la face courante.
   const paintFace = (face, x, y, w, h) => {
     ctx.save();
     ctx.beginPath();
@@ -174,13 +172,13 @@ function drawBlockTile(ctx, color, texture, opts = {}) {
     ctx.restore();
   };
   paintFace('top', 2, 2, S - 8, S - 8);
-  paintFace('front', 2, S - 6, S - 4, 6);
-  paintFace('right', S - 6, 2, 6, S - 2);
+  paintFace('front', 2, S - 6, S - 4, 6 + BLOCK_EXTRUDE);
+  paintFace('right', S - 6, 2, 6, S - 2 + BLOCK_EXTRUDE);
 
-  // Contour net pour que les murs restent lisibles
+  // Contour net de silhouette 3D pour que les murs restent très lisibles
   ctx.strokeStyle = shade(color, 0.48);
   ctx.lineWidth = 1;
-  ctx.strokeRect(0.5, 0.5, S - 1, S - 1);
+  ctx.strokeRect(0.5, 0.5, S - 1, H - 1);
 
   ctx.globalAlpha = 1;
 }
@@ -230,19 +228,31 @@ function woodGrain(ctx, face) {
   }
 
   // Écorce en plaques verticales irrégulières sur les chants du bloc.
+  // On répète le motif avec des offsets verticaux (0, 16, 32) pour couvrir
+  // tout l'espace d'un mur en hauteur sans laisser de vide plat.
   ctx.fillStyle = withAlpha(barkDark, 0.7);
-  for (const [x, y, w, h] of [
+  const plaques = [
     [3, 3, 3, 9], [3, 15, 3, 12], [9, 7, 3, 14], [15, 2, 3, 11],
     [15, 16, 3, 13], [21, 6, 3, 18], [27, 3, 3, 8], [27, 14, 3, 14],
-  ]) ctx.fillRect(x, y, w, h);
+  ];
+  for (const [x, y, w, h] of plaques) {
+    for (let offset of [0, 16, 32]) {
+      ctx.fillRect(x, y + offset, w, h);
+    }
+  }
   ctx.fillStyle = withAlpha(barkLight, 0.46);
-  for (const [x, y, h] of [[6, 5, 7], [12, 15, 8], [19, 4, 10], [25, 17, 8], [30, 7, 6]]) {
-    ctx.fillRect(x, y, 1, h);
+  const lines = [[6, 5, 7], [12, 15, 8], [19, 4, 10], [25, 17, 8], [30, 7, 6]];
+  for (const [x, y, h] of lines) {
+    for (let offset of [0, 16, 32]) {
+      ctx.fillRect(x, y + offset, 1, h);
+    }
   }
   ctx.fillStyle = withAlpha('#321b0f', 0.48);
-  ctx.fillRect(27, 11, 4, 2);
-  ctx.fillRect(7, 27, 5, 2);
-  ctx.fillRect(18, 28, 4, 1);
+  for (let offset of [0, 16, 32]) {
+    ctx.fillRect(27, 11 + offset, 4, 2);
+    ctx.fillRect(7, 27 + offset, 5, 2);
+    ctx.fillRect(18, 28 + offset, 4, 1);
+  }
 }
 
 function stoneTexture(ctx, face) {
@@ -356,23 +366,28 @@ function plankTexture(ctx, face) {
     ctx.fillStyle = withAlpha('#4e2c17', 0.13);
     ctx.fillRect(2, 10, 30, 7);
     ctx.fillRect(2, 25, 30, 7);
+    ctx.fillRect(2, 40, 30, 7);
   }
 
   ctx.strokeStyle = seam;
   ctx.lineWidth = 1;
-  for (const y of [9, 17, 25]) {
+  for (const y of [9, 17, 25, 33, 41]) {
     ctx.beginPath(); ctx.moveTo(2, y + 0.5); ctx.lineTo(32, y + 0.5); ctx.stroke();
   }
 
-  // Assemblage en quinconce, limité à un joint par lame.
-  for (const [x, y0, y1] of [[16, 2, 9], [9, 10, 17], [20, 18, 25], [13, 26, 32]]) {
+  // Assemblage en quinconce, répété verticalement pour un tiling continu
+  const joints = [
+    [16, 2, 9], [9, 10, 17], [20, 18, 25], [13, 26, 32],
+    [16, 34, 41], [9, 42, 49], [20, 50, 57]
+  ];
+  for (const [x, y0, y1] of joints) {
     ctx.beginPath(); ctx.moveTo(x + 0.5, y0); ctx.lineTo(x + 0.5, y1); ctx.stroke();
   }
 
-  // Veines en petits chemins pixelisés plutôt qu'en simples tirets.
+  // Veines en petits chemins pixelisés répétés avec des offsets verticaux
   ctx.strokeStyle = grain;
   ctx.lineWidth = 1;
-  for (const points of [
+  const veinPaths = [
     [[5, 6], [9, 5], [13, 6]],
     [[18, 7], [21, 6], [25, 6]],
     [[3, 13], [6, 12], [10, 13], [14, 12]],
@@ -380,25 +395,31 @@ function plankTexture(ctx, face) {
     [[4, 21], [8, 20], [12, 21]],
     [[15, 23], [19, 22], [24, 23]],
     [[3, 29], [7, 28], [11, 29]],
-  ]) {
-    ctx.beginPath();
-    ctx.moveTo(points[0][0], points[0][1]);
-    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
-    ctx.stroke();
+  ];
+  for (const points of veinPaths) {
+    for (let offset of [0, 24]) {
+      ctx.beginPath();
+      ctx.moveTo(points[0][0], points[0][1] + offset);
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1] + offset);
+      ctx.stroke();
+    }
   }
 
   ctx.fillStyle = highlight;
   ctx.fillRect(4, 3, 9, 1);
   ctx.fillRect(11, 11, 7, 1);
   ctx.fillRect(3, 19, 6, 1);
+  ctx.fillRect(11, 35, 7, 1);
 
   // Nœuds ovales et discrets, intégrés au veinage.
   ctx.fillStyle = '#70401d';
   ctx.fillRect(6, 14, 3, 2);
   ctx.fillRect(21, 20, 3, 2);
+  ctx.fillRect(6, 38, 3, 2);
   ctx.fillStyle = '#c48643';
   ctx.fillRect(7, 14, 1, 1);
   ctx.fillRect(22, 20, 1, 1);
+  ctx.fillRect(7, 38, 1, 1);
 }
 
 function brickTexture(ctx, face) {
@@ -406,21 +427,36 @@ function brickTexture(ctx, face) {
   const shadow = withAlpha('#64281f', 0.62);
   ctx.lineWidth = 1;
   ctx.strokeStyle = shadow;
-  for (const y of [9, 16, 23, 28]) {
+  
+  // Joints horizontaux répétés
+  for (const y of [9, 16, 23, 28, 35, 42, 49]) {
     ctx.beginPath(); ctx.moveTo(2, y); ctx.lineTo(32, y); ctx.stroke();
   }
   ctx.strokeStyle = mortar;
-  for (const y of [8, 15, 22]) {
+  for (const y of [8, 15, 22, 29, 36, 43, 50]) {
     ctx.beginPath(); ctx.moveTo(2, y); ctx.lineTo(32, y); ctx.stroke();
   }
+
+  // Joints verticaux en quinconce répétés
   ctx.strokeStyle = shadow;
-  for (const [x, y0, y1] of [[10, 2, 9], [23, 2, 9], [6, 9, 16], [18, 9, 16], [12, 16, 23], [25, 16, 23]]) {
+  const verticalJoints = [
+    [10, 2, 9], [23, 2, 9],
+    [6, 9, 16], [18, 9, 16],
+    [12, 16, 23], [25, 16, 23],
+    [6, 23, 30], [18, 23, 30],
+    [12, 30, 37], [25, 30, 37],
+    [6, 37, 44], [18, 37, 44]
+  ];
+  for (const [x, y0, y1] of verticalJoints) {
     ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke();
   }
+
   ctx.fillStyle = withAlpha('#e58a70', 0.42);
   ctx.fillRect(4, 4, 5, 2);
   ctx.fillRect(13, 11, 4, 2);
   ctx.fillRect(19, 18, 5, 2);
+  ctx.fillRect(13, 25, 4, 2);
+  ctx.fillRect(19, 32, 5, 2);
 }
 
 function glassTexture(ctx, top, dark) {
@@ -788,7 +824,8 @@ let built = false;
 export function buildTileset() {
   if (built) return cache;
   for (const key of Object.keys(DRAWERS)) {
-    const c = makeCanvas(S, S);
+    const h = isExtrudedBlock(key) ? S + BLOCK_EXTRUDE : S;
+    const c = makeCanvas(S, h);
     const ctx = c.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     DRAWERS[key](ctx, mulberry32(hashStr(key)));
@@ -805,7 +842,8 @@ export function buildTileset() {
   buildObjectSprites();
   // Variante « four allumé » : lueur vive dans la bouche avec dégradé
   // de flamme (rouge → orange → jaune), barres de grille rougeoyantes.
-  const lit = makeCanvas(S, S);
+  const H = S + BLOCK_EXTRUDE;
+  const lit = makeCanvas(S, H);
   const lctx = lit.getContext('2d');
   lctx.imageSmoothingEnabled = false;
   lctx.drawImage(cache.furnace, 0, 0);
@@ -891,43 +929,45 @@ function voxel(ctx, x, y, w, h, color) {
 }
 
 function drawTreeSmallRaw(ctx, x, y, shadow = true) {
-  // Ancienne taille « standard » : un vrai petit arbre, pas une pousse.
-  if (shadow) softShadow(ctx, x, y + 1, 15, 6);
-  voxel(ctx, x - 4, y - 14, 8, 16, '#6e4426');
+  // Petit arbre majestueux, nettement plus grand qu'un simple cube de 40px de haut.
+  if (shadow) softShadow(ctx, x, y + 1, 20, 8);
+  voxel(ctx, x - 5, y - 22, 10, 24, '#6e4426');
   ctx.fillStyle = '#8a5a34';
-  ctx.fillRect(x - 4, y - 14, 3, 16);
-  voxel(ctx, x - 15, y - 31, 30, 21, '#3f7d2c');
-  voxel(ctx, x - 11, y - 35, 22, 22, '#4f9337');
-  voxel(ctx, x - 6, y - 39, 12, 6, '#63a845');
+  ctx.fillRect(x - 5, y - 22, 3, 24);
+  voxel(ctx, x - 22, y - 48, 44, 32, '#3f7d2c');
+  voxel(ctx, x - 16, y - 56, 32, 32, '#4f9337');
+  voxel(ctx, x - 9, y - 62, 18, 10, '#63a845');
   ctx.fillStyle = 'rgba(255,255,255,0.18)';
-  ctx.fillRect(x - 6, y - 39, 12, 3);
+  ctx.fillRect(x - 9, y - 62, 18, 4);
 }
 
 function drawTreeMediumRaw(ctx, x, y, shadow = true) {
-  if (shadow) softShadow(ctx, x, y + 1, 16, 6);
-  voxel(ctx, x - 4, y - 16, 8, 18, '#6e4426');
+  // Arbre moyen, de belle taille et robuste.
+  if (shadow) softShadow(ctx, x, y + 1, 28, 10);
+  voxel(ctx, x - 7, y - 30, 14, 32, '#6e4426');
   ctx.fillStyle = '#8a5a34';
-  ctx.fillRect(x - 4, y - 16, 3, 18);
-  voxel(ctx, x - 16, y - 36, 32, 22, '#3f7d2c');
-  voxel(ctx, x - 12, y - 41, 24, 24, '#4f9337');
-  voxel(ctx, x - 7, y - 46, 14, 8, '#63a845');
+  ctx.fillRect(x - 7, y - 30, 4, 32);
+  voxel(ctx, x - 30, y - 66, 60, 44, '#3f7d2c');
+  voxel(ctx, x - 22, y - 78, 44, 44, '#4f9337');
+  voxel(ctx, x - 12, y - 86, 24, 14, '#63a845');
   ctx.fillStyle = 'rgba(255,255,255,0.18)';
-  ctx.fillRect(x - 7, y - 46, 14, 3);
+  ctx.fillRect(x - 12, y - 86, 24, 4);
 }
 
 function drawTreeLargeRaw(ctx, x, y, shadow = true) {
-  if (shadow) softShadow(ctx, x, y + 2, 22, 8);
-  voxel(ctx, x - 6, y - 26, 12, 28, '#5a361c');
+  // Arbre géant très majestueux.
+  if (shadow) softShadow(ctx, x, y + 2, 40, 14);
+  voxel(ctx, x - 10, y - 44, 20, 48, '#5a361c');
   ctx.fillStyle = '#7a4a28';
-  ctx.fillRect(x - 6, y - 26, 4, 28);
+  ctx.fillRect(x - 10, y - 44, 6, 48);
   ctx.fillStyle = withAlpha('#000000', 0.18);
-  ctx.fillRect(x + 3, y - 22, 2, 10);
-  voxel(ctx, x - 24, y - 52, 48, 30, '#2f6a24');
-  voxel(ctx, x - 19, y - 60, 38, 32, '#3f7d2c');
-  voxel(ctx, x - 13, y - 68, 26, 22, '#4f9337');
-  voxel(ctx, x - 7, y - 74, 14, 10, '#63a845');
+  ctx.fillRect(x + 4, y - 38, 4, 18);
+  voxel(ctx, x - 45, y - 96, 90, 60, '#2f6a24');
+  voxel(ctx, x - 36, y - 112, 72, 62, '#3f7d2c');
+  voxel(ctx, x - 24, y - 126, 48, 42, '#4f9337');
+  voxel(ctx, x - 12, y - 136, 24, 18, '#63a845');
   ctx.fillStyle = 'rgba(255,255,255,0.2)';
-  ctx.fillRect(x - 7, y - 74, 14, 3);
+  ctx.fillRect(x - 12, y - 136, 24, 5);
 }
 
 function drawRockObjectRaw(ctx, x, y, shadow = true) {
@@ -1024,9 +1064,9 @@ function treeCacheKey(variant) {
 }
 
 function buildObjectSprites() {
-  objectCache['tree:small'] = makeObjectSprite(44, 52, 22, 42, drawTreeSmallRaw);
-  objectCache['tree:medium'] = makeObjectSprite(48, 58, 24, 48, drawTreeMediumRaw);
-  objectCache['tree:large'] = makeObjectSprite(72, 88, 36, 76, drawTreeLargeRaw);
+  objectCache['tree:small'] = makeObjectSprite(52, 72, 26, 64, drawTreeSmallRaw);
+  objectCache['tree:medium'] = makeObjectSprite(68, 98, 34, 88, drawTreeMediumRaw);
+  objectCache['tree:large'] = makeObjectSprite(100, 148, 50, 138, drawTreeLargeRaw);
   objectCache.tree = objectCache['tree:small'];
   objectCache.rock = makeObjectSprite(40, 40, 20, 32, drawRockObjectRaw);
   objectCache.ironOre = makeObjectSprite(40, 40, 20, 32, drawIronOreObjectRaw);
@@ -1079,4 +1119,141 @@ export function drawExtrudedBlock(ctx, id, x, y) {
   const tile = cache[id];
   if (!tile) return;
   ctx.drawImage(tile, x, y);
+}
+
+// ------------------------------------------------------------
+//  Connexion intelligente des blocs (Auto-tiling 3D dynamique)
+// ------------------------------------------------------------
+
+const BLOCK_TEXTURES = {
+  wood:      { texture: woodGrain, opts: {} },
+  stone:     { texture: stoneTexture, opts: {} },
+  plank:     { texture: plankTexture, opts: {} },
+  brick:     { texture: brickTexture, opts: {} },
+  glass:     { texture: glassTexture, opts: { alpha: 0.78, shine: 0.45 } },
+  sandBlock: { texture: sandBlockTexture, opts: {} },
+  dirtBlock: { texture: dirtBlockTexture, opts: {} },
+  ironBlock: { texture: ironBlockTexture, opts: {} },
+  furnace:   { texture: furnaceTexture, opts: {} },
+  woolBlock: { texture: woolBlockTexture, opts: {} },
+};
+
+function drawBlockTileConnected(ctx, x, y, color, texture, leftSame, rightSame, upSame, downSame, opts = {}) {
+  const top = shade(color, 1.14);
+  const side = shade(color, 0.84);
+  const sideDark = shade(color, 0.68);
+  const H = S + BLOCK_EXTRUDE; // 40
+
+  ctx.save();
+  ctx.translate(x, y);
+
+  // 1. Fond / Côtés (remplit tout l'espace 3D pour éviter tout trou ou vide visuel)
+  ctx.fillStyle = side;
+  ctx.fillRect(0, 0, S, H);
+
+  // 2. Face supérieure (dessus du bloc)
+  // Dessinée uniquement s'il n'y a pas de bloc au-dessus (sinon elle est masquée/interne)
+  const tx0 = leftSame ? 0 : 2;
+  const tx1 = rightSame ? S : S - 6;
+  const tw = tx1 - tx0;
+
+  if (!upSame) {
+    const ty0 = 2;
+    const ty1 = S - 6; // 26
+    const th = ty1 - ty0;
+
+    ctx.fillStyle = top;
+    ctx.fillRect(tx0, ty0, tw, th);
+  }
+
+  // 3. Face avant (front face)
+  // Si connecté vers le haut (upSame), la face avant monte tout en haut (y = 0)
+  const fx0 = tx0;
+  const fw = tw;
+  const fy0 = upSame ? 0 : S - 6; // 0 si connecté en haut, sinon 26
+  const fy1 = H; // Descend toujours tout en bas (40) pour un alignement horizontal parfait
+  const fh = fy1 - fy0;
+
+  ctx.fillStyle = sideDark;
+  ctx.fillRect(fx0, fy0, fw, fh);
+
+  // Reflet haut-gauche (uniquement à l'angle extérieur absolu pour éviter les bandes blanches/banderolles)
+  if (!upSame && !leftSame) {
+    ctx.fillStyle = withAlpha('#ffffff', opts.shine ?? 0.26);
+    ctx.fillRect(2, 2, tw - 2, 2);
+    ctx.fillRect(2, 2, 2, S - 8);
+  }
+
+  // Peindre la texture
+  const paintFace = (face, fx, fy, fw, fh) => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(fx, fy, fw, fh);
+    ctx.clip();
+    texture(ctx, face, { x: fx, y: fy, w: fw, h: fh, top, side, dark: sideDark });
+    ctx.restore();
+  };
+  if (!upSame) {
+    paintFace('top', tx0, 2, tw, S - 8);
+  }
+  paintFace('front', fx0, fy0, fw, fh);
+  if (!rightSame) {
+    paintFace('right', S - 6, 2, 6, S - 2 + BLOCK_EXTRUDE);
+  }
+
+  // 4. Silhouettes de contour extérieur (seulement sur les côtés libres)
+  ctx.strokeStyle = shade(color, 0.48);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  
+  if (!upSame) {
+    ctx.moveTo(leftSame ? 0 : 0.5, 0.5);
+    ctx.lineTo(rightSame ? S : S - 0.5, 0.5);
+  }
+  if (!downSame) {
+    ctx.moveTo(leftSame ? 0 : 0.5, H - 0.5);
+    ctx.lineTo(rightSame ? S : S - 0.5, H - 0.5);
+  }
+  if (!leftSame) {
+    ctx.moveTo(0.5, upSame ? 0 : 0.5);
+    ctx.lineTo(0.5, downSame ? H : H - 0.5);
+  }
+  if (!rightSame) {
+    ctx.moveTo(S - 0.5, upSame ? 0 : 0.5);
+    ctx.lineTo(S - 0.5, downSame ? H : H - 0.5);
+  }
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+export function drawBlockConnected(ctx, id, tx, ty, world, layer = 1) {
+  const cfg = BLOCK_TEXTURES[id];
+  const offset = (layer === 2) ? 32 : 0;
+  if (!cfg) {
+    ctx.drawImage(getTileCanvas(id), tx * S, ty * S - BLOCK_EXTRUDE - offset);
+    return;
+  }
+
+  const leftSame = world.blockAt(tx - 1, ty, layer) === id;
+  const rightSame = world.blockAt(tx + 1, ty, layer) === id;
+
+  // Connexion verticale intelligente :
+  // En couche 1 (base), on est connecté en haut s'il y a un bloc de même type au-dessus (grille) OU si un bloc (quelconque !) est empilé sur nous (couche 2).
+  // En couche 2 (sommet), on est connecté en bas s'il y a un bloc de même type en dessous (grille) OU s'il y a un bloc (quelconque !) sous nous (couche 1).
+  const upSame = world.blockAt(tx, ty - 1, layer) === id || (layer === 1 && world.blockAt(tx, ty, 2) !== null);
+  const downSame = world.blockAt(tx, ty + 1, layer) === id || (layer === 2 && world.blockAt(tx, ty, 1) !== null);
+
+  drawBlockTileConnected(
+    ctx,
+    tx * S,
+    ty * S - BLOCK_EXTRUDE - offset,
+    BLOCK_DEFS[id].color,
+    cfg.texture,
+    leftSame,
+    rightSame,
+    upSame,
+    downSame,
+    cfg.opts
+  );
 }

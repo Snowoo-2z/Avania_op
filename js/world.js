@@ -23,6 +23,8 @@ export class World {
     this.floor = new Array(W * H).fill('grass');
     // Couche "blocs" posés dessus : null = vide, sinon id de bloc
     this.blocks = new Array(W * H).fill(null);
+    // Deuxième couche de blocs (empilés) pour faire des fenêtres et des murs plus hauts
+    this.blocks2 = new Array(W * H).fill(null);
     // État des portes : 0 = fermée (obstacle), 1 = ouverte (praticable)
     this.doorOpen = new Uint8Array(W * H);
 
@@ -34,7 +36,15 @@ export class World {
   inBounds(tx, ty) { return tx >= 0 && ty >= 0 && tx < W && ty < H; }
 
   floorAt(tx, ty) { return this.inBounds(tx, ty) ? this.floor[this.idx(tx, ty)] : 'water'; }
-  blockAt(tx, ty) { return this.inBounds(tx, ty) ? this.blocks[this.idx(tx, ty)] : null; }
+  blockAt(tx, ty, layer = null) {
+    if (!this.inBounds(tx, ty)) return null;
+    const i = this.idx(tx, ty);
+    if (layer === 2) return this.blocks2 ? this.blocks2[i] : null;
+    if (layer === 1) return this.blocks[i];
+    // Par défaut, renvoie le bloc du dessus (couche 2) s'il existe, sinon la base (couche 1)
+    if (this.blocks2 && this.blocks2[i]) return this.blocks2[i];
+    return this.blocks[i];
+  }
 
   // ------------------------------------------------------------------
   //  Génération : terrain vide + ressources naturelles
@@ -131,20 +141,18 @@ export class World {
   // joueur pour la vitesse / la durabilité, sans rendre le monde bloquant).
   requiredToolAt(tx, ty) {
     if (!this.inBounds(tx, ty)) return null;
-    const i = this.idx(tx, ty);
-    const block = this.blocks[i];
+    const block = this.blockAt(tx, ty);
     if (block && BLOCK_DEFS[block]) return BLOCK_DEFS[block].requiredTool || null;
-    return DIGGABLE_FLOOR[this.floor[i]]?.tool || null;
+    return DIGGABLE_FLOOR[this.floor[this.idx(tx, ty)]]?.tool || null;
   }
 
   // Temps de minage de base, en secondes, avant application de l'efficacité
   // de l'outil. La main reste possible mais nettement moins confortable.
   breakDurationAt(tx, ty) {
     if (!this.inBounds(tx, ty)) return 0;
-    const i = this.idx(tx, ty);
-    const block = this.blocks[i];
+    const block = this.blockAt(tx, ty);
     if (block && BLOCK_DEFS[block]) return BLOCK_DEFS[block].breakTime || 0.8;
-    return DIGGABLE_FLOOR[this.floor[i]]?.breakTime || 0;
+    return DIGGABLE_FLOOR[this.floor[this.idx(tx, ty)]]?.breakTime || 0;
   }
 
   // Casse le bloc (ou objet) en (tx,ty). Retourne l'objet récupéré, ou null.
@@ -152,6 +160,15 @@ export class World {
   breakBlock(tx, ty) {
     if (!this.inBounds(tx, ty)) return null;
     const i = this.idx(tx, ty);
+    
+    // On casse d'abord le bloc du dessus s'il existe
+    if (this.blocks2 && this.blocks2[i]) {
+      const b = this.blocks2[i];
+      const def = BLOCK_DEFS[b];
+      this.blocks2[i] = null;
+      return def.drop;
+    }
+
     const b = this.blocks[i];
     if (b) {
       const def = BLOCK_DEFS[b];
@@ -179,13 +196,37 @@ export class World {
   // Retourne true si posé.
   placeBlock(tx, ty, itemId) {
     if (!this.inBounds(tx, ty)) return false;
-    // on ne peut pas poser sur l'eau, ni sur un bloc déjà présent
-    if (this.floor[this.idx(tx, ty)] === 'water') return false;
-    if (this.blocks[this.idx(tx, ty)] !== null) return false;
+    const i = this.idx(tx, ty);
     const item = ITEM_DEFS[itemId];
     if (!item || !item.place) return false;
-    this.blocks[this.idx(tx, ty)] = item.place;
-    return true;
+
+    // Empêche de construire directement derrière un mur (une case au-dessus)
+    // car le mur en perspective cache cette tuile. Le passage reste libre pour marcher !
+    const blockBelow = this.blockAt(tx, ty + 1);
+    if (blockBelow) {
+      const defBelow = BLOCK_DEFS[blockBelow];
+      if (defBelow && defBelow.kind === 'block') {
+        return false;
+      }
+    }
+
+    const baseBlock = this.blocks[i];
+    if (baseBlock === null) {
+      if (this.floor[i] === 'water') return false;
+      this.blocks[i] = item.place;
+      return true;
+    } else {
+      // Si un bloc existe déjà, on tente de l'empiler en couche 2!
+      const baseDef = BLOCK_DEFS[baseBlock];
+      if (baseDef && baseDef.kind === 'block' && this.blocks2[i] === null) {
+        const placeDef = BLOCK_DEFS[item.place];
+        if (placeDef && placeDef.kind === 'block') {
+          this.blocks2[i] = item.place;
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   // Récupère la liste des blocs "objets" visibles (arbres, rochers) pour le tri

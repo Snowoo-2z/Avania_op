@@ -3,7 +3,7 @@
 // ============================================================
 
 import {
-  TILE, WORLD_W, WORLD_H, REACH, PERFORMANCE, PLAYER_RENDER_SCALE,
+  TILE, WORLD_W, WORLD_H, REACH, PERFORMANCE, PLAYER_RENDER_SCALE, BLOCK_EXTRUDE,
 } from './config.js';
 import {
   BLOCK_DEFS, ITEM_DEFS, TOOL_TIERS, toolTierIndex, blockMinTierIndex,
@@ -17,7 +17,7 @@ import {
   buildTileset, getTileCanvas, getDoorCanvas, getFurnaceCanvas, getWaterFrame,
   drawTreeObject, drawRockObject, drawIronOreObject,
   getObjectSprite, getObjectSpriteInfo, treeVariantAt, treeDropCount,
-  treeBreakTime, TREE_VARIANTS, WATER_FRAMES,
+  treeBreakTime, TREE_VARIANTS, WATER_FRAMES, isExtrudedBlock, drawBlockConnected,
 } from './tileset.js';
 import { drawCharacter } from './character.js';
 import { getItemSprite } from './icons.js';
@@ -27,7 +27,14 @@ import { updateFurnace, makeFurnaceEntry } from './furnace.js';
 import { MOB_DEFS, spawnMobs, updateMob, drawMob, mobDrops } from './mobs/index.js';
 
 const REACH_SQ = REACH * REACH;
-const SORT_BY_Y = (a, b) => a.sortY - b.sortY;
+const SORT_BY_Y = (a, b) => {
+  const diff = a.sortY - b.sortY;
+  if (diff !== 0) return diff;
+  // Si le Y est identique (empilement), on dessine la couche basse (1) avant la couche haute (2)
+  const layerA = a.layer || 1;
+  const layerB = b.layer || 1;
+  return layerA - layerB;
+};
 const MINING_CRACK_STAGES = 9;
 // Codes de rendu pour le tri de profondeur (entiers : pas de comparaison
 // de chaînes ni d'objets d'enrobage alloués dans la boucle chaude).
@@ -35,6 +42,7 @@ const DRAW_OBJECT = 0; // ressource statique (arbre, rocher, minerai)
 const DRAW_DROP = 1;   // objet lâché au sol
 const DRAW_MOB = 2;    // animal
 const DRAW_PLAYER = 3; // joueur
+const DRAW_PLACED_BLOCK = 4; // bloc posé (mur, porte, four)
 // Vitesse du balancement de l'outil pendant le minage (rad/s) : un va-et-
 // vient complet ≈ 0,66 s, comme le geste de la main dans Minecraft.
 const SWING_SPEED = 9.5;
@@ -1111,11 +1119,10 @@ export class Game {
     const maxTx = Math.min(WORLD_W - 1, viewR);
     const maxTy = Math.min(WORLD_H - 1, viewB);
 
-    // 1) sols par chunks + blocs posés (une tuile = un bloc, plus petit qu'un arbre)
+    // 1) sols par chunks
     this.drawFloorChunks(ctx, viewL, viewT, viewR, viewB);
-    this.drawPlacedBlocks(ctx, minTx, minTy, maxTx, maxTy);
 
-    // 2) objets (arbres, rochers) + joueurs, triés par profondeur
+    // 2) objets (arbres, rochers, blocs posés, portes, fours) + joueurs, triés par profondeur
     this.drawDepthSorted(ctx, minTx, minTy, maxTx, maxTy);
 
     // 3) surbrillance de la tuile ciblée
@@ -1517,6 +1524,50 @@ export class Game {
       }
     }
 
+    // Blocs posés (murs, portes, fours, etc.) récoltés dans la zone visible.
+    const blocks = this.world.blocks;
+    const blocks2 = this.world.blocks2;
+    const doorOpen = this.world.doorOpen;
+    for (let ty = minTy; ty <= maxTy; ty++) {
+      let i = this.world.idx(minTx, ty);
+      for (let tx = minTx; tx <= maxTx; tx++, i++) {
+        // Couche 1 (base)
+        const block = blocks[i];
+        if (block) {
+          const def = BLOCK_DEFS[block];
+          if (def.kind === 'block' || def.kind === 'door') {
+            drawables.push({
+              dy: DRAW_PLACED_BLOCK,
+              tx,
+              ty,
+              block,
+              kind: def.kind,
+              layer: 1,
+              sortY: (ty + 1) * TILE, // trié par le bas de sa tuile
+            });
+          }
+        }
+        // Couche 2 (empilé)
+        if (blocks2) {
+          const block2 = blocks2[i];
+          if (block2) {
+            const def2 = BLOCK_DEFS[block2];
+            if (def2.kind === 'block') {
+              drawables.push({
+                dy: DRAW_PLACED_BLOCK,
+                tx,
+                ty,
+                block: block2,
+                kind: def2.kind,
+                layer: 2,
+                sortY: (ty + 1) * TILE, // trié par la même colonne et profondeur
+              });
+            }
+          }
+        }
+      }
+    }
+
     // Drops, mobs et joueurs sont poussés tels quels : chacun porte
     // déjà son sortY et son tag de rendu `dy` (entier). Aucune enveloppe
     // { sortY, kind, ... } n'est allouée : zéro pression sur le GC.
@@ -1553,8 +1604,41 @@ export class Game {
         this.drawDrop(ctx, d);
       } else if (dy === DRAW_MOB) {
         drawMob(ctx, d);
-      } else {
+      } else if (dy === DRAW_PLAYER) {
         this.drawPlayer(ctx, d, d === player);
+      } else if (dy === DRAW_PLACED_BLOCK) {
+        const block = d.block;
+        const tx = d.tx;
+        const ty = d.ty;
+        const layer = d.layer || 1;
+        if (d.kind === 'door') {
+          const idx = this.world.idx(tx, ty);
+          const isOpen = doorOpen[idx] === 1;
+          const leftIsDoor = this.world.blockAt(tx - 1, ty) === 'door';
+          const rightIsDoor = this.world.blockAt(tx + 1, ty) === 'door';
+          const isRightDoor = leftIsDoor && !rightIsDoor;
+
+          ctx.save();
+          if (isRightDoor) {
+            // Effet double porte : on retourne la porte droite horizontalement
+            ctx.translate(tx * TILE + TILE / 2, ty * TILE + TILE / 2);
+            ctx.scale(-1, 1);
+            ctx.translate(-(tx * TILE + TILE / 2), -(ty * TILE + TILE / 2));
+          }
+          ctx.drawImage(getDoorCanvas(isOpen), tx * TILE, ty * TILE);
+          ctx.restore();
+        } else if (block === 'furnace') {
+          const entry = this.furnaceData.get(this.world.idx(tx, ty));
+          ctx.drawImage(getFurnaceCanvas(Boolean(entry && entry.fuelTime > 0)), tx * TILE, ty * TILE);
+        } else {
+          if (isExtrudedBlock(block)) {
+            // Rendu de connexion intelligente avec biseau et bordures dynamiques
+            drawBlockConnected(ctx, block, tx, ty, this.world, layer);
+          } else {
+            const offset = (layer === 2) ? 32 : 0;
+            ctx.drawImage(getTileCanvas(block), tx * TILE, ty * TILE - offset);
+          }
+        }
       }
     }
   }
