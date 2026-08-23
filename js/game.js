@@ -380,6 +380,12 @@ export class Game {
     return this.settings ? this.settings.vignette !== false : true;
   }
 
+  // Aim assist activé ? (réglage utilisateur : agrandit la zone de toucher
+  // des animaux pour qu'ils soient plus faciles à cibler au clic.)
+  _aimAssist() {
+    return this.settings ? this.settings.aimAssist !== false : true;
+  }
+
   resizeView() {
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -451,11 +457,16 @@ export class Game {
   }
 
   // Trouve un mob sous le curseur (dans la portée d'interaction).
+  // L'aim assist agrandit le rayon de toucher : un clic « à côté » d'un
+  // mouton compte quand même, ce qui rend les animaux beaucoup plus faciles
+  // à toucher (réglable dans les paramètres).
   mobUnderCursor() {
     const m = this.input.mouse;
     const zoom = this.camera.zoom;
     const wx = this.camera.x + m.x / zoom;
     const wy = this.camera.y + m.y / zoom;
+    const hitR = this._aimAssist() ? 30 : 15;
+    const hitRSq = hitR * hitR;
     let best = null;
     let bestDist = Infinity;
     for (const mob of this.mobs) {
@@ -463,7 +474,7 @@ export class Game {
       const dx = mob.x - wx;
       const dy = mob.y - wy;
       const distSq = dx * dx + dy * dy;
-      if (distSq < 15 * 15 && distSq < bestDist) {
+      if (distSq < hitRSq && distSq < bestDist) {
         best = mob;
         bestDist = distSq;
       }

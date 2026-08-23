@@ -125,6 +125,8 @@ async function boot() {
   const syncPause = () => game.setPaused(Boolean(
     inventoryPanel?.isOpen || crafting?.isOpen || furnacePanel?.isOpen || settings?.isOpen,
   ));
+  // Fermer les paramètres (croix, fond, Échap) doit aussi dé-pauser le jeu.
+  settings.onToggle = syncPause;
 
   inventoryPanel = new InventoryPanel(
     document.getElementById('inventory-panel'),

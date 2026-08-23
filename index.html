@@ -9,7 +9,7 @@
     #boot-error { display: none; position: fixed; inset: 16px auto auto 16px; z-index: 999; max-width: min(520px, calc(100% - 32px)); padding: 12px 14px; background: #3a1c16; border: 1px solid #c96a55; border-radius: 10px; font: 700 13px system-ui, sans-serif; }
     #boot-error.visible { display: block; }
   </style>
-  <link rel="stylesheet" href="css/style.css?v=21" />
+  <link rel="stylesheet" href="css/style.css?v=22" />
 </head>
 <body>
   <div id="boot-error" role="alert"></div>
@@ -251,6 +251,10 @@
             <label><span>Particules de casse</span><span class="settings-hint">Débris quand on mine</span></label>
             <button id="toggle-particles" class="toggle-btn active" aria-pressed="true"><span class="toggle-knob"></span></button>
           </div>
+          <div class="settings-option toggle-option">
+            <label><span>Aim assist (animaux)</span><span class="settings-hint">Ciblage plus facile des moutons &amp; vaches</span></label>
+            <button id="toggle-aimassist" class="toggle-btn active" aria-pressed="true"><span class="toggle-knob"></span></button>
+          </div>
         </div>
       </div>
     </div>
@@ -301,6 +305,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/main.js?v=21"></script>
+  <script type="module" src="js/main.js?v=22"></script>
 </body>
 </html>

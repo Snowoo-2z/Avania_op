@@ -127,12 +127,15 @@ export class Settings {
     this.zoom = saved.zoom ?? 2;
     this.vignette = saved.vignette ?? true;
     this.particles = saved.particles ?? true;
+    this.aimAssist = saved.aimAssist ?? true;
 
     this.cursorCanvas = document.getElementById('custom-cursor');
     this.cursorCtx = this.cursorCanvas?.getContext('2d');
     this.panel = document.getElementById('settings-panel');
     this.btn = document.getElementById('settings-btn');
 
+    // Appelé à chaque ouverture/fermeture (main.js s'en sert pour (dé)pauser).
+    this.onToggle = null;
     this._rebind = null; // rebind en cours : { actionId, btn, cleanup }
 
     this._renderCursorPreviews();
@@ -148,6 +151,7 @@ export class Settings {
       zoom: this.zoom,
       vignette: this.vignette,
       particles: this.particles,
+      aimAssist: this.aimAssist,
     });
   }
 
@@ -236,6 +240,7 @@ export class Settings {
     // Toggles
     this._bindToggle('toggle-vignette', 'vignette');
     this._bindToggle('toggle-particles', 'particles');
+    this._bindToggle('toggle-aimassist', 'aimAssist');
 
     // Bouton « Réinitialiser les touches »
     document.getElementById('keybinds-reset')?.addEventListener('click', () => {
@@ -358,12 +363,14 @@ export class Settings {
   open() {
     if (!this.panel) return;
     this.panel.classList.remove('hidden');
+    this.onToggle?.();
   }
 
   close() {
     if (!this.panel) return;
     this._cancelRebind();
     this.panel.classList.add('hidden');
+    this.onToggle?.();
   }
 
   toggle() {
