@@ -413,68 +413,123 @@ function clipFace(ctx, path, draw) {
 
 function paintWood(ctx, top, left, right) {
   clipFace(ctx, isoTop, () => {
-    ctx.strokeStyle = withAlpha(shade(top, 0.78), 0.85);
+    // Écorce autour d'une coupe claire et cernes asymétriques, comme le bloc.
+    ctx.fillStyle = '#633719';
+    ctx.beginPath();
+    ctx.moveTo(16, 4); ctx.lineTo(28, 10); ctx.lineTo(16, 16); ctx.lineTo(4, 10); ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#d6a158';
+    ctx.beginPath();
+    ctx.moveTo(16, 6); ctx.lineTo(24, 10); ctx.lineTo(16, 14); ctx.lineTo(8, 10); ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#925a29';
     ctx.lineWidth = 1;
-    for (const y of [7, 11, 14]) {
+    ctx.beginPath();
+    ctx.moveTo(11, 10); ctx.lineTo(15, 7); ctx.lineTo(21, 9);
+    ctx.lineTo(20, 12); ctx.lineTo(16, 14); ctx.lineTo(11, 11); ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(14, 10); ctx.lineTo(17, 8); ctx.lineTo(20, 10); ctx.lineTo(17, 12); ctx.closePath();
+    ctx.stroke();
+    ctx.fillStyle = '#633519';
+    ctx.fillRect(16, 9, 2, 2);
+    ctx.fillRect(18, 10, 4, 1);
+    ctx.fillStyle = withAlpha('#f0ca84', 0.72);
+    ctx.fillRect(10, 9, 4, 1);
+  });
+  const bark = (path, direction) => clipFace(ctx, path, () => {
+    ctx.strokeStyle = withAlpha('#4d2815', 0.58);
+    ctx.lineWidth = 1.2;
+    for (const n of [0, 1, 2, 3]) {
       ctx.beginPath();
-      ctx.moveTo(4, y);
-      ctx.lineTo(28, y + 1);
+      if (direction === 'left') {
+        ctx.moveTo(3 + n * 4, 12 + n);
+        ctx.lineTo(10 + n * 2, 29);
+      } else {
+        ctx.moveTo(18 + n * 3, 17);
+        ctx.lineTo(18 + n * 3, 29 - n);
+      }
       ctx.stroke();
     }
-    ctx.fillStyle = withAlpha('#8a5a2e', 0.7);
-    ctx.beginPath(); ctx.arc(12, 10, 1.6, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(21, 13, 1.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = withAlpha('#e0a15b', 0.3);
+    ctx.fillRect(direction === 'left' ? 6 : 23, 17, 2, 7);
   });
-  clipFace(ctx, isoLeft, () => {
-    ctx.strokeStyle = withAlpha('#000000', 0.18);
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(4, 14); ctx.lineTo(14, 28); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(9, 13); ctx.lineTo(15, 26); ctx.stroke();
-  });
-  clipFace(ctx, isoRight, () => {
-    ctx.strokeStyle = withAlpha('#000000', 0.16);
-    ctx.beginPath(); ctx.moveTo(18, 18); ctx.lineTo(28, 14); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(18, 24); ctx.lineTo(27, 20); ctx.stroke();
-  });
+  bark(isoLeft, 'left');
+  bark(isoRight, 'right');
 }
 
 function paintStone(ctx) {
+  const chip = (x, y, w, h) => {
+    ctx.fillStyle = withAlpha('#555a60', 0.52);
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = withAlpha('#f0f1ee', 0.38);
+    ctx.fillRect(x, y, Math.max(1, w - 1), 1);
+  };
   clipFace(ctx, isoTop, () => {
-    ctx.strokeStyle = withAlpha('#000000', 0.18);
+    chip(7, 7, 5, 3);
+    chip(18, 7, 6, 3);
+    chip(12, 11, 6, 3);
+    ctx.strokeStyle = withAlpha('#3f4449', 0.6);
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(8, 9); ctx.lineTo(14, 7); ctx.lineTo(18, 12);
-    ctx.moveTo(18, 12); ctx.lineTo(25, 11);
+    ctx.moveTo(4, 11); ctx.lineTo(10, 10); ctx.lineTo(14, 13); ctx.lineTo(20, 11); ctx.lineTo(27, 12);
+    ctx.moveTo(15, 4); ctx.lineTo(14, 9);
     ctx.stroke();
-    ctx.fillStyle = withAlpha('#ffffff', 0.2);
-    ctx.fillRect(8, 8, 4, 2);
   });
   clipFace(ctx, isoLeft, () => {
-    ctx.strokeStyle = withAlpha('#000000', 0.2);
-    ctx.beginPath();
-    ctx.moveTo(5, 16); ctx.lineTo(10, 22); ctx.lineTo(8, 26);
-    ctx.stroke();
+    chip(5, 16, 5, 3);
+    chip(9, 22, 5, 3);
+    ctx.strokeStyle = withAlpha('#35393e', 0.52);
+    ctx.beginPath(); ctx.moveTo(3, 20); ctx.lineTo(9, 23); ctx.lineTo(7, 27); ctx.stroke();
   });
   clipFace(ctx, isoRight, () => {
-    ctx.fillStyle = withAlpha('#000000', 0.12);
-    ctx.fillRect(20, 20, 5, 3);
-    ctx.fillStyle = withAlpha('#ffffff', 0.1);
-    ctx.fillRect(22, 14, 4, 2);
+    chip(21, 16, 5, 3);
+    chip(18, 23, 5, 3);
+    ctx.strokeStyle = withAlpha('#30343a', 0.48);
+    ctx.beginPath(); ctx.moveTo(27, 14); ctx.lineTo(23, 20); ctx.lineTo(28, 22); ctx.stroke();
   });
 }
 
 function paintPlank(ctx) {
+  const seam = withAlpha('#68401f', 0.78);
+  const grain = withAlpha('#8b592c', 0.62);
+
   clipFace(ctx, isoTop, () => {
-    ctx.strokeStyle = withAlpha('#5a3a1e', 0.55);
-    ctx.lineWidth = 1.1;
-    ctx.beginPath(); ctx.moveTo(4, 8); ctx.lineTo(28, 10); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(4, 13); ctx.lineTo(28, 15); ctx.stroke();
-    ctx.fillStyle = '#5a3a1e';
-    for (const [x, y] of [[8, 6], [22, 8], [10, 14], [20, 12]]) ctx.fillRect(x, y, 2, 2);
+    // Lames en quinconce, sans les anciens clous qui évoquaient une caisse.
+    ctx.fillStyle = withAlpha('#74431f', 0.1);
+    ctx.fillRect(3, 9, 26, 4);
+    ctx.strokeStyle = seam;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(4, 9); ctx.lineTo(28, 11); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(5, 13); ctx.lineTo(24, 15); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(15, 4); ctx.lineTo(14, 9); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(21, 10); ctx.lineTo(20, 14); ctx.stroke();
+    ctx.fillStyle = grain;
+    ctx.fillRect(7, 7, 6, 1);
+    ctx.fillRect(17, 8, 7, 1);
+    ctx.fillRect(10, 11, 6, 1);
+    ctx.fillStyle = '#70401e';
+    ctx.fillRect(8, 12, 2, 2);
   });
+
   clipFace(ctx, isoLeft, () => {
-    ctx.strokeStyle = withAlpha('#5a3a1e', 0.45);
+    ctx.strokeStyle = seam;
+    ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(2, 16); ctx.lineTo(16, 23); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(2, 21); ctx.lineTo(16, 28); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(2, 22); ctx.lineTo(16, 29); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(9, 19); ctx.lineTo(9, 26); ctx.stroke();
+    ctx.strokeStyle = grain;
+    ctx.beginPath(); ctx.moveTo(4, 18); ctx.lineTo(8, 20); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(10, 25); ctx.lineTo(14, 27); ctx.stroke();
+  });
+
+  clipFace(ctx, isoRight, () => {
+    ctx.strokeStyle = withAlpha('#4f3019', 0.66);
+    ctx.beginPath(); ctx.moveTo(16, 23); ctx.lineTo(30, 16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(16, 28); ctx.lineTo(30, 21); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(24, 13); ctx.lineTo(24, 25); ctx.stroke();
+    ctx.strokeStyle = withAlpha('#dca969', 0.34);
+    ctx.beginPath(); ctx.moveTo(18, 20); ctx.lineTo(23, 17); ctx.stroke();
   });
 }
 

@@ -162,13 +162,20 @@ function drawBlockTile(ctx, color, texture, opts = {}) {
   ctx.fillRect(2, 2, S - 8, 2);
   ctx.fillRect(2, 2, 2, S - 8);
 
-  // Texture uniquement sur le dessus
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(2, 2, S - 8, S - 8);
-  ctx.clip();
-  texture(ctx, top, sideDark);
-  ctx.restore();
+  // La matière continue sur les trois faces. Auparavant, les côtés étaient
+  // de simples aplats : à l'écran le bois et la pierre ressemblaient donc à
+  // des carrés colorés. Chaque peintre reçoit maintenant la face courante.
+  const paintFace = (face, x, y, w, h) => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    texture(ctx, face, { x, y, w, h, top, side, dark: sideDark });
+    ctx.restore();
+  };
+  paintFace('top', 2, 2, S - 8, S - 8);
+  paintFace('front', 2, S - 6, S - 4, 6);
+  paintFace('right', S - 6, 2, 6, S - 2);
 
   // Contour net pour que les murs restent lisibles
   ctx.strokeStyle = shade(color, 0.48);
@@ -178,57 +185,186 @@ function drawBlockTile(ctx, color, texture, opts = {}) {
   ctx.globalAlpha = 1;
 }
 
-function woodGrain(ctx, top, dark) {
-  ctx.strokeStyle = shade('#b07a3c', 0.8);
-  ctx.lineWidth = 1.2;
-  for (let i = 0; i < 3; i++) {
-    const y = 8 + i * 8;
+function woodGrain(ctx, face) {
+  const barkDark = '#563018';
+  const barkMid = '#7a4723';
+  const barkLight = '#b97638';
+
+  if (face === 'top') {
+    // Une vraie coupe de tronc : bord d'écorce irrégulier, cœur clair et
+    // cernes organiques. L'ancien empilement de carrés ressemblait à une
+    // cible ; ces contours pixelisés cassent volontairement la symétrie.
+    ctx.fillStyle = barkDark;
+    ctx.fillRect(4, 5, 21, 19);
+    ctx.fillRect(5, 4, 19, 21);
+    ctx.fillStyle = '#d6a158';
+    ctx.fillRect(6, 7, 17, 15);
+    ctx.fillRect(7, 6, 15, 17);
+    ctx.fillStyle = withAlpha('#f0c77d', 0.34);
+    ctx.fillRect(8, 7, 10, 2);
+    ctx.fillRect(7, 9, 2, 8);
+
+    ctx.strokeStyle = '#97602d';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(6, y);
-    ctx.lineTo(S - 6, y + (i === 1 ? 1 : -1));
+    ctx.moveTo(8, 10); ctx.lineTo(11, 8); ctx.lineTo(18, 8);
+    ctx.lineTo(22, 11); ctx.lineTo(21, 18); ctx.lineTo(17, 21);
+    ctx.lineTo(11, 20); ctx.lineTo(8, 17); ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(11, 12); ctx.lineTo(14, 10); ctx.lineTo(18, 11);
+    ctx.lineTo(20, 14); ctx.lineTo(18, 18); ctx.lineTo(14, 19);
+    ctx.lineTo(11, 16); ctx.closePath();
+    ctx.stroke();
+
+    // Cœur et fentes radiales du bois sec.
+    ctx.fillStyle = '#70401e';
+    ctx.fillRect(14, 13, 3, 3);
+    ctx.fillRect(17, 15, 4, 1);
+    ctx.fillRect(11, 16, 3, 1);
+    ctx.fillRect(15, 9, 1, 4);
+    ctx.fillStyle = '#efc77c';
+    ctx.fillRect(10, 10, 4, 1);
+    ctx.fillRect(9, 12, 1, 4);
+    return;
+  }
+
+  // Écorce en plaques verticales irrégulières sur les chants du bloc.
+  ctx.fillStyle = withAlpha(barkDark, 0.7);
+  for (const [x, y, w, h] of [
+    [3, 3, 3, 9], [3, 15, 3, 12], [9, 7, 3, 14], [15, 2, 3, 11],
+    [15, 16, 3, 13], [21, 6, 3, 18], [27, 3, 3, 8], [27, 14, 3, 14],
+  ]) ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = withAlpha(barkLight, 0.46);
+  for (const [x, y, h] of [[6, 5, 7], [12, 15, 8], [19, 4, 10], [25, 17, 8], [30, 7, 6]]) {
+    ctx.fillRect(x, y, 1, h);
+  }
+  ctx.fillStyle = withAlpha('#321b0f', 0.48);
+  ctx.fillRect(27, 11, 4, 2);
+  ctx.fillRect(7, 27, 5, 2);
+  ctx.fillRect(18, 28, 4, 1);
+}
+
+function stoneTexture(ctx, face) {
+  const joint = withAlpha('#42464b', 0.5);
+  const light = withAlpha('#e1e2df', 0.45);
+  const mid = withAlpha('#73777c', 0.58);
+
+  if (face === 'top') {
+    // Éclats minéraux en amas : silhouettes anguleuses, joints et facettes.
+    // Cela donne une pierre taillée / rocheuse plutôt qu'un carré gris uni.
+    ctx.fillStyle = mid;
+    ctx.fillRect(5, 6, 7, 5);
+    ctx.fillRect(19, 5, 6, 7);
+    ctx.fillRect(12, 16, 8, 7);
+    ctx.fillRect(4, 20, 5, 4);
+    ctx.fillRect(22, 17, 4, 5);
+    ctx.fillStyle = light;
+    ctx.fillRect(6, 6, 5, 2);
+    ctx.fillRect(20, 5, 4, 2);
+    ctx.fillRect(13, 16, 5, 2);
+    ctx.fillRect(5, 20, 3, 1);
+    ctx.strokeStyle = joint;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(3, 14); ctx.lineTo(9, 12); ctx.lineTo(14, 15); ctx.lineTo(19, 12); ctx.lineTo(27, 14);
+    ctx.moveTo(10, 3); ctx.lineTo(13, 8); ctx.lineTo(12, 13);
+    ctx.moveTo(20, 14); ctx.lineTo(20, 19); ctx.lineTo(26, 24);
+    ctx.stroke();
+    return;
+  }
+
+  // Petits lits de roche sur les chants visibles du cube.
+  ctx.fillStyle = withAlpha('#4c5055', 0.52);
+  for (const [x, y, w] of [[3, 28, 7], [12, 27, 5], [19, 29, 6], [27, 8, 4], [28, 18, 3], [27, 25, 5]]) {
+    ctx.fillRect(x, y, w, 1);
+  }
+  ctx.fillStyle = withAlpha('#d6d7d5', 0.25);
+  ctx.fillRect(4, 27, 5, 1);
+  ctx.fillRect(27, 4, 2, 5);
+}
+
+function plankTexture(ctx, face) {
+  const seam = withAlpha('#71451f', 0.76);
+  const grain = withAlpha('#8f5929', 0.58);
+  const highlight = withAlpha('#f6d596', 0.5);
+
+  // Trois larges lames de chêne aux tons distincts. Des rangées plus larges
+  // rendent le matériau moins chargé et plus joli une fois agrandi ×2.
+  if (face === 'top') {
+    ctx.fillStyle = withAlpha('#7d491f', 0.1);
+    ctx.fillRect(2, 10, 24, 7);
+    ctx.fillStyle = withAlpha('#f6d99f', 0.13);
+    ctx.fillRect(2, 18, 24, 7);
+  } else {
+    ctx.fillStyle = withAlpha('#4e2c17', 0.13);
+    ctx.fillRect(2, 10, 30, 7);
+    ctx.fillRect(2, 25, 30, 7);
+  }
+
+  ctx.strokeStyle = seam;
+  ctx.lineWidth = 1;
+  for (const y of [9, 17, 25]) {
+    ctx.beginPath(); ctx.moveTo(2, y + 0.5); ctx.lineTo(32, y + 0.5); ctx.stroke();
+  }
+
+  // Assemblage en quinconce, limité à un joint par lame.
+  for (const [x, y0, y1] of [[16, 2, 9], [9, 10, 17], [20, 18, 25], [13, 26, 32]]) {
+    ctx.beginPath(); ctx.moveTo(x + 0.5, y0); ctx.lineTo(x + 0.5, y1); ctx.stroke();
+  }
+
+  // Veines en petits chemins pixelisés plutôt qu'en simples tirets.
+  ctx.strokeStyle = grain;
+  ctx.lineWidth = 1;
+  for (const points of [
+    [[5, 6], [9, 5], [13, 6]],
+    [[18, 7], [21, 6], [25, 6]],
+    [[3, 13], [6, 12], [10, 13], [14, 12]],
+    [[11, 15], [14, 14], [19, 14]],
+    [[4, 21], [8, 20], [12, 21]],
+    [[15, 23], [19, 22], [24, 23]],
+    [[3, 29], [7, 28], [11, 29]],
+  ]) {
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
     ctx.stroke();
   }
-  // nœuds
-  ctx.fillStyle = shade('#8a5a2e', 0.9);
-  ctx.beginPath(); ctx.arc(10, 12, 2, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(22, 22, 1.5, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = highlight;
+  ctx.fillRect(4, 3, 9, 1);
+  ctx.fillRect(11, 11, 7, 1);
+  ctx.fillRect(3, 19, 6, 1);
+
+  // Nœuds ovales et discrets, intégrés au veinage.
+  ctx.fillStyle = '#70401d';
+  ctx.fillRect(6, 14, 3, 2);
+  ctx.fillRect(21, 20, 3, 2);
+  ctx.fillStyle = '#c48643';
+  ctx.fillRect(7, 14, 1, 1);
+  ctx.fillRect(22, 20, 1, 1);
 }
 
-function stoneTexture(ctx, top, dark) {
-  ctx.strokeStyle = withAlpha('#000000', 0.12);
+function brickTexture(ctx, face) {
+  const mortar = withAlpha('#f0b09b', face === 'top' ? 0.52 : 0.3);
+  const shadow = withAlpha('#64281f', 0.62);
   ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(6, 14); ctx.lineTo(14, 12); ctx.lineTo(16, 22);
-  ctx.moveTo(16, 22); ctx.lineTo(24, 20);
-  ctx.stroke();
-  ctx.fillStyle = withAlpha('#ffffff', 0.14);
-  ctx.fillRect(7, 8, 5, 3);
-  ctx.fillStyle = withAlpha('#000000', 0.1);
-  ctx.fillRect(18, 18, 4, 3);
-}
-
-function plankTexture(ctx, top, dark) {
-  ctx.strokeStyle = shade('#8a5a2e', 0.75);
-  ctx.lineWidth = 1.1;
-  for (let i = 0; i < 2; i++) {
-    const y = 9 + i * 7;
-    ctx.beginPath();
-    ctx.moveTo(6, y); ctx.lineTo(S - 6, y);
-    ctx.stroke();
+  ctx.strokeStyle = shadow;
+  for (const y of [9, 16, 23, 28]) {
+    ctx.beginPath(); ctx.moveTo(2, y); ctx.lineTo(32, y); ctx.stroke();
   }
-  ctx.fillStyle = shade('#5a3a1e', 0.85);
-  for (const [x, y] of [[7, 6], [S - 9, 6], [7, S - 8], [S - 9, S - 8]]) {
-    ctx.fillRect(x, y, 2, 2);
+  ctx.strokeStyle = mortar;
+  for (const y of [8, 15, 22]) {
+    ctx.beginPath(); ctx.moveTo(2, y); ctx.lineTo(32, y); ctx.stroke();
   }
-}
-
-function brickTexture(ctx, top, dark) {
-  ctx.strokeStyle = shade('#7a2f26', 0.7);
-  ctx.lineWidth = 1;
-  ctx.strokeRect(4, 6, 12, 7);
-  ctx.strokeRect(16, 6, 12, 7);
-  ctx.strokeRect(10, 14, 12, 7);
-  ctx.strokeRect(22, 14, 6, 7);
+  ctx.strokeStyle = shadow;
+  for (const [x, y0, y1] of [[10, 2, 9], [23, 2, 9], [6, 9, 16], [18, 9, 16], [12, 16, 23], [25, 16, 23]]) {
+    ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke();
+  }
+  ctx.fillStyle = withAlpha('#e58a70', 0.42);
+  ctx.fillRect(4, 4, 5, 2);
+  ctx.fillRect(13, 11, 4, 2);
+  ctx.fillRect(19, 18, 5, 2);
 }
 
 function glassTexture(ctx, top, dark) {
