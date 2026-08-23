@@ -67,9 +67,9 @@ export class World {
         const r = this.rng();
         if (r < 0.030) this.setBlock(tx, ty, 'tree');
         else if (r < 0.050) this.setBlock(tx, ty, 'rock');
-        // Minerai de fer volontairement RARE (~0,3 % des cases,
-        // deux fois moins qu'avant) : chaque filon compte.
-        else if (r < 0.0532) this.setBlock(tx, ty, 'ironOre');
+        // Minerai de fer volontairement RARE (~0,22 % des cases) :
+        // chaque filon compte, le fer reste une ressource précieuse.
+        else if (r < 0.0522) this.setBlock(tx, ty, 'ironOre');
       }
     }
 
