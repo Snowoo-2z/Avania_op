@@ -2441,3 +2441,162 @@ html.low-power .craft-output.ready {
 @media (max-width: 700px) {
   .keybind-key { min-width: 64px; }
 }
+
+/* ============================================================
+   Écran de chargement animé
+   ============================================================ */
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(900px 500px at 50% 35%, rgba(124, 207, 106, 0.12), transparent 65%),
+    radial-gradient(600px 400px at 80% 90%, rgba(242, 193, 78, 0.08), transparent 60%),
+    #0f1a13;
+  animation: loadingFadeIn 0.4s ease;
+}
+.loading-screen.hidden { display: none !important; }
+.loading-screen.fade-out {
+  animation: loadingFadeOut 0.5s ease forwards;
+}
+@keyframes loadingFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes loadingFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 40px;
+  text-align: center;
+}
+
+/* Logo animé qui pulse */
+.loading-logo-mark {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  color: #0f1a13;
+  background: linear-gradient(140deg, var(--accent, #7ccf6a), var(--accent-2, #f2c14e));
+  border-radius: 18px;
+  box-shadow: 0 12px 40px rgba(124, 207, 106, 0.4);
+  transform: rotate(6deg);
+  animation: loadingLogoPulse 2s ease-in-out infinite;
+}
+@keyframes loadingLogoPulse {
+  0%, 100% { transform: rotate(6deg) scale(1);   box-shadow: 0 12px 40px rgba(124, 207, 106, 0.4); }
+  50%      { transform: rotate(6deg) scale(1.08); box-shadow: 0 16px 50px rgba(124, 207, 106, 0.55); }
+}
+
+/* Titre avec gradient animé */
+.loading-title {
+  font-size: 52px;
+  letter-spacing: 10px;
+  font-weight: 900;
+  background: linear-gradient(100deg, var(--accent, #7ccf6a), var(--accent-2, #f2c14e), var(--accent, #7ccf6a));
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  line-height: 1.1;
+  animation: loadingTitleShimmer 3s ease-in-out infinite;
+}
+@keyframes loadingTitleShimmer {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Blocs qui s'empilent — 5 petits cubes pixel art qui montent un par un */
+.loading-blocks {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 48px;
+  margin: 6px 0 2px;
+}
+.loading-block {
+  display: block;
+  width: 14px;
+  border-radius: 3px;
+  box-shadow:
+    inset 1px 1px 0 rgba(255,255,255,0.35),
+    inset -1px -1px 0 rgba(0,0,0,0.35);
+  animation: loadingBlockBounce 1.6s ease-in-out infinite;
+}
+
+/* Chaque bloc a sa propre couleur (bois, pierre, herbe, brique, fer)
+   et un délai différent pour l'effet de vague. */
+.lb-1 { height: 14px; background: #8a5a2e; animation-delay: 0s;    }
+.lb-2 { height: 14px; background: #8d8d94; animation-delay: 0.15s; }
+.lb-3 { height: 14px; background: #4f9337; animation-delay: 0.3s;  }
+.lb-4 { height: 14px; background: #c96a55; animation-delay: 0.45s; }
+.lb-5 { height: 14px; background: #aab3bb; animation-delay: 0.6s;  }
+
+@keyframes loadingBlockBounce {
+  0%, 100% { transform: translateY(0)   scaleY(1);   }
+  20%      { transform: translateY(-18px) scaleY(1.1); }
+  40%      { transform: translateY(0)   scaleY(0.92); }
+  55%      { transform: translateY(-6px) scaleY(1);    }
+  70%      { transform: translateY(0)   scaleY(1);    }
+}
+
+/* Message qui change (piloté par JS) */
+.loading-message {
+  color: var(--text, #eef6ee);
+  font-size: 15px;
+  font-weight: 800;
+  min-height: 22px;
+  animation: loadingMsgPulse 1.5s ease-in-out infinite;
+}
+@keyframes loadingMsgPulse {
+  0%, 100% { opacity: 1;   }
+  50%      { opacity: 0.55; }
+}
+
+/* Barre de progression pixel art */
+.loading-bar-track {
+  width: min(320px, 80vw);
+  height: 12px;
+  border: 2px solid #222426;
+  border-radius: 3px;
+  background: #35383b;
+  box-shadow:
+    inset 2px 2px 0 rgba(0,0,0,0.4),
+    inset -1px -1px 0 rgba(255,255,255,0.1);
+  overflow: hidden;
+}
+.loading-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent, #7ccf6a), var(--accent-2, #f2c14e));
+  box-shadow: 0 0 12px rgba(124, 207, 106, 0.4);
+  transition: width 0.3s ease;
+}
+
+/* Astuce en bas */
+.loading-hint {
+  color: var(--muted, #9ab7a2);
+  font-size: 12px;
+  font-weight: 700;
+  font-style: italic;
+  max-width: 340px;
+  line-height: 1.4;
+  animation: loadingHintFade 4s ease-in-out infinite;
+}
+@keyframes loadingHintFade {
+  0%, 15%, 85%, 100% { opacity: 0.7; }
+  50%                { opacity: 1;   }
+}
