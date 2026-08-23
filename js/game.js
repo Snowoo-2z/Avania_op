@@ -246,6 +246,9 @@ export class Game {
     this.staticObjectsByChunk = new Map();
     this.waterTilesByChunk = new Map();
     this.rebuildStaticObjects();
+    // Pré-construit les chunks de sol de la zone de départ (vue + marge)
+    // AVANT la première frame : rien à rasteriser à la volée au démarrage.
+    this.prewarmFloorChunks(Infinity);
     this.drawables = [];
     this.nameTagCache = new Map();
     // Sprites pré-rendus : surbrillance de la cible et ombres ovales
@@ -385,6 +388,10 @@ export class Game {
     const dir = this.input.getDirection();
     this.player.update(dir, dt, this.world);
     this.camera.follow(this.player.x, this.player.y, dt);
+    // Pré-construit par petits lots les chunks qui vont entrer dans la vue :
+    // c'est le correctif des saccades au déplacement (plus de rasterisation
+    // synchrone de chunk dans la boucle de rendu).
+    this.prewarmFloorChunks(PERFORMANCE.CHUNK_PREWARM_BUDGET_MS);
     this.updateDroppedItems(dt);
     this.updateParticles(dt);
     this.updateHeldItem(dt);
@@ -1121,14 +1128,51 @@ export class Game {
   invalidateFloorChunk(tx, ty) {
     const cx = Math.floor(tx / this.chunkTiles);
     const cy = Math.floor(ty / this.chunkTiles);
+    // Reconstruit tout de suite le chunk modifié (creuser un sable/terre) :
+    // un seul chunk (~256 drawImage, négligeable) évite une micro-saccade
+    // sur la frame qui suit l'action.
     this.floorChunkCache.delete(this.floorChunkKey(cx, cy));
+    this.buildFloorChunk(cx, cy);
   }
 
-  getFloorChunk(cx, cy) {
-    const key = cy * 64 + cx;
-    const cached = this.floorChunkCache.get(key);
-    if (cached) return cached;
+  // Pré-construit (met en cache) les chunks de sol de la zone autour de la
+  // caméra qui ne le sont pas encore, en respectant un budget de temps par
+  // frame. C'est LA clé de la fluidité au déplacement : auparavant, chaque
+  // chunk était rasterisé à la volée dans drawFloorChunks (16×16 = 256
+  // drawImage d'un seul coup), et quand plusieurs chunks entraient ensemble
+  // dans la vue en marchant, la frame explosait → saccade.
+  //
+  // Ici on construit les chunks avec un anneau d'avance, étalé sur plusieurs
+  // frames : quand un chunk défile à l'écran, il est en cache depuis
+  // longtemps, le rendu ne fait plus qu'un drawImage très léger.
+  prewarmFloorChunks(maxMs) {
+    const ct = this.chunkTiles;
+    const cam = this.camera;
+    const zoom = cam.zoom;
+    const chunkPx = ct * TILE; // côté d'un chunk en pixels monde
+    const margin = 1; // un anneau de chunks construits en avance
+    const chunkL = Math.max(0, Math.floor(cam.x / chunkPx) - margin);
+    const chunkT = Math.max(0, Math.floor(cam.y / chunkPx) - margin);
+    const chunkR = Math.min(Math.ceil(WORLD_W / ct) - 1,
+      Math.floor((cam.x + this.viewW / zoom) / chunkPx) + margin);
+    const chunkB = Math.min(Math.ceil(WORLD_H / ct) - 1,
+      Math.floor((cam.y + this.viewH / zoom) / chunkPx) + margin);
 
+    const cache = this.floorChunkCache;
+    const deadline = performance.now() + maxMs; // Infinity au démarrage
+    for (let cy = chunkT; cy <= chunkB; cy++) {
+      const rowBase = cy * 64;
+      for (let cx = chunkL; cx <= chunkR; cx++) {
+        if (cache.has(rowBase + cx)) continue; // déjà en cache : gratuit
+        this.buildFloorChunk(cx, cy);
+        // Budget écoulé ? On remettra le reste à la frame suivante.
+        if (performance.now() >= deadline) return;
+      }
+    }
+  }
+
+  buildFloorChunk(cx, cy) {
+    const key = cy * 64 + cx;
     const ct = this.chunkTiles;
     const startTx = cx * ct;
     const startTy = cy * ct;
@@ -1138,18 +1182,26 @@ export class Game {
     const cctx = c.getContext('2d');
     cctx.imageSmoothingEnabled = false;
 
+    const floor = this.world.floor;
     for (let y = 0; y < tilesH; y++) {
+      const rowBase = (startTy + y) * WORLD_W + startTx;
       for (let x = 0; x < tilesW; x++) {
-        const tx = startTx + x;
-        const ty = startTy + y;
-        const floor = this.world.floor[this.world.idx(tx, ty)];
-        const img = floor === 'water' ? getWaterFrame(0) : getTileCanvas(floor);
+        const f = floor[rowBase + x];
+        const img = f === 'water' ? getWaterFrame(0) : getTileCanvas(f);
         cctx.drawImage(img, x * TILE, y * TILE);
       }
     }
 
     this.floorChunkCache.set(key, c);
     return c;
+  }
+
+  getFloorChunk(cx, cy) {
+    const key = cy * 64 + cx;
+    const cached = this.floorChunkCache.get(key);
+    // Les chunks sont normalement déjà en cache (pré-construits). Ce chemin
+    // paresseux ne sert quasiment plus que de filet de sécurité.
+    return cached || this.buildFloorChunk(cx, cy);
   }
 
   drawPlacedBlocks(ctx, minTx, minTy, maxTx, maxTy) {

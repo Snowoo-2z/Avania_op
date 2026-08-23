@@ -14,6 +14,12 @@ export const WORLD_H = 128;
 // on limite les pixels réellement rendus et on regroupe le sol en chunks.
 export const PERFORMANCE = {
   CHUNK_TILES: 16,
+  // Budget temps (ms) accordé à la pré-construction des chunks de sol à
+  // chaque frame. Les chunks sont rasterisés un anneau AVANT d'entrer dans
+  // la vue, étalés sur plusieurs frames : fini les saccades quand on marche
+  // (avant, chaque chunk était dessiné à la volée dans le rendu). C'est un
+  // plafond : si rien n'est à construire, le coût est nul (~0 ms).
+  CHUNK_PREWARM_BUDGET_MS: 3,
   MAX_DPR: 1.5,
   LOW_POWER_MAX_DPR: 1,
   LOW_POWER_CORES: 4,
