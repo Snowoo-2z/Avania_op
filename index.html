@@ -150,7 +150,7 @@
     <div class="panel-frame panel-frame--furnace">
       <header class="crafting-header">
         <div>
-          <span class="panel-eyebrow">FOUR</span>
+          <span class="panel-eyebrow">FONDERIE</span>
           <strong><span class="ic" data-icon="fire"></span> Four</strong>
         </div>
         <div class="crafting-header-actions">
@@ -159,12 +159,19 @@
       </header>
       <div class="furnace-body">
         <div class="furnace-workbench">
-          <div class="furnace-cols">
+          <!-- Layout Minecraft : entrée en haut, flamme au milieu, combustible en bas, flèche → sortie -->
+          <div class="furnace-left">
             <div class="furnace-input-col">
               <div class="furnace-label">ENTRÉE</div>
               <div id="furnace-input" class="furnace-slot-wrap"></div>
             </div>
-            <div class="furnace-flame" aria-hidden="true"><i id="furnace-flame-fill"></i></div>
+            <div class="furnace-flame-wrap">
+              <div class="furnace-flame" aria-hidden="true">
+                <i id="furnace-flame-fill"></i>
+                <span class="furnace-flame-icon"></span>
+              </div>
+              <span id="furnace-fuel-timer" class="furnace-fuel-timer"></span>
+            </div>
             <div class="furnace-fuel-col">
               <div class="furnace-label">COMBUSTIBLE</div>
               <div id="furnace-fuel" class="furnace-slot-wrap"></div>

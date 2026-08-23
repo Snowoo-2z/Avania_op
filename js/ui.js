@@ -623,6 +623,8 @@ export class FurnacePanel {
     this.flameFill = document.getElementById('furnace-flame-fill');
     this.arrowFill = document.getElementById('furnace-arrow-fill');
     this.statusEl = document.getElementById('furnace-status');
+    this.fuelTimerEl = document.getElementById('furnace-fuel-timer');
+    this.flameWrap = root.querySelector('.furnace-flame');
     this.invGridRoot = document.getElementById('furnace-inv-grid');
     this.invHotbarRoot = document.getElementById('furnace-inv-hotbar');
     this.key = null;
@@ -678,9 +680,24 @@ export class FurnacePanel {
     updateSlotVisual(this.outputRoot.querySelector('.mc-slot') || this.outputRoot.firstElementChild, e.output[0]);
 
     // Flamme : feu restant / durée totale du combustible.
+    const burning = e.fuelTime > 0;
     if (this.flameFill) {
       const ratio = e.maxFuelTime > 0 ? Math.max(0, Math.min(1, e.fuelTime / e.maxFuelTime)) : 0;
       this.flameFill.style.height = `${ratio * 100}%`;
+    }
+    // Classe « actif » sur la flamme pour l'animation CSS.
+    if (this.flameWrap) {
+      this.flameWrap.classList.toggle('burning', burning);
+    }
+    // Timer : secondes restantes de combustible.
+    if (this.fuelTimerEl) {
+      if (burning) {
+        this.fuelTimerEl.textContent = `${Math.ceil(e.fuelTime)}s`;
+        this.fuelTimerEl.classList.remove('empty');
+      } else {
+        this.fuelTimerEl.textContent = '';
+        this.fuelTimerEl.classList.add('empty');
+      }
     }
     // Flèche : progression de la cuisson.
     if (this.arrowFill) {
@@ -691,10 +708,12 @@ export class FurnacePanel {
     if (this.statusEl) {
       const recipe = e.input[0] && SMELT_RECIPES[e.input[0].id];
       if (!e.input[0]) this.statusEl.textContent = 'Mets un objet à fondre.';
-      else if (!recipe) this.statusEl.textContent = 'Impossible à fondre.';
+      else if (!recipe) this.statusEl.textContent = 'Cet objet ne peut pas être fondu.';
       else if (!e.fuel[0] && e.fuelTime <= 0) this.statusEl.textContent = 'Ajoute du combustible.';
+      else if (e.output[0] && e.output[0].count >= 64) this.statusEl.textContent = 'Sortie pleine !';
       else if (e.output[0] && e.output[0].id !== recipe.out) this.statusEl.textContent = 'Vide la sortie.';
-      else this.statusEl.textContent = 'Cuisson…';
+      else if (burning) this.statusEl.textContent = 'Cuisson en cours…';
+      else this.statusEl.textContent = 'En attente de combustible…';
     }
 
     this.invSlots.forEach(({ el, index }) => {

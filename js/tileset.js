@@ -456,28 +456,95 @@ function ironBlockTexture(ctx, top, dark) {
   ctx.fillRect(8, 20, 3, 3);
 }
 
-// --- Four : pierre grise avec une bouche sombre et des rivets ---
-function furnaceTexture(ctx, top, dark) {
-  // bouche du foyer
-  ctx.fillStyle = '#2a2b2e';
-  ctx.fillRect(11, 11, 11, 11);
-  ctx.fillStyle = '#1d1e21';
-  ctx.fillRect(12, 12, 9, 9);
-  // barre du foyer
-  ctx.fillStyle = '#3f4146';
-  ctx.fillRect(10, 10, 13, 2);
-  ctx.fillRect(10, 21, 13, 2);
+// --- Four : bloc de cobblestone avec une bouche sombre, façon Minecraft ---
+// Le four Minecraft a une face supérieure en cobblestone, une face avant
+// avec une ouverture sombre entourée de pavés de pierre, et des rivets/
+// grille en fer.
+function furnaceTexture(ctx, face) {
+  if (face === 'top') {
+    // Dessus du four = cobblestone ordinaire (même apparence que stone)
+    const pavesTop = [
+      { x: 2, y: 2, w: 7, h: 5, c: '#7e7f84' },
+      { x: 10, y: 2, w: 6, h: 6, c: '#8a8b90' },
+      { x: 17, y: 2, w: 8, h: 5, c: '#76777b' },
+      { x: 2, y: 8, w: 5, h: 6, c: '#929396' },
+      { x: 8, y: 9, w: 8, h: 5, c: '#7a7b7f' },
+      { x: 17, y: 8, w: 6, h: 6, c: '#8d8e92' },
+      { x: 2, y: 15, w: 8, h: 5, c: '#84858a' },
+      { x: 11, y: 15, w: 5, h: 6, c: '#999a9e' },
+      { x: 17, y: 15, w: 7, h: 5, c: '#76777b' },
+    ];
+    for (const p of pavesTop) {
+      ctx.fillStyle = p.c;
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.fillStyle = withAlpha('#d0d1ce', 0.38);
+      ctx.fillRect(p.x, p.y, p.w, 1);
+      ctx.fillStyle = withAlpha('#26292c', 0.42);
+      ctx.fillRect(p.x, p.y + p.h - 1, p.w, 1);
+    }
+    ctx.fillStyle = withAlpha('#32363a', 0.55);
+    ctx.fillRect(9, 2, 1, 6);
+    ctx.fillRect(16, 2, 1, 6);
+    ctx.fillRect(7, 8, 1, 6);
+    ctx.fillRect(16, 8, 1, 6);
+    ctx.fillRect(10, 15, 1, 5);
+    ctx.fillRect(16, 15, 1, 5);
+    return;
+  }
+
+  // Face avant et droite : pavés de cobblestone + bouche du four
+  // Fond de pierre
+  const pavs = [
+    { x: 3, y: 2, w: 7, h: 4, c: '#7e7f84' },
+    { x: 11, y: 2, w: 6, h: 3, c: '#8a8b90' },
+    { x: 18, y: 2, w: 6, h: 4, c: '#76777b' },
+    { x: 3, y: 19, w: 8, h: 4, c: '#84858a' },
+    { x: 12, y: 20, w: 6, h: 4, c: '#7a7b7f' },
+    { x: 19, y: 19, w: 5, h: 5, c: '#929396' },
+  ];
+  for (const p of pavs) {
+    ctx.fillStyle = p.c;
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    ctx.fillStyle = withAlpha('#d0d1ce', 0.32);
+    ctx.fillRect(p.x, p.y, p.w, 1);
+    ctx.fillStyle = withAlpha('#26292c', 0.38);
+    ctx.fillRect(p.x, p.y + p.h - 1, p.w, 1);
+  }
+
+  // Bouche du four (cavité sombre)
+  ctx.fillStyle = '#1a1b1e';
+  ctx.fillRect(9, 7, 14, 11);
+  ctx.fillStyle = '#111214';
+  ctx.fillRect(10, 8, 12, 9);
+
+  // Grille en fer dans la bouche (barres horizontales)
   ctx.fillStyle = '#4a4c52';
-  ctx.fillRect(10, 10, 13, 1);
-  // rivets
-  ctx.fillStyle = '#4e5056';
-  ctx.fillRect(6, 5, 2, 2);
-  ctx.fillRect(24, 5, 2, 2);
-  ctx.fillRect(6, 24, 2, 2);
-  ctx.fillRect(24, 24, 2, 2);
-  // reflet
-  ctx.fillStyle = withAlpha('#ffffff', 0.14);
-  ctx.fillRect(3, 2, S - 8, 1);
+  ctx.fillRect(10, 10, 12, 1);
+  ctx.fillRect(10, 13, 12, 1);
+  ctx.fillRect(10, 16, 12, 1);
+  // Reflets sur les barres
+  ctx.fillStyle = withAlpha('#9a9ca2', 0.45);
+  ctx.fillRect(11, 10, 8, 1);
+  ctx.fillRect(11, 13, 6, 1);
+
+  // Cadre de la bouche (pierre plus sombre)
+  ctx.fillStyle = '#3a3c40';
+  ctx.fillRect(9, 7, 14, 1);   // haut
+  ctx.fillRect(9, 17, 14, 1);  // bas
+  ctx.fillRect(9, 7, 1, 11);   // gauche
+  ctx.fillRect(22, 7, 1, 11);  // droite
+  // Biseau intérieur clair
+  ctx.fillStyle = withAlpha('#b0b2b8', 0.3);
+  ctx.fillRect(10, 7, 12, 1);
+  ctx.fillRect(9, 8, 1, 9);
+  // Biseau intérieur sombre
+  ctx.fillStyle = withAlpha('#0a0b0d', 0.4);
+  ctx.fillRect(10, 17, 12, 1);
+  ctx.fillRect(22, 8, 1, 9);
+
+  // Lueur rougeâtre au fond de la bouche (braises éteintes)
+  ctx.fillStyle = withAlpha('#5a2010', 0.2);
+  ctx.fillRect(12, 14, 8, 3);
 }
 
 // --- Laine : boules blanches douces ---
@@ -736,17 +803,48 @@ export function buildTileset() {
     waterCache[f] = c;
   }
   buildObjectSprites();
-  // Variante « four allumé » : une lueur orange dans la bouche.
+  // Variante « four allumé » : lueur vive dans la bouche avec dégradé
+  // de flamme (rouge → orange → jaune), barres de grille rougeoyantes.
   const lit = makeCanvas(S, S);
   const lctx = lit.getContext('2d');
   lctx.imageSmoothingEnabled = false;
   lctx.drawImage(cache.furnace, 0, 0);
-  lctx.fillStyle = '#ff9a3c';
-  lctx.fillRect(13, 13, 7, 7);
-  lctx.fillStyle = '#ffd28a';
-  lctx.fillRect(14, 14, 4, 4);
-  lctx.fillStyle = withAlpha('#ff9a3c', 0.28);
-  lctx.fillRect(11, 11, 11, 11);
+  // Halo de chaleur autour de la bouche
+  lctx.fillStyle = withAlpha('#ff6a1c', 0.15);
+  lctx.fillRect(8, 6, 16, 13);
+  // Fond rougeoyant de la bouche
+  lctx.fillStyle = '#3a1508';
+  lctx.fillRect(10, 8, 12, 9);
+  // Flammes : dégradé du bas (jaune vif) vers le haut (rouge sombre)
+  lctx.fillStyle = '#c22a08';
+  lctx.fillRect(11, 9, 10, 3);
+  lctx.fillStyle = '#e05a1a';
+  lctx.fillRect(11, 12, 10, 2);
+  lctx.fillStyle = '#ff8a2c';
+  lctx.fillRect(12, 14, 8, 2);
+  lctx.fillStyle = '#ffc44e';
+  lctx.fillRect(13, 15, 6, 1);
+  lctx.fillStyle = '#ffe080';
+  lctx.fillRect(14, 15, 4, 1);
+  // Braises au fond
+  lctx.fillStyle = '#ffd060';
+  lctx.fillRect(12, 16, 8, 1);
+  lctx.fillStyle = '#ff9030';
+  lctx.fillRect(11, 16, 2, 1);
+  lctx.fillRect(19, 16, 2, 1);
+  // Barres de grille (rougeoyantes par le feu)
+  lctx.fillStyle = '#8a4428';
+  lctx.fillRect(10, 10, 12, 1);
+  lctx.fillRect(10, 13, 12, 1);
+  // Reflet orange sur les barres
+  lctx.fillStyle = withAlpha('#ff9a3c', 0.5);
+  lctx.fillRect(11, 10, 8, 1);
+  lctx.fillRect(11, 13, 6, 1);
+  // Particules d'étincelles (2-3 points jaunes au-dessus)
+  lctx.fillStyle = '#ffd060';
+  lctx.fillRect(14, 8, 1, 1);
+  lctx.fillRect(17, 9, 1, 1);
+  lctx.fillRect(12, 9, 1, 1);
   cache.furnaceLit = lit;
   built = true;
   return cache;
