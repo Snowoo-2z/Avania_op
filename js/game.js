@@ -35,8 +35,6 @@ const DRAW_OBJECT = 0; // ressource statique (arbre, rocher, minerai)
 const DRAW_DROP = 1;   // objet lâché au sol
 const DRAW_MOB = 2;    // animal
 const DRAW_PLAYER = 3; // joueur
-// Touches 1..9 pré-générées : évite neuf conversions String par frame.
-const HOTBAR_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 // Vitesse du balancement de l'outil pendant le minage (rad/s) : un va-et-
 // vient complet ≈ 0,66 s, comme le geste de la main dans Minecraft.
 const SWING_SPEED = 9.5;
@@ -183,7 +181,7 @@ function isStoneLike(blockId) {
 }
 
 export class Game {
-  constructor(canvas, appearance) {
+  constructor(canvas, appearance, settings = null) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
     this.ctx.imageSmoothingEnabled = false;
@@ -191,11 +189,13 @@ export class Game {
     this.player = new Player(this.world.spawn.x, this.world.spawn.y, appearance);
     this.input = new Input();
     this.inventory = new Inventory();
+    this.settings = settings; // paramètres utilisateur (zoom, vignette, particules…)
 
     this.viewW = window.innerWidth;
     this.viewH = window.innerHeight;
     this.camera = new Camera(this.viewW, this.viewH, WORLD_W * TILE, WORLD_H * TILE);
     this.camera.snapTo(this.player.x, this.player.y);
+    if (settings && settings.zoom) this.camera.zoom = settings.zoom;
 
     this.player.dy = DRAW_PLAYER; // tag de rendu (tri sans allocation)
     this.otherPlayers = []; // futurs joueurs en ligne
@@ -369,6 +369,17 @@ export class Game {
     }
   }
 
+  // Particules activées ? (réglage utilisateur ; le mode performance réduit
+  // déjà leur nombre, on ne fait ici que respecter l'interrupteur.)
+  _particlesEnabled() {
+    return this.settings ? this.settings.particles !== false : true;
+  }
+
+  // Vignette activée ? (réglage utilisateur ; le mode performance la coupe.)
+  _vignetteOn() {
+    return this.settings ? this.settings.vignette !== false : true;
+  }
+
   resizeView() {
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -383,7 +394,10 @@ export class Game {
     this.actionCooldown = Math.max(0, this.actionCooldown - dt);
     // Les fours cuisent en continu, même panneau ouvert (la barre avance).
     this.updateFurnaces(dt);
-    if (this.paused) return;
+    if (this.paused) { this.input.endFrame(); return; }
+
+    // Le zoom est un réglage utilisateur (panneau Paramètres).
+    if (this.settings && this.settings.zoom) this.camera.zoom = this.settings.zoom;
 
     const dir = this.input.getDirection();
     this.player.update(dir, dt, this.world);
@@ -401,6 +415,8 @@ export class Game {
     this.handleHotbarKeys();
     this.handleDropKey();
     this.handleClicks(dt);
+    // Jette les edges non consommés (clic sans holder, molette inutilisée…).
+    this.input.endFrame();
   }
 
   // ------------------------------------------------------------
@@ -496,6 +512,7 @@ export class Game {
   }
 
   spawnHitParticles(x, y) {
+    if (!this._particlesEnabled()) return;
     if (this.particles.length > MAX_PARTICLES) return;
     const count = this.performanceMode ? 3 : 5;
     for (let i = 0; i < count; i++) {
@@ -519,8 +536,8 @@ export class Game {
   //  Q = un seul objet · Ctrl+Q = toute la pile sélectionnée
   // ------------------------------------------------------------
   handleDropKey() {
-    if (!this.input.isDown('q')) return;
-    this.input.keys.delete('q');
+    if (!this.input.pressed('drop')) return;
+    // Ctrl / Shift en complément = toute la pile (convention Minecraft).
     const wholeStack = this.input.isDown('control') || this.input.isDown('shift');
     this.dropSelected(wholeStack ? Infinity : 1);
   }
@@ -601,41 +618,27 @@ export class Game {
   handleHotbarKeys() {
     const n = this.inventory.hotbarSize;
     for (let i = 0; i < n; i++) {
-      const key = HOTBAR_KEYS[i]; // constantes partagées : pas d'allocation
-      if (this.input.isDown(key)) {
-        this.input.keys.delete(key);
-        this.inventory.select(i);
-      }
+      if (this.input.pressed('hotbar' + (i + 1))) this.inventory.select(i);
     }
-    if (this.input.mouse.wheel !== 0) {
-      this.inventory.cycle(this.input.mouse.wheel);
-      this.input.mouse.wheel = 0;
-    }
+    if (this.input.pressed('cycleForward')) this.inventory.cycle(1);
+    else if (this.input.pressed('cycleBackward')) this.inventory.cycle(-1);
   }
 
   // ------------------------------------------------------------
   //  Casser (maintenir clic gauche) / Poser (clic droit)
   // ------------------------------------------------------------
   handleClicks(dt) {
-    const clickedLeft = this.input.mouse.leftClicked;
-    const clickedRight = this.input.mouse.rightClicked;
-    const holdingLeft = this.input.mouse.leftDown;
-    const holdingRight = this.input.mouse.rightDown;
-
-    // Les clics ponctuels sont consommés ici. Pour miner, le joueur doit
-    // garder le bouton gauche enfoncé : le bloc se fissure progressivement.
-    this.input.mouse.leftClicked = false;
-    this.input.mouse.rightClicked = false;
-
-    if (holdingLeft) {
-      // Le clic gauche frappe d'abord les animaux sous le curseur
-      // (comme dans Minecraft), sinon il mine la tuile.
+    // Minage / attaque : on maintient l'action « miner » (clic gauche par
+    // défaut, mais rebindable). Frappe d'abord les animaux sous le curseur
+    // (comme dans Minecraft), sinon mine la tuile.
+    if (this.input.down('mine')) {
       if (!this.tryAttackMob(dt)) this.mineTarget(dt);
-    } else if (clickedLeft || this.mining.progress > 0) {
+    } else if (this.mining.progress > 0) {
       this.resetMining();
     }
 
-    if (clickedRight || holdingRight) this.interactTarget();
+    // Poser (clic droit par défaut) : un appui suffit, le maintien aussi.
+    if (this.input.pressed('place') || this.input.down('place')) this.interactTarget();
   }
 
   // Frappe un mob sous le curseur si possible. Retourne true si un mob
@@ -673,6 +676,7 @@ export class Game {
 
   // Petite bouffée de particules quand une porte s'ouvre / se ferme.
   spawnDoorPuff(tx, ty, open) {
+    if (!this._particlesEnabled()) return;
     if (this.particles.length > MAX_PARTICLES) return;
     const cx = tx * TILE + TILE / 2;
     const cy = ty * TILE + TILE / 2;
@@ -949,6 +953,7 @@ export class Game {
   //  quelques dizaines d'objets éphémères, un simple fillRect chacun.
   // ------------------------------------------------------------
   spawnBreakParticles(tx, ty, blockId) {
+    if (!this._particlesEnabled()) return;
     if (this.particles.length > MAX_PARTICLES) return;
     const colors = BREAK_PARTICLE_COLORS[blockId]
       || [BLOCK_DEFS[blockId]?.color || '#cfcfcf'];
@@ -1085,9 +1090,9 @@ export class Game {
 
     ctx.restore();
 
-    // 6) vignette d'ambiance. Elle est cachée en mode performance et
-    // pré-rendue sinon, pour éviter un radialGradient à chaque frame.
-    if (!this.performanceMode) {
+    // 6) vignette d'ambiance. Cachée en mode performance ou si le joueur
+    // l'a désactivée dans les paramètres. Pré-rendue sinon.
+    if (!this.performanceMode && this._vignetteOn()) {
       ctx.drawImage(this.getVignette(W, H), 0, 0, W, H);
     }
   }

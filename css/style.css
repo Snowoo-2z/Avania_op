@@ -72,7 +72,7 @@ kbd {
   font-size: 14px;
 }
 .hud-card--ghost { color: var(--muted); }
-.hud-label { font-size: 16px; }
+.hud-label { font-size: 16px; display: inline-flex; align-items: center; }
 .hud-dot {
   width: 9px; height: 9px;
   border-radius: 50%;
@@ -252,6 +252,9 @@ kbd {
   cursor: pointer;
   font-size: 13px;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: background 0.15s, transform 0.1s;
 }
 .facing-controls button:hover { background: #2c4a37; transform: translateY(-1px); }
@@ -710,7 +713,7 @@ html.low-power .craft-btn:hover {
 .craft-slot .slot-icon { inset: 4px; font-size: 19px; }
 .craft-slot .slot-count { font-size: 10px; }
 .craft-slot .slot-durability { display: none; }
-.craft-arrow { color: var(--accent-2); font-size: 22px; text-align: center; }
+.craft-arrow { color: var(--accent-2); font-size: 22px; display: flex; align-items: center; justify-content: center; }
 .craft-result-wrap { min-width: 88px; }
 .craft-output {
   display: flex;
@@ -2302,14 +2305,11 @@ html.low-power .craft-output.ready {
   overflow: hidden;
 }
 .furnace-arrow::after {
-  content: '➜';
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #9aa0a3;
-  font-size: 11px;
+  content: '';
+  width: 0; height: 0;
+  border-left: 7px solid #9aa0a3;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
 }
 .furnace-arrow i {
   position: absolute;
@@ -2326,4 +2326,118 @@ html.low-power .craft-output.ready {
 }
 .furnace .furnace-slot-wrap .slot-icon img {
   image-rendering: pixelated;
+}
+
+/* ============================================================
+   Icônes SVG (remplacement des emojis) + Raccourcis rebindables
+   ============================================================ */
+.ic-svg {
+  width: 1em;
+  height: 1em;
+  display: block;
+  fill: currentColor;
+  flex: 0 0 auto;
+}
+.ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  gap: 0.4em;
+}
+.ic-missing { opacity: 0.25; }
+
+/* Couleur des icônes selon leur conteneur (lisibilité sur fond coloré) */
+.settings-emblem .ic-svg { color: #2a2c2f; }
+.inventory-emblem .ic-svg { color: #fff; }
+.settings-icon .ic-svg { color: #fff0a0; }
+.craft-btn .ic-svg { color: #0f1a13; }
+.recipe-state .ic-svg { width: 14px; height: 14px; }
+.recipe:not(.recipe-locked) .recipe-state .ic-svg { color: #d7e997; }
+.recipe-locked .recipe-state .ic-svg { color: #9aa0a3; }
+
+/* Aperçus canvas des styles de curseur (boutons du panneau) */
+.cursor-style-btn { padding: 0; }
+.cursor-preview-img {
+  width: 26px;
+  height: 26px;
+  image-rendering: pixelated;
+  display: block;
+  pointer-events: none;
+}
+
+/* --- Raccourcis personnalisables (rebind) --- */
+.keybinds-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.keybinds-hint { color: #9aa0a3; font-size: 10px; font-weight: 700; }
+.keybinds-reset {
+  padding: 5px 10px;
+  border: 2px solid #222426;
+  border-radius: 3px;
+  background: #61666a;
+  color: #fff;
+  font-family: var(--font);
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.25), inset -1px -1px 0 rgba(0,0,0,0.35);
+  transition: filter 0.12s;
+}
+.keybinds-reset:hover { filter: brightness(1.15); }
+
+.keybinds { display: flex; flex-direction: column; gap: 14px; }
+.keybind-group { display: flex; flex-direction: column; gap: 5px; }
+.keybind-group-title {
+  color: #fff0a0;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.4);
+  margin-bottom: 2px;
+}
+.keybind-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 3px;
+  background: rgba(0,0,0,0.15);
+}
+.keybind-label { color: #d4d7d9; font-size: 11px; font-weight: 700; }
+.keybind-key {
+  min-width: 82px;
+  text-align: center;
+  padding: 5px 10px;
+  border: 2px solid #222426;
+  border-radius: 3px;
+  background: #555a5e;
+  color: #fff;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.22), inset -1px -1px 0 rgba(0,0,0,0.32);
+  transition: filter 0.12s, border-color 0.12s, color 0.12s;
+}
+.keybind-key:hover { filter: brightness(1.15); }
+.keybind-key.listening {
+  border-color: #fff4a3;
+  color: #fff4a3;
+  animation: kbPulse 1s ease-in-out infinite;
+}
+@keyframes kbPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,244,163,0); }
+  50% { box-shadow: 0 0 0 3px rgba(255,244,163,0.28); }
+}
+
+@media (max-width: 700px) {
+  .keybind-key { min-width: 64px; }
 }

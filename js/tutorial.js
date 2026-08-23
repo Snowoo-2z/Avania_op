@@ -11,6 +11,7 @@ import { getTileCanvas, getFurnaceCanvas, drawTreeObject, drawRockObject } from 
 import { drawCharacter } from './character.js';
 import { drawHeldItem } from './held.js';
 import { Mob, drawMob } from './mobs/index.js';
+import { icon } from './svgicons.js';
 
 const ILL_W = 168;
 const ILL_H = 110;
@@ -77,6 +78,46 @@ function drawItem(ctx, id, x, y, size = 26) {
   if (sprite) ctx.drawImage(sprite, x - size / 2, y - size / 2, size, size);
 }
 
+// Flèche droite épaisse (remplace le glyph texte '→').
+function drawArrowRight(ctx, x, y, color, len = 14) {
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x - len / 2, y);
+  ctx.lineTo(x + len / 2 - 3, y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x + len / 2, y);
+  ctx.lineTo(x + len / 2 - 7, y - 6);
+  ctx.lineTo(x + len / 2 - 7, y + 6);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// Double flèche (verticale ⇅ ou horizontale ⇄) dessinée, pas en glyph.
+function drawDoubleArrow(ctx, cx, cy, len, vertical, color) {
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  const a = 4;
+  ctx.beginPath();
+  if (vertical) { ctx.moveTo(cx, cy - len / 2); ctx.lineTo(cx, cy + len / 2); }
+  else { ctx.moveTo(cx - len / 2, cy); ctx.lineTo(cx + len / 2, cy); }
+  ctx.stroke();
+  ctx.beginPath();
+  if (vertical) {
+    ctx.moveTo(cx - a, cy - len / 2 + a); ctx.lineTo(cx, cy - len / 2); ctx.lineTo(cx + a, cy - len / 2 + a);
+    ctx.moveTo(cx - a, cy + len / 2 - a); ctx.lineTo(cx, cy + len / 2); ctx.lineTo(cx + a, cy + len / 2 - a);
+  } else {
+    ctx.moveTo(cx - len / 2 + a, cy - a); ctx.lineTo(cx - len / 2, cy); ctx.lineTo(cx - len / 2 + a, cy + a);
+    ctx.moveTo(cx + len / 2 - a, cy - a); ctx.lineTo(cx + len / 2, cy); ctx.lineTo(cx + len / 2 - a, cy + a);
+  }
+  ctx.fill();
+}
+
 function drawShadow(ctx, x, y, w) {
   ctx.fillStyle = 'rgba(0,0,0,0.22)';
   ctx.beginPath();
@@ -98,11 +139,9 @@ function illMove(ctx, app) {
   drawKey(ctx, 92, 48, 24, 22, 'Q');
   drawKey(ctx, 116, 74, 24, 22, 'S');
   drawKey(ctx, 140, 48, 24, 22, 'D');
-  // petites flèches de déplacement
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.font = 'bold 13px system-ui, sans-serif';
-  ctx.fillText('⇅', 104, 40);
-  ctx.fillText('⇄', 104, 66);
+  // petites flèches de déplacement (verticale ⇅ et horizontale ⇄)
+  drawDoubleArrow(ctx, 104, 33, 12, true, 'rgba(255,255,255,0.85)');
+  drawDoubleArrow(ctx, 104, 66, 16, false, 'rgba(255,255,255,0.85)');
 }
 
 function illGather(ctx, app) {
@@ -158,10 +197,7 @@ function illCraft(ctx, app) {
   // ingrédients -> outil
   drawItem(ctx, 'plank', 34, 60, 26);
   drawItem(ctx, 'stick', 64, 60, 26);
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 22px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('→', 92, 64);
+  drawArrowRight(ctx, 92, 60, '#ffffff', 18);
   drawShadow(ctx, 126, 72, 13);
   drawItem(ctx, 'wooden_pickaxe', 126, 60, 34);
 }
@@ -196,10 +232,7 @@ function illFurnace(ctx, app) {
   backdrop(ctx);
   ctx.drawImage(getFurnaceCanvas(true), 40, 52, 32, 32);
   drawShadow(ctx, 40 + 16, 52 + 34, 12);
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 22px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('→', 88, 68);
+  drawArrowRight(ctx, 88, 64, '#ffffff', 18);
   drawItem(ctx, 'ironIngot', 122, 62, 28);
   drawItem(ctx, 'rawIron', 24, 30, 24);
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
@@ -280,7 +313,7 @@ export class Tutorial {
           <h2>Bienvenue</h2>
         </div>
       </div>
-      <button id="tutorial-close" class="craft-close" title="Fermer">✕</button>
+      <button id="tutorial-close" class="craft-close" title="Fermer">${icon('close')}</button>
     `;
     panel.appendChild(header);
 
