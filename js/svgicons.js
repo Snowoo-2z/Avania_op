@@ -8,8 +8,17 @@
 //    - JS dynamique  :  el.innerHTML = icon('lock');
 // ============================================================
 
-const wrap = (inner) =>
-  `<svg class="ic-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">${inner}</svg>`;
+// wrap() construit le markup <svg> final. IMPORTANT : si l'icône fournit
+// de la donnée de path brute (« M12 12c… »), il faut l'envelopper dans un
+// <path d="…"> — sinon c'est du texte brut ignoré par le rendu SVG (rien
+// ne s'affiche). Si l'icône fournit déjà des éléments (<rect>, <g>…), on
+// les utilise tels quels.
+const wrap = (inner) => {
+  const body = inner.trimStart().startsWith('<')
+    ? inner
+    : `<path d="${inner}"/>`;
+  return `<svg class="ic-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">${body}</svg>`;
+};
 
 // Chaque icône est un chemin plein (silhouette), style cohérent avec le
 // rendu voxel du jeu.
