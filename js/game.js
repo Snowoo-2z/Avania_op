@@ -403,7 +403,35 @@ export class Game {
     if (this.paused) { this.input.endFrame(); return; }
 
     // Le zoom est un réglage utilisateur (panneau Paramètres).
-    if (this.settings && this.settings.zoom) this.camera.zoom = this.settings.zoom;
+    // On lerp le zoom pour une transition douce au lieu d'un snap brutal.
+    // Quand le zoom change, on invalide TOUS les chunks de sol : leur
+    // contenu est le même, mais la caméra couvre une surface différente et
+    // les chunks hors-cache provoquaient des trous visuels.
+    if (this.settings && this.settings.zoom) {
+      const targetZoom = this.settings.zoom;
+      const prevZoom = this.camera.zoom;
+      // Transition smooth : on interpole vers la cible.
+      if (Math.abs(prevZoom - targetZoom) > 0.005) {
+        const k = 1 - Math.pow(0.00001, dt);
+        this.camera.zoom = prevZoom + (targetZoom - prevZoom) * k;
+      } else {
+        this.camera.zoom = targetZoom;
+      }
+      // Quand le zoom effectif change notablement, on invalide les caches
+      // dépendant de la résolution : floor chunks + highlight sprites +
+      // nametags. On arrondit pour ne pas invalider à chaque micro-frame.
+      const roundedZoom = Math.round(this.camera.zoom * 4);
+      if (this._lastRoundedZoom !== undefined && this._lastRoundedZoom !== roundedZoom) {
+        this.floorChunkCache.clear();
+        this.highlightCache.clear();
+        this.nameTagCache.clear();
+        this.vignetteCanvas = null;
+        // Reconstruit immédiatement les chunks visibles pour éviter un
+        // flash noir / trou pendant la transition de zoom.
+        this.prewarmFloorChunks(8);
+      }
+      this._lastRoundedZoom = roundedZoom;
+    }
 
     const dir = this.input.getDirection();
     this.player.update(dir, dt, this.world);
