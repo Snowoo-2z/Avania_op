@@ -60,6 +60,61 @@ resize();
 const hud = new HUD(document.getElementById('hud'));
 const hotbar = new Hotbar(document.getElementById('hotbar'), null);
 
+// --- Écran de chargement animé ---
+const loadingScreen    = document.getElementById('loading-screen');
+const loadingMessage   = document.getElementById('loading-message');
+const loadingBarFill   = document.getElementById('loading-bar-fill');
+const loadingHint      = document.querySelector('.loading-hint');
+
+const LOADING_TIPS = [
+  'Astuce : casse les arbres pour récolter du bois !',
+  'Astuce : fabrique une pioche pour miner la pierre.',
+  'Astuce : pose des blocs au clic droit.',
+  'Astuce : touche E pour ouvrir l\'inventaire.',
+  'Astuce : touche C pour l\'établi de craft.',
+  'Astuce : le fer est rare — cherche bien !',
+  'Astuce : les moutons donnent de la laine.',
+  'Astuce : construis un four pour fondre le fer.',
+  'Astuce : touche Q pour lâcher un objet au sol.',
+  'Astuce : les portes bloquent le passage une fois fermées.',
+];
+
+function showLoading() {
+  loadingScreen.classList.remove('hidden', 'fade-out');
+  if (loadingHint) {
+    loadingHint.textContent = LOADING_TIPS[Math.floor(Math.random() * LOADING_TIPS.length)];
+  }
+}
+
+function setLoadingProgress(pct, msg) {
+  if (loadingBarFill) loadingBarFill.style.width = `${Math.min(100, pct)}%`;
+  if (loadingMessage && msg) loadingMessage.textContent = msg;
+}
+
+function hideLoading() {
+  return new Promise((resolve) => {
+    setLoadingProgress(100, 'C\'est parti !');
+    // Petit délai pour que le 100 % soit visible, puis fade-out.
+    setTimeout(() => {
+      loadingScreen.classList.add('fade-out');
+      loadingScreen.addEventListener('animationend', () => {
+        loadingScreen.classList.add('hidden');
+        resolve();
+      }, { once: true });
+      // Filet de sécurité si l'animation ne se déclenche pas.
+      setTimeout(() => {
+        loadingScreen.classList.add('hidden');
+        resolve();
+      }, 600);
+    }, 250);
+  });
+}
+
+// Un petit yield pour que le navigateur peigne les changements d'UI.
+function yieldFrame() {
+  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+}
+
 async function boot() {
   // 0. Icônes : on ne bloque jamais l'écran de création si ça échoue.
   try { initIcons(); } catch (err) { console.error('AVANIA: icônes', err); }
@@ -67,18 +122,43 @@ async function boot() {
   // 1. Création du personnage — toujours en premier.
   const appearance = await openCharacterCreation();
 
-  // 2. Le monde et le tutoriel sont chargés seulement après le bouton
+  // 2. Affiche l'écran de chargement animé pendant l'initialisation.
+  showLoading();
+  setLoadingProgress(5, 'Chargement des modules…');
+  await yieldFrame();
+
+  // 3. Le monde et le tutoriel sont chargés seulement après le bouton
   //    « Entrer », pour qu'une erreur de jeu ne casse plus le créateur.
   const [{ Game }, { Tutorial }] = await Promise.all([
     import('./game.js'),
     import('./tutorial.js'),
   ]);
 
+  setLoadingProgress(20, 'Préparation des textures…');
+  await yieldFrame();
+
   // Les paramètres sont créés AVANT le Game : le jeu les lit chaque frame
   // (zoom, vignette, particules) et applique aussitôt les changements.
   const settings = new Settings();
 
+  setLoadingProgress(30, 'Génération du monde…');
+  await yieldFrame();
+
   const game = new Game(canvas, appearance, settings);
+
+  setLoadingProgress(75, 'Plantation des arbres…');
+  await yieldFrame();
+
+  // Petit temps pour que les chunks finissent de se pré-construire.
+  setLoadingProgress(85, 'Préparation de la vue…');
+  await yieldFrame();
+
+  setLoadingProgress(95, 'Presque prêt…');
+  await yieldFrame();
+
+  // Fait disparaître l'écran de chargement avec un beau fade-out.
+  await hideLoading();
+
   game.start();
   hud.show();
   document.getElementById('controls-hint').classList.remove('hidden');

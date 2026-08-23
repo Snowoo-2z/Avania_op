@@ -246,42 +246,98 @@ function woodGrain(ctx, face) {
 }
 
 function stoneTexture(ctx, face) {
-  const joint = withAlpha('#42464b', 0.5);
-  const light = withAlpha('#e1e2df', 0.45);
-  const mid = withAlpha('#73777c', 0.58);
+  // ---------------------------------------------------------------
+  //  Cobblestone façon Minecraft : pavés irréguliers gris, joints
+  //  sombres, reflets clairs en haut de chaque pavé. Reconnaissable
+  //  instantanément comme la « cobblestone » du jeu.
+  // ---------------------------------------------------------------
+  const jointCol  = withAlpha('#32363a', 0.72);
+  const lightHi   = withAlpha('#d0d1ce', 0.52);
+  const darkCrack = withAlpha('#26292c', 0.58);
+
+  // Pavés irréguliers : chaque rect est un { x, y, w, h, shade }.
+  // Les teintes alternent pour casser la monotonie (clair / moyen / sombre).
+  const pavesTop = [
+    // rangée haute
+    { x: 2,  y: 2,  w: 7,  h: 5,  c: '#8a8b90' },
+    { x: 10, y: 2,  w: 6,  h: 6,  c: '#7e7f84' },
+    { x: 17, y: 2,  w: 8,  h: 5,  c: '#929396' },
+    // rangée milieu-haute
+    { x: 2,  y: 8,  w: 5,  h: 6,  c: '#757679' },
+    { x: 8,  y: 9,  w: 8,  h: 5,  c: '#999a9e' },
+    { x: 17, y: 8,  w: 6,  h: 6,  c: '#838488' },
+    // rangée milieu-basse
+    { x: 2,  y: 15, w: 8,  h: 5,  c: '#8d8e92' },
+    { x: 11, y: 15, w: 5,  h: 6,  c: '#76777b' },
+    { x: 17, y: 15, w: 7,  h: 5,  c: '#9c9da0' },
+    // rangée basse
+    { x: 2,  y: 21, w: 6,  h: 4,  c: '#84858a' },
+    { x: 9,  y: 22, w: 7,  h: 4,  c: '#7a7b7f' },
+    { x: 17, y: 21, w: 8,  h: 5,  c: '#8f9094' },
+  ];
+
+  const pavesSide = [
+    { x: 2,  y: 26, w: 8,  h: 4,  c: '#6e6f73' },
+    { x: 11, y: 26, w: 6,  h: 4,  c: '#7a7b7f' },
+    { x: 18, y: 26, w: 7,  h: 4,  c: '#6a6b70' },
+    { x: 26, y: 2,  w: 5,  h: 6,  c: '#717276' },
+    { x: 26, y: 9,  w: 5,  h: 5,  c: '#7f8084' },
+    { x: 26, y: 15, w: 5,  h: 5,  c: '#6d6e72' },
+    { x: 26, y: 21, w: 5,  h: 4,  c: '#767779' },
+  ];
+
+  const paves = face === 'top' ? pavesTop : pavesSide;
+  for (const p of paves) {
+    // Pavé principal
+    ctx.fillStyle = p.c;
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    // Reflet clair en haut du pavé (lumière zénithale)
+    ctx.fillStyle = lightHi;
+    ctx.fillRect(p.x, p.y, p.w, 1);
+    ctx.fillRect(p.x, p.y, 1, p.h);
+    // Ombre basse du pavé
+    ctx.fillStyle = darkCrack;
+    ctx.fillRect(p.x, p.y + p.h - 1, p.w, 1);
+    ctx.fillRect(p.x + p.w - 1, p.y, 1, p.h);
+  }
 
   if (face === 'top') {
-    // Éclats minéraux en amas : silhouettes anguleuses, joints et facettes.
-    // Cela donne une pierre taillée / rocheuse plutôt qu'un carré gris uni.
-    ctx.fillStyle = mid;
-    ctx.fillRect(5, 6, 7, 5);
-    ctx.fillRect(19, 5, 6, 7);
-    ctx.fillRect(12, 16, 8, 7);
-    ctx.fillRect(4, 20, 5, 4);
-    ctx.fillRect(22, 17, 4, 5);
-    ctx.fillStyle = light;
-    ctx.fillRect(6, 6, 5, 2);
-    ctx.fillRect(20, 5, 4, 2);
-    ctx.fillRect(13, 16, 5, 2);
-    ctx.fillRect(5, 20, 3, 1);
-    ctx.strokeStyle = joint;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(3, 14); ctx.lineTo(9, 12); ctx.lineTo(14, 15); ctx.lineTo(19, 12); ctx.lineTo(27, 14);
-    ctx.moveTo(10, 3); ctx.lineTo(13, 8); ctx.lineTo(12, 13);
-    ctx.moveTo(20, 14); ctx.lineTo(20, 19); ctx.lineTo(26, 24);
-    ctx.stroke();
-    return;
-  }
+    // Joints sombres irréguliers entre les pavés (façon Minecraft)
+    ctx.fillStyle = jointCol;
+    // Horizontaux
+    ctx.fillRect(2, 7, 23, 1);
+    ctx.fillRect(2, 14, 23, 1);
+    ctx.fillRect(2, 20, 23, 1);
+    // Verticaux (décalés en quinconce pour briser la grille)
+    ctx.fillRect(9,  2, 1, 6);
+    ctx.fillRect(16, 2, 1, 6);
+    ctx.fillRect(7,  8, 1, 6);
+    ctx.fillRect(16, 8, 1, 6);
+    ctx.fillRect(10, 15, 1, 5);
+    ctx.fillRect(16, 15, 1, 6);
+    ctx.fillRect(8,  21, 1, 5);
+    ctx.fillRect(16, 21, 1, 5);
 
-  // Petits lits de roche sur les chants visibles du cube.
-  ctx.fillStyle = withAlpha('#4c5055', 0.52);
-  for (const [x, y, w] of [[3, 28, 7], [12, 27, 5], [19, 29, 6], [27, 8, 4], [28, 18, 3], [27, 25, 5]]) {
-    ctx.fillRect(x, y, w, 1);
+    // Petits pixels de speckle minéral (points brillants aléatoires)
+    ctx.fillStyle = withAlpha('#c8c9c6', 0.38);
+    ctx.fillRect(5,  4,  2, 1);
+    ctx.fillRect(13, 4,  1, 1);
+    ctx.fillRect(20, 3,  2, 1);
+    ctx.fillRect(4,  11, 2, 1);
+    ctx.fillRect(12, 10, 1, 1);
+    ctx.fillRect(19, 10, 2, 1);
+    ctx.fillRect(6,  17, 1, 1);
+    ctx.fillRect(14, 18, 2, 1);
+    ctx.fillRect(21, 17, 1, 1);
+  } else {
+    // Joints sur les faces latérales
+    ctx.fillStyle = jointCol;
+    ctx.fillRect(10, 26, 1, 4);
+    ctx.fillRect(17, 26, 1, 4);
+    ctx.fillRect(26, 8, 5, 1);
+    ctx.fillRect(26, 14, 5, 1);
+    ctx.fillRect(26, 20, 5, 1);
   }
-  ctx.fillStyle = withAlpha('#d6d7d5', 0.25);
-  ctx.fillRect(4, 27, 5, 1);
-  ctx.fillRect(27, 4, 2, 5);
 }
 
 function plankTexture(ctx, face) {
@@ -400,28 +456,95 @@ function ironBlockTexture(ctx, top, dark) {
   ctx.fillRect(8, 20, 3, 3);
 }
 
-// --- Four : pierre grise avec une bouche sombre et des rivets ---
-function furnaceTexture(ctx, top, dark) {
-  // bouche du foyer
-  ctx.fillStyle = '#2a2b2e';
-  ctx.fillRect(11, 11, 11, 11);
-  ctx.fillStyle = '#1d1e21';
-  ctx.fillRect(12, 12, 9, 9);
-  // barre du foyer
-  ctx.fillStyle = '#3f4146';
-  ctx.fillRect(10, 10, 13, 2);
-  ctx.fillRect(10, 21, 13, 2);
+// --- Four : bloc de cobblestone avec une bouche sombre, façon Minecraft ---
+// Le four Minecraft a une face supérieure en cobblestone, une face avant
+// avec une ouverture sombre entourée de pavés de pierre, et des rivets/
+// grille en fer.
+function furnaceTexture(ctx, face) {
+  if (face === 'top') {
+    // Dessus du four = cobblestone ordinaire (même apparence que stone)
+    const pavesTop = [
+      { x: 2, y: 2, w: 7, h: 5, c: '#7e7f84' },
+      { x: 10, y: 2, w: 6, h: 6, c: '#8a8b90' },
+      { x: 17, y: 2, w: 8, h: 5, c: '#76777b' },
+      { x: 2, y: 8, w: 5, h: 6, c: '#929396' },
+      { x: 8, y: 9, w: 8, h: 5, c: '#7a7b7f' },
+      { x: 17, y: 8, w: 6, h: 6, c: '#8d8e92' },
+      { x: 2, y: 15, w: 8, h: 5, c: '#84858a' },
+      { x: 11, y: 15, w: 5, h: 6, c: '#999a9e' },
+      { x: 17, y: 15, w: 7, h: 5, c: '#76777b' },
+    ];
+    for (const p of pavesTop) {
+      ctx.fillStyle = p.c;
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.fillStyle = withAlpha('#d0d1ce', 0.38);
+      ctx.fillRect(p.x, p.y, p.w, 1);
+      ctx.fillStyle = withAlpha('#26292c', 0.42);
+      ctx.fillRect(p.x, p.y + p.h - 1, p.w, 1);
+    }
+    ctx.fillStyle = withAlpha('#32363a', 0.55);
+    ctx.fillRect(9, 2, 1, 6);
+    ctx.fillRect(16, 2, 1, 6);
+    ctx.fillRect(7, 8, 1, 6);
+    ctx.fillRect(16, 8, 1, 6);
+    ctx.fillRect(10, 15, 1, 5);
+    ctx.fillRect(16, 15, 1, 5);
+    return;
+  }
+
+  // Face avant et droite : pavés de cobblestone + bouche du four
+  // Fond de pierre
+  const pavs = [
+    { x: 3, y: 2, w: 7, h: 4, c: '#7e7f84' },
+    { x: 11, y: 2, w: 6, h: 3, c: '#8a8b90' },
+    { x: 18, y: 2, w: 6, h: 4, c: '#76777b' },
+    { x: 3, y: 19, w: 8, h: 4, c: '#84858a' },
+    { x: 12, y: 20, w: 6, h: 4, c: '#7a7b7f' },
+    { x: 19, y: 19, w: 5, h: 5, c: '#929396' },
+  ];
+  for (const p of pavs) {
+    ctx.fillStyle = p.c;
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    ctx.fillStyle = withAlpha('#d0d1ce', 0.32);
+    ctx.fillRect(p.x, p.y, p.w, 1);
+    ctx.fillStyle = withAlpha('#26292c', 0.38);
+    ctx.fillRect(p.x, p.y + p.h - 1, p.w, 1);
+  }
+
+  // Bouche du four (cavité sombre)
+  ctx.fillStyle = '#1a1b1e';
+  ctx.fillRect(9, 7, 14, 11);
+  ctx.fillStyle = '#111214';
+  ctx.fillRect(10, 8, 12, 9);
+
+  // Grille en fer dans la bouche (barres horizontales)
   ctx.fillStyle = '#4a4c52';
-  ctx.fillRect(10, 10, 13, 1);
-  // rivets
-  ctx.fillStyle = '#4e5056';
-  ctx.fillRect(6, 5, 2, 2);
-  ctx.fillRect(24, 5, 2, 2);
-  ctx.fillRect(6, 24, 2, 2);
-  ctx.fillRect(24, 24, 2, 2);
-  // reflet
-  ctx.fillStyle = withAlpha('#ffffff', 0.14);
-  ctx.fillRect(3, 2, S - 8, 1);
+  ctx.fillRect(10, 10, 12, 1);
+  ctx.fillRect(10, 13, 12, 1);
+  ctx.fillRect(10, 16, 12, 1);
+  // Reflets sur les barres
+  ctx.fillStyle = withAlpha('#9a9ca2', 0.45);
+  ctx.fillRect(11, 10, 8, 1);
+  ctx.fillRect(11, 13, 6, 1);
+
+  // Cadre de la bouche (pierre plus sombre)
+  ctx.fillStyle = '#3a3c40';
+  ctx.fillRect(9, 7, 14, 1);   // haut
+  ctx.fillRect(9, 17, 14, 1);  // bas
+  ctx.fillRect(9, 7, 1, 11);   // gauche
+  ctx.fillRect(22, 7, 1, 11);  // droite
+  // Biseau intérieur clair
+  ctx.fillStyle = withAlpha('#b0b2b8', 0.3);
+  ctx.fillRect(10, 7, 12, 1);
+  ctx.fillRect(9, 8, 1, 9);
+  // Biseau intérieur sombre
+  ctx.fillStyle = withAlpha('#0a0b0d', 0.4);
+  ctx.fillRect(10, 17, 12, 1);
+  ctx.fillRect(22, 8, 1, 9);
+
+  // Lueur rougeâtre au fond de la bouche (braises éteintes)
+  ctx.fillStyle = withAlpha('#5a2010', 0.2);
+  ctx.fillRect(12, 14, 8, 3);
 }
 
 // --- Laine : boules blanches douces ---
@@ -445,56 +568,189 @@ function woolBlockTexture(ctx, top, dark) {
 }
 
 // --- Porte : fermée (vue de face) ou ouverte (à plat sur le sol) ---
+// Design magnifique inspiré d'une porte en chêne Minecraft : deux
+// panneaux sculptés, cadre massif, charnières en fer forgé, poignée
+// dorée avec reflet, grain du bois visible.
 function drawDoorClosed(ctx) {
-  ctx.fillStyle = shade(BLOCK_DEFS.door.color, 0.9);
-  ctx.fillRect(3, 1, S - 6, S - 2);
-  ctx.fillStyle = shade(BLOCK_DEFS.door.color, 1.12);
-  ctx.fillRect(5, 3, S - 10, S - 6);
-  // cadre
-  ctx.fillStyle = shade(BLOCK_DEFS.door.color, 0.72);
-  ctx.fillRect(3, 1, 3, S - 2);
-  ctx.fillRect(S - 6, 1, 3, S - 2);
-  // planches verticales
-  ctx.strokeStyle = withAlpha('#5a3a1e', 0.45);
+  const base = BLOCK_DEFS.door.color;
+  const dark  = shade(base, 0.62);
+  const mid   = shade(base, 0.82);
+  const light = shade(base, 1.12);
+  const hi    = shade(base, 1.28);
+
+  // Fond sombre (vu derrière le cadre, dans les creux)
+  ctx.fillStyle = dark;
+  ctx.fillRect(2, 0, S - 4, S);
+
+  // Cadre massif en bois sombre — montants et traverse
+  ctx.fillStyle = mid;
+  ctx.fillRect(2, 0, 4, S);        // montant gauche
+  ctx.fillRect(S - 6, 0, 4, S);    // montant droit
+  ctx.fillRect(2, 0, S - 4, 3);    // traverse haute
+  ctx.fillRect(2, S - 3, S - 4, 3); // traverse basse
+  ctx.fillRect(2, 14, S - 4, 3);   // traverse milieu
+
+  // Reflet du cadre (bord intérieur clair)
+  ctx.fillStyle = withAlpha('#ffffff', 0.18);
+  ctx.fillRect(3, 1, 2, S - 2);
+  ctx.fillRect(3, 1, S - 6, 1);
+
+  // --- Panneau haut (entre traverse haute et milieu) ---
+  ctx.fillStyle = light;
+  ctx.fillRect(7, 4, S - 14, 9);
+  // Relief intérieur : biseau clair en haut et sombre en bas
+  ctx.fillStyle = hi;
+  ctx.fillRect(7, 4, S - 14, 1);
+  ctx.fillRect(7, 4, 1, 9);
+  ctx.fillStyle = shade(base, 0.72);
+  ctx.fillRect(7, 12, S - 14, 1);
+  ctx.fillRect(S - 8, 4, 1, 9);
+
+  // --- Panneau bas (entre traverse milieu et basse) ---
+  ctx.fillStyle = light;
+  ctx.fillRect(7, 18, S - 14, 10);
+  ctx.fillStyle = hi;
+  ctx.fillRect(7, 18, S - 14, 1);
+  ctx.fillRect(7, 18, 1, 10);
+  ctx.fillStyle = shade(base, 0.72);
+  ctx.fillRect(7, 27, S - 14, 1);
+  ctx.fillRect(S - 8, 18, 1, 10);
+
+  // Veines du bois sur les panneaux (pixel art subtil)
+  ctx.strokeStyle = withAlpha('#6a4520', 0.32);
   ctx.lineWidth = 1;
-  for (let x = 8; x < S - 6; x += 6) {
-    ctx.beginPath();
-    ctx.moveTo(x, 4);
-    ctx.lineTo(x, S - 4);
-    ctx.stroke();
+  // panneau haut
+  ctx.beginPath();
+  ctx.moveTo(9, 6); ctx.lineTo(13, 5); ctx.lineTo(18, 6);
+  ctx.moveTo(10, 9); ctx.lineTo(15, 8); ctx.lineTo(21, 9);
+  ctx.stroke();
+  // panneau bas
+  ctx.beginPath();
+  ctx.moveTo(9, 21); ctx.lineTo(14, 20); ctx.lineTo(19, 21);
+  ctx.moveTo(10, 24); ctx.lineTo(16, 23); ctx.lineTo(22, 24);
+  ctx.moveTo(9, 26); ctx.lineTo(13, 25.5); ctx.lineTo(18, 26);
+  ctx.stroke();
+
+  // Nœuds du bois discrets
+  ctx.fillStyle = withAlpha('#5a3818', 0.35);
+  ctx.fillRect(12, 7, 2, 2);
+  ctx.fillRect(18, 23, 2, 2);
+  ctx.fillStyle = withAlpha('#e0b870', 0.28);
+  ctx.fillRect(13, 7, 1, 1);
+  ctx.fillRect(19, 23, 1, 1);
+
+  // --- Charnières en fer forgé ---
+  const hingeX = 3;
+  for (const hy of [5, 23]) {
+    // Platine
+    ctx.fillStyle = '#3e3e44';
+    ctx.fillRect(hingeX, hy, 5, 3);
+    // Reflet métal
+    ctx.fillStyle = withAlpha('#b0b0b8', 0.5);
+    ctx.fillRect(hingeX, hy, 5, 1);
+    // Pivot rond
+    ctx.fillStyle = '#2a2a2e';
+    ctx.fillRect(hingeX, hy, 2, 3);
+    ctx.fillStyle = withAlpha('#ffffff', 0.22);
+    ctx.fillRect(hingeX, hy, 1, 1);
+    // Rivet
+    ctx.fillStyle = '#55555c';
+    ctx.fillRect(hingeX + 3, hy + 1, 1, 1);
   }
-  // poignée
-  ctx.fillStyle = '#3a3a3e';
-  ctx.fillRect(S - 8, S / 2 - 1, 3, 3);
-  ctx.fillStyle = withAlpha('#ffffff', 0.3);
-  ctx.fillRect(S - 8, S / 2 - 1, 1, 3);
-  // contour
-  ctx.strokeStyle = shade(BLOCK_DEFS.door.color, 0.5);
+
+  // --- Poignée dorée ---
+  const hx = S - 10, hy2 = 14;
+  // Platine de la poignée
+  ctx.fillStyle = '#4a3a18';
+  ctx.fillRect(hx, hy2 + 1, 4, 5);
+  ctx.fillStyle = '#c8a23c';
+  ctx.fillRect(hx + 1, hy2 + 2, 2, 3);
+  // Bouton rond doré
+  ctx.fillStyle = '#e8c44e';
+  ctx.fillRect(hx, hy2 + 3, 4, 2);
+  // Reflet doré
+  ctx.fillStyle = withAlpha('#fff8d0', 0.6);
+  ctx.fillRect(hx + 1, hy2 + 3, 1, 1);
+  // Ombre du bouton
+  ctx.fillStyle = withAlpha('#000000', 0.2);
+  ctx.fillRect(hx + 1, hy2 + 5, 2, 1);
+
+  // --- Serrure (petit trou sous la poignée) ---
+  ctx.fillStyle = '#1a1a1e';
+  ctx.fillRect(hx + 1, hy2 + 7, 2, 1);
+
+  // Contour extérieur sombre pour lisibilité
+  ctx.strokeStyle = shade(base, 0.42);
   ctx.lineWidth = 1;
-  ctx.strokeRect(0.5, 0.5, S - 1, S - 1);
+  ctx.strokeRect(1.5, 0.5, S - 3, S - 1);
 }
 
 function drawDoorOpen(ctx) {
-  // Porte ouverte : à plat sur le sol, le long du bord gauche de la tuile
-  ctx.fillStyle = shade(BLOCK_DEFS.door.color, 0.95);
-  ctx.fillRect(1, 4, S - 8, 10);
-  ctx.fillStyle = shade(BLOCK_DEFS.door.color, 1.15);
-  ctx.fillRect(2, 5, S - 11, 8);
-  ctx.strokeStyle = withAlpha('#5a3a1e', 0.45);
+  // Porte ouverte : vue du dessus, la porte est rabattue à plat.
+  // On dessine la même porte mais « en perspective raccourcie ».
+  const base = BLOCK_DEFS.door.color;
+  const dark  = shade(base, 0.65);
+  const mid   = shade(base, 0.85);
+  const light = shade(base, 1.1);
+  const hi    = shade(base, 1.22);
+
+  // Ombre portée sous la porte
+  ctx.fillStyle = withAlpha('#000000', 0.14);
+  ctx.fillRect(3, 15, S - 10, 3);
+
+  // Corps principal de la porte (rabattue vers le haut de la tuile)
+  const dx = 2, dy = 3, dw = S - 8, dh = 11;
+  ctx.fillStyle = dark;
+  ctx.fillRect(dx, dy, dw, dh);
+
+  // Cadre
+  ctx.fillStyle = mid;
+  ctx.fillRect(dx, dy, dw, 2);       // haut
+  ctx.fillRect(dx, dy + dh - 2, dw, 2); // bas
+  ctx.fillRect(dx, dy, 3, dh);       // gauche
+  ctx.fillRect(dx + dw - 3, dy, 3, dh); // droite
+  ctx.fillRect(dx, dy + 5, dw, 2);   // traverse milieu
+
+  // Panneau haut
+  ctx.fillStyle = light;
+  ctx.fillRect(dx + 4, dy + 2, dw - 8, 3);
+  ctx.fillStyle = hi;
+  ctx.fillRect(dx + 4, dy + 2, dw - 8, 1);
+
+  // Panneau bas
+  ctx.fillStyle = light;
+  ctx.fillRect(dx + 4, dy + 7, dw - 8, 3);
+  ctx.fillStyle = hi;
+  ctx.fillRect(dx + 4, dy + 7, dw - 8, 1);
+
+  // Veines raccourcies
+  ctx.strokeStyle = withAlpha('#6a4520', 0.25);
   ctx.lineWidth = 1;
-  for (let x = 7; x < S - 10; x += 6) {
-    ctx.beginPath();
-    ctx.moveTo(x, 5);
-    ctx.lineTo(x, 13);
-    ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(dx + 6, dy + 3); ctx.lineTo(dx + 12, dy + 3);
+  ctx.moveTo(dx + 7, dy + 9); ctx.lineTo(dx + 14, dy + 8);
+  ctx.stroke();
+
+  // Charnières (côté gauche, à plat)
+  for (const cy of [dy + 2, dy + 8]) {
+    ctx.fillStyle = '#3e3e44';
+    ctx.fillRect(dx, cy, 3, 2);
+    ctx.fillStyle = withAlpha('#b0b0b8', 0.4);
+    ctx.fillRect(dx, cy, 3, 1);
+    ctx.fillStyle = '#2a2a2e';
+    ctx.fillRect(dx, cy, 2, 2);
   }
-  // charnières
-  ctx.fillStyle = '#3a3a3e';
-  ctx.fillRect(3, 6, 3, 2);
-  ctx.fillRect(3, 10, 3, 2);
-  // ombre portée sous la porte ouverte
-  ctx.fillStyle = withAlpha('#000000', 0.12);
-  ctx.fillRect(2, 15, S - 9, 2);
+
+  // Poignée dorée (petite, vue du dessus)
+  ctx.fillStyle = '#c8a23c';
+  ctx.fillRect(dx + dw - 6, dy + 5, 3, 2);
+  ctx.fillStyle = '#e8c44e';
+  ctx.fillRect(dx + dw - 6, dy + 5, 2, 1);
+
+  // Contour
+  ctx.strokeStyle = shade(base, 0.45);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(dx + 0.5, dy + 0.5, dw - 1, dh - 1);
 }
 
 function dirtBlockTexture(ctx, top, dark) {
@@ -547,17 +803,48 @@ export function buildTileset() {
     waterCache[f] = c;
   }
   buildObjectSprites();
-  // Variante « four allumé » : une lueur orange dans la bouche.
+  // Variante « four allumé » : lueur vive dans la bouche avec dégradé
+  // de flamme (rouge → orange → jaune), barres de grille rougeoyantes.
   const lit = makeCanvas(S, S);
   const lctx = lit.getContext('2d');
   lctx.imageSmoothingEnabled = false;
   lctx.drawImage(cache.furnace, 0, 0);
-  lctx.fillStyle = '#ff9a3c';
-  lctx.fillRect(13, 13, 7, 7);
-  lctx.fillStyle = '#ffd28a';
-  lctx.fillRect(14, 14, 4, 4);
-  lctx.fillStyle = withAlpha('#ff9a3c', 0.28);
-  lctx.fillRect(11, 11, 11, 11);
+  // Halo de chaleur autour de la bouche
+  lctx.fillStyle = withAlpha('#ff6a1c', 0.15);
+  lctx.fillRect(8, 6, 16, 13);
+  // Fond rougeoyant de la bouche
+  lctx.fillStyle = '#3a1508';
+  lctx.fillRect(10, 8, 12, 9);
+  // Flammes : dégradé du bas (jaune vif) vers le haut (rouge sombre)
+  lctx.fillStyle = '#c22a08';
+  lctx.fillRect(11, 9, 10, 3);
+  lctx.fillStyle = '#e05a1a';
+  lctx.fillRect(11, 12, 10, 2);
+  lctx.fillStyle = '#ff8a2c';
+  lctx.fillRect(12, 14, 8, 2);
+  lctx.fillStyle = '#ffc44e';
+  lctx.fillRect(13, 15, 6, 1);
+  lctx.fillStyle = '#ffe080';
+  lctx.fillRect(14, 15, 4, 1);
+  // Braises au fond
+  lctx.fillStyle = '#ffd060';
+  lctx.fillRect(12, 16, 8, 1);
+  lctx.fillStyle = '#ff9030';
+  lctx.fillRect(11, 16, 2, 1);
+  lctx.fillRect(19, 16, 2, 1);
+  // Barres de grille (rougeoyantes par le feu)
+  lctx.fillStyle = '#8a4428';
+  lctx.fillRect(10, 10, 12, 1);
+  lctx.fillRect(10, 13, 12, 1);
+  // Reflet orange sur les barres
+  lctx.fillStyle = withAlpha('#ff9a3c', 0.5);
+  lctx.fillRect(11, 10, 8, 1);
+  lctx.fillRect(11, 13, 6, 1);
+  // Particules d'étincelles (2-3 points jaunes au-dessus)
+  lctx.fillStyle = '#ffd060';
+  lctx.fillRect(14, 8, 1, 1);
+  lctx.fillRect(17, 9, 1, 1);
+  lctx.fillRect(12, 9, 1, 1);
   cache.furnaceLit = lit;
   built = true;
   return cache;

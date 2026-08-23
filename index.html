@@ -150,7 +150,7 @@
     <div class="panel-frame panel-frame--furnace">
       <header class="crafting-header">
         <div>
-          <span class="panel-eyebrow">FOUR</span>
+          <span class="panel-eyebrow">FONDERIE</span>
           <strong><span class="ic" data-icon="fire"></span> Four</strong>
         </div>
         <div class="crafting-header-actions">
@@ -159,12 +159,19 @@
       </header>
       <div class="furnace-body">
         <div class="furnace-workbench">
-          <div class="furnace-cols">
+          <!-- Layout Minecraft : entrée en haut, flamme au milieu, combustible en bas, flèche → sortie -->
+          <div class="furnace-left">
             <div class="furnace-input-col">
               <div class="furnace-label">ENTRÉE</div>
               <div id="furnace-input" class="furnace-slot-wrap"></div>
             </div>
-            <div class="furnace-flame" aria-hidden="true"><i id="furnace-flame-fill"></i></div>
+            <div class="furnace-flame-wrap">
+              <div class="furnace-flame" aria-hidden="true">
+                <i id="furnace-flame-fill"></i>
+                <span class="furnace-flame-icon"></span>
+              </div>
+              <span id="furnace-fuel-timer" class="furnace-fuel-timer"></span>
+            </div>
             <div class="furnace-fuel-col">
               <div class="furnace-label">COMBUSTIBLE</div>
               <div id="furnace-fuel" class="furnace-slot-wrap"></div>
@@ -241,7 +248,7 @@
           <div class="settings-section-title"><span class="settings-icon" data-icon="bolt"></span><h3>Gameplay</h3></div>
           <div class="settings-option">
             <label><span>Zoom de la caméra</span><span id="zoom-value" class="settings-value">2×</span></label>
-            <input type="range" id="zoom-range" min="1" max="4" value="2" step="0.5" />
+            <input type="range" id="zoom-range" min="1" max="4" value="2" step="0.25" />
           </div>
           <div class="settings-option toggle-option">
             <label><span>Vignette d'ambiance</span><span class="settings-hint">Assombrit les bords de l'écran</span></label>
@@ -265,6 +272,26 @@
 
   <!-- Bouton paramètres -->
   <button id="settings-btn" class="settings-btn hidden" title="Paramètres"><span class="ic" data-icon="gear"></span></button>
+
+  <!-- Écran de chargement animé -->
+  <div id="loading-screen" class="loading-screen hidden">
+    <div class="loading-content">
+      <div class="loading-logo-mark">◼</div>
+      <h1 class="loading-title">AVANIA</h1>
+      <div class="loading-blocks">
+        <span class="loading-block lb-1"></span>
+        <span class="loading-block lb-2"></span>
+        <span class="loading-block lb-3"></span>
+        <span class="loading-block lb-4"></span>
+        <span class="loading-block lb-5"></span>
+      </div>
+      <p id="loading-message" class="loading-message">Génération du monde…</p>
+      <div class="loading-bar-track">
+        <div id="loading-bar-fill" class="loading-bar-fill"></div>
+      </div>
+      <p class="loading-hint">Astuce : casse les arbres pour récolter du bois !</p>
+    </div>
+  </div>
 
   <!-- Écran de création du personnage -->
   <div id="customization" class="overlay">

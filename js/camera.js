@@ -23,8 +23,8 @@ export class Camera {
 
   // suit en douceur (lerp)
   follow(tx, ty, dt) {
-    const tx2 = clamp(tx - this.viewW / 2 / this.zoom, 0, this.worldW - this.viewW / this.zoom);
-    const ty2 = clamp(ty - this.viewH / 2 / this.zoom, 0, this.worldH - this.viewH / this.zoom);
+    const tx2 = clamp(tx - this.viewW / 2 / this.zoom, 0, Math.max(0, this.worldW - this.viewW / this.zoom));
+    const ty2 = clamp(ty - this.viewH / 2 / this.zoom, 0, Math.max(0, this.worldH - this.viewH / this.zoom));
     const k = 1 - Math.pow(0.0001, dt); // lissage indépendant du framerate
     this.x = lerp(this.x, tx2, k);
     this.y = lerp(this.y, ty2, k);
