@@ -216,6 +216,10 @@ export const RECIPES = [
     inputs: { stone: 2, stick: 1 }, pattern: [['stone'], ['stone'], ['stick']], category: 'outils',
   },
   {
+    id: 'ironIngot', label: 'Lingot de fer', out: 'ironIngot', outN: 1,
+    inputs: { rawIron: 1 }, pattern: [['rawIron']], category: 'matériaux',
+  },
+  {
     id: 'iron_pickaxe', label: 'Pioche en fer', out: 'iron_pickaxe', outN: 1,
     inputs: { ironIngot: 3, stick: 2 }, pattern: [['ironIngot', 'ironIngot', 'ironIngot'], [null, 'stick', null], [null, 'stick', null]], category: 'outils',
   },

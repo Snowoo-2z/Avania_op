@@ -106,7 +106,7 @@ export function updateFurnace(data, dt) {
   } else if (data.progress > 0) {
     // Pas de feu ou rien à fondre : la cuisson recule doucement
     // (exactement comme dans Minecraft quand le feu s'éteint).
-    data.progress = Math.max(0, data.progress - dt * 2);
+    data.progress = Math.max(0, data.progress - dt * 0.25);
     changed = true;
   }
 
