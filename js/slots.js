@@ -44,7 +44,10 @@ export class SlotManager {
     this.lastClickEl = null;
 
     this._boundMove = (event) => this.onMove(event);
-    this._boundUp = () => this.onUp();
+    // Conserver l'événement : onUp doit savoir si le relâchement a eu lieu
+    // sur une case ou sur le décor. L'ancienne closure jetait l'événement,
+    // ce qui faisait considérer chaque relâchement comme « hors inventaire ».
+    this._boundUp = (event) => this.onUp(event);
     this._boundKey = (event) => this.onKey(event);
   }
 
@@ -78,6 +81,9 @@ export class SlotManager {
     el.addEventListener('pointerdown', (event) => {
       if (event.button !== 0 && event.button !== 2) return;
       if (event.button === 2) event.preventDefault();
+      // Ne pas utiliser setPointerCapture ici : le pointerenter des cases
+      // suivantes est nécessaire au glisser-répartir. Le gestionnaire global
+      // pointermove/pointerup continue de suivre le geste hors de la case.
       manager.handleDown(el, kind, index, event);
     });
 
@@ -166,13 +172,18 @@ export class SlotManager {
       // la répartir en maintenant le bouton et en survolant d'autres cases.
       inv._pointerClick(arr, index, size, right ? 'right' : 'left');
       if (inv.cursor) {
-        inv.beginDragDistribute(right ? 'right' : 'left');
+        // La case de départ ne fait pas partie des cibles. Sinon, un clic
+        // droit qui prend la moitié la reposait immédiatement au relâchement
+        // (et donnait l'impression d'une division aléatoire). Les cases
+        // traversées après le départ restent enregistrées par pointerenter.
+        inv.beginDragDistribute(right ? 'right' : 'left', event.shiftKey);
         this.dragging = true;
-        el.classList.add('drag-source');
       }
     } else {
-      // Le curseur est déjà chargé : on démarre le placement / la répartition.
-      inv.beginDragDistribute(right ? 'right' : 'left');
+      // Le curseur est déjà chargé : on démarre le placement. La
+      // répartition multi-cases est volontaire et nécessite Shift, afin
+      // qu'un déplacement normal ne divise jamais une pile par accident.
+      inv.beginDragDistribute(right ? 'right' : 'left', event.shiftKey);
       inv.dragDistributeEnter(arr, index);
       this.dragging = true;
       el.classList.add('drag-source');
@@ -185,11 +196,15 @@ export class SlotManager {
     document.querySelectorAll('.mc-slot.drag-source, .mc-slot.drag-target').forEach((el) => {
       el.classList.remove('drag-source', 'drag-target');
     });
-    const releaseOutside = !(
-      event && event.target
-      && typeof event.target.closest === 'function'
-      && event.target.closest('.mc-slot, .craft-output')
-    );
+    // Avec pointer capture, event.target peut rester la case de départ même
+    // si le pointeur est sorti du panneau. La position réelle est donc la
+    // source de vérité au relâchement.
+    const releaseEl = event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
+      ? document.elementFromPoint(event.clientX, event.clientY)
+      : event && event.target;
+    const releaseOutside = !(releaseEl
+      && typeof releaseEl.closest === 'function'
+      && releaseEl.closest('.mc-slot, .craft-output'));
     this.inventory.endDragDistribute();
     // Relâcher hors de toute case (sur le décor) jette la pile du curseur
     // au sol, comme quand on sort un objet de l'inventaire dans Minecraft.

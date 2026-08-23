@@ -327,9 +327,13 @@ export class Inventory {
     return placed;
   }
 
-  beginDragDistribute(button = 'left') {
+  beginDragDistribute(button = 'left', distribute = false) {
     this.drag = {
       button,
+      // Une répartition sur plusieurs cases doit être explicitement
+      // demandée (Shift + glisser). Un glisser classique déplace toute la
+      // pile vers la première case visée.
+      distribute,
       targets: [],
       cursorStart: this.cursor ? this.cursor.count : 0,
     };
@@ -359,8 +363,21 @@ export class Inventory {
       return true;
     }
 
-    // Répartition : clic droit = un objet par case ; clic gauche = la pile
-    // est divisée (ceil) entre les cases compatibles, dans l'ordre survolé.
+    // Un glisser normal ne répartit jamais la pile, même si le pointeur
+    // traverse plusieurs cases. Seul Shift + glisser active cette fonction.
+    if (!drag.distribute) {
+      // En glisser normal, seule la case sous le curseur au moment du
+      // relâchement doit être utilisée. Les anciennes cibles ne sont que
+      // des cases traversées pendant le déplacement.
+      const target = drag.targets[drag.targets.length - 1];
+      if (!target || !this._canPlaceInto(target.arr, target.index)) return false;
+      this._pointerClick(target.arr, target.index, sizeOf(target.arr), drag.button);
+      this._touch();
+      return true;
+    }
+
+    // Répartition volontaire : clic droit = un objet par case ; clic gauche
+    // = la pile est divisée (ceil) entre les cases compatibles.
     if (drag.button === 'right') {
       for (const t of drag.targets) {
         if (!this.cursor || this.cursor.count <= 0) break;
