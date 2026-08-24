@@ -130,57 +130,21 @@ function drawWater(ctx, rng, phase) {
   }
 }
 
+// Géométrie 2.5D partagée : cube 32×40 (32 de grille + 8 d'extrusion).
+// Toutes les faces se rencontrent sur des pixels entiers — aucun trou,
+// aucun chevauchement d'1 px entre dessus / avant / droite.
+const TOP_INSET_L = 2;       // biseau gauche (pas de face ouest : lumière NE)
+const TOP_INSET_T = 2;       // biseau haut du dessus, cube isolé
+const RIGHT_FACE_W = 6;      // face est visible (S - 6 = 26)
+const FRONT_Y = S - 6;       // 26 : jonction dessus ↔ face avant
+const BLOCK_H = S + BLOCK_EXTRUDE; // 40
+
 // --- Bloc posé : cube vu du dessus, avec extrusion 3D pour la profondeur.
 // Un bois posé doit avoir du volume et de la hauteur pour former de beaux
 // murs de maison 3D qui s'empilent bien.
 function drawBlockTile(ctx, color, texture, opts = {}) {
-  const top = shade(color, 1.14);
-  const side = shade(color, 0.84);
-  const sideDark = shade(color, 0.68);
-  const alpha = opts.alpha;
-  const H = S + BLOCK_EXTRUDE; // 40 px de haut
-  if (alpha != null) {
-    ctx.clearRect(0, 0, S, H);
-    ctx.globalAlpha = alpha;
-  }
-
-  // Fond / côtés (toute la tuile, pour que les constructions se joignent)
-  ctx.fillStyle = side;
-  ctx.fillRect(0, 0, S, H);
-
-  // Face supérieure (le dessus du cube)
-  ctx.fillStyle = top;
-  ctx.fillRect(2, 2, S - 7, S - 7);
-
-  // Face avant (bande basse)
-  ctx.fillStyle = sideDark;
-  ctx.fillRect(2, S - 6, S - 4, 6 + BLOCK_EXTRUDE);
-  // Face droite (bande latérale)
-  ctx.fillRect(S - 6, 2, 6, S - 2 + BLOCK_EXTRUDE);
-
-  // Reflet haut-gauche
-  ctx.fillStyle = withAlpha('#ffffff', opts.shine ?? 0.26);
-  ctx.fillRect(2, 2, S - 8, 2);
-  ctx.fillRect(2, 2, 2, S - 8);
-
-  const paintFace = (face, x, y, w, h) => {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(x, y, w, h);
-    ctx.clip();
-    texture(ctx, face, { x, y, w, h, top, side, dark: sideDark });
-    ctx.restore();
-  };
-  paintFace('top', 2, 2, S - 8, S - 8);
-  paintFace('front', 2, S - 6, S - 4, 6 + BLOCK_EXTRUDE);
-  paintFace('right', S - 6, 2, 6, S - 2 + BLOCK_EXTRUDE);
-
-  // Contour net de silhouette 3D pour que les murs restent très lisibles
-  ctx.strokeStyle = shade(color, 0.48);
-  ctx.lineWidth = 1;
-  ctx.strokeRect(0.5, 0.5, S - 1, H - 1);
-
-  ctx.globalAlpha = 1;
+  if (opts.alpha != null) ctx.clearRect(0, 0, S, BLOCK_H);
+  drawBlockTileConnected(ctx, 0, 0, color, texture, ISOLATED_FACES, opts);
 }
 
 function woodGrain(ctx, face) {
@@ -312,13 +276,12 @@ function stoneTexture(ctx, face) {
   }
 
   if (face === 'top') {
-    // Joints sombres irréguliers entre les pavés (façon Minecraft)
+    // Joints sombres irréguliers entre les pavés (façon Minecraft).
+    // Pleine largeur pour que deux dessus voisins se raccordent.
     ctx.fillStyle = jointCol;
-    // Horizontaux
-    ctx.fillRect(2, 7, 23, 1);
-    ctx.fillRect(2, 14, 23, 1);
-    ctx.fillRect(2, 20, 23, 1);
-    // Verticaux (décalés en quinconce pour briser la grille)
+    ctx.fillRect(0, 7, S, 1);
+    ctx.fillRect(0, 14, S, 1);
+    ctx.fillRect(0, 20, S, 1);
     ctx.fillRect(9,  2, 1, 6);
     ctx.fillRect(16, 2, 1, 6);
     ctx.fillRect(7,  8, 1, 6);
@@ -328,7 +291,6 @@ function stoneTexture(ctx, face) {
     ctx.fillRect(8,  21, 1, 5);
     ctx.fillRect(16, 21, 1, 5);
 
-    // Petits pixels de speckle minéral (points brillants aléatoires)
     ctx.fillStyle = withAlpha('#c8c9c6', 0.38);
     ctx.fillRect(5,  4,  2, 1);
     ctx.fillRect(13, 4,  1, 1);
@@ -340,13 +302,42 @@ function stoneTexture(ctx, face) {
     ctx.fillRect(14, 18, 2, 1);
     ctx.fillRect(21, 17, 1, 1);
   } else {
-    // Joints sur les faces latérales
+    // Pavés répétés verticalement (période 16) pour couvrir un mur étiré
+    // ou un empilement sans plage grise unie.
+    const extra = [
+      { x: 2,  y: 2,  w: 8, h: 4, c: '#6e6f73' },
+      { x: 11, y: 2,  w: 6, h: 4, c: '#7a7b7f' },
+      { x: 18, y: 2,  w: 7, h: 4, c: '#6a6b70' },
+      { x: 2,  y: 10, w: 7, h: 4, c: '#757679' },
+      { x: 10, y: 10, w: 8, h: 4, c: '#6e6f73' },
+      { x: 19, y: 10, w: 6, h: 4, c: '#7a7b7f' },
+      { x: 2,  y: 18, w: 8, h: 4, c: '#6a6b70' },
+      { x: 11, y: 18, w: 6, h: 4, c: '#717276' },
+      { x: 18, y: 18, w: 7, h: 4, c: '#767779' },
+      { x: 2,  y: 34, w: 8, h: 4, c: '#6e6f73' },
+      { x: 11, y: 34, w: 6, h: 4, c: '#7a7b7f' },
+      { x: 18, y: 34, w: 7, h: 4, c: '#6a6b70' },
+      { x: 2,  y: 42, w: 7, h: 4, c: '#757679' },
+      { x: 10, y: 42, w: 8, h: 4, c: '#6e6f73' },
+      { x: 19, y: 42, w: 6, h: 4, c: '#7a7b7f' },
+    ];
+    for (const p of extra) {
+      ctx.fillStyle = p.c;
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.fillStyle = lightHi;
+      ctx.fillRect(p.x, p.y, p.w, 1);
+      ctx.fillStyle = darkCrack;
+      ctx.fillRect(p.x, p.y + p.h - 1, p.w, 1);
+    }
     ctx.fillStyle = jointCol;
     ctx.fillRect(10, 26, 1, 4);
     ctx.fillRect(17, 26, 1, 4);
+    ctx.fillRect(10, 10, 1, 4);
+    ctx.fillRect(18, 18, 1, 4);
     ctx.fillRect(26, 8, 5, 1);
     ctx.fillRect(26, 14, 5, 1);
     ctx.fillRect(26, 20, 5, 1);
+    ctx.fillRect(26, 36, 5, 1);
   }
 }
 
@@ -355,30 +346,30 @@ function plankTexture(ctx, face) {
   const grain = withAlpha('#8f5929', 0.58);
   const highlight = withAlpha('#f6d596', 0.5);
 
-  // Trois larges lames de chêne aux tons distincts. Des rangées plus larges
-  // rendent le matériau moins chargé et plus joli une fois agrandi ×2.
+  // Lames de chêne en bandes horizontales. Traits de x = 0 à x = 32
+  // (période verticale 8 px) pour que deux blocs voisins fusionnent
+  // pile-poil, sans trou de 2 px au raccord.
   if (face === 'top') {
     ctx.fillStyle = withAlpha('#7d491f', 0.1);
-    ctx.fillRect(2, 10, 24, 7);
+    ctx.fillRect(0, 8, S, 8);
     ctx.fillStyle = withAlpha('#f6d99f', 0.13);
-    ctx.fillRect(2, 18, 24, 7);
+    ctx.fillRect(0, 16, S, 8);
   } else {
     ctx.fillStyle = withAlpha('#4e2c17', 0.13);
-    ctx.fillRect(2, 10, 30, 7);
-    ctx.fillRect(2, 25, 30, 7);
-    ctx.fillRect(2, 40, 30, 7);
+    for (const y of [8, 24, 40, 56]) ctx.fillRect(0, y, S, 8);
   }
 
   ctx.strokeStyle = seam;
   ctx.lineWidth = 1;
-  for (const y of [9, 17, 25, 33, 41]) {
-    ctx.beginPath(); ctx.moveTo(2, y + 0.5); ctx.lineTo(32, y + 0.5); ctx.stroke();
+  for (let y = 8; y <= 64; y += 8) {
+    ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(S, y + 0.5); ctx.stroke();
   }
 
-  // Assemblage en quinconce, répété verticalement pour un tiling continu
+  // Assemblage en quinconce, périodique (8 px) pour un tiling vertical
+  // continu y compris à la jonction d'un empilement (y = 40 ≡ y = 8).
   const joints = [
-    [16, 2, 9], [9, 10, 17], [20, 18, 25], [13, 26, 32],
-    [16, 34, 41], [9, 42, 49], [20, 50, 57]
+    [16, 0, 8], [9, 8, 16], [20, 16, 24], [13, 24, 32],
+    [16, 32, 40], [9, 40, 48], [20, 48, 56], [13, 56, 64],
   ];
   for (const [x, y0, y1] of joints) {
     ctx.beginPath(); ctx.moveTo(x + 0.5, y0); ctx.lineTo(x + 0.5, y1); ctx.stroke();
@@ -397,7 +388,7 @@ function plankTexture(ctx, face) {
     [[3, 29], [7, 28], [11, 29]],
   ];
   for (const points of veinPaths) {
-    for (let offset of [0, 24]) {
+    for (const offset of [0, 32]) {
       ctx.beginPath();
       ctx.moveTo(points[0][0], points[0][1] + offset);
       for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1] + offset);
@@ -426,26 +417,29 @@ function brickTexture(ctx, face) {
   const mortar = withAlpha('#f0b09b', face === 'top' ? 0.52 : 0.3);
   const shadow = withAlpha('#64281f', 0.62);
   ctx.lineWidth = 1;
+
+  // Joints horizontaux pleine largeur, période 8 px : deux briques
+  // côte à côte fusionnent sans rupture, et un empilement retombe
+  // sur la même phase (y = 40 ≡ y = 8).
   ctx.strokeStyle = shadow;
-  
-  // Joints horizontaux répétés
-  for (const y of [9, 16, 23, 28, 35, 42, 49]) {
-    ctx.beginPath(); ctx.moveTo(2, y); ctx.lineTo(32, y); ctx.stroke();
+  for (let y = 8; y <= 64; y += 8) {
+    ctx.beginPath(); ctx.moveTo(0, y + 1); ctx.lineTo(S, y + 1); ctx.stroke();
   }
   ctx.strokeStyle = mortar;
-  for (const y of [8, 15, 22, 29, 36, 43, 50]) {
-    ctx.beginPath(); ctx.moveTo(2, y); ctx.lineTo(32, y); ctx.stroke();
+  for (let y = 8; y <= 64; y += 8) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(S, y); ctx.stroke();
   }
 
-  // Joints verticaux en quinconce répétés
   ctx.strokeStyle = shadow;
   const verticalJoints = [
-    [10, 2, 9], [23, 2, 9],
-    [6, 9, 16], [18, 9, 16],
-    [12, 16, 23], [25, 16, 23],
-    [6, 23, 30], [18, 23, 30],
-    [12, 30, 37], [25, 30, 37],
-    [6, 37, 44], [18, 37, 44]
+    [10, 0, 8], [23, 0, 8],
+    [6, 8, 16], [18, 8, 16],
+    [12, 16, 24], [25, 16, 24],
+    [6, 24, 32], [18, 24, 32],
+    [12, 32, 40], [25, 32, 40],
+    [6, 40, 48], [18, 40, 48],
+    [12, 48, 56], [25, 48, 56],
+    [6, 56, 64], [18, 56, 64],
   ];
   for (const [x, y0, y1] of verticalJoints) {
     ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke();
@@ -1138,89 +1132,128 @@ const BLOCK_TEXTURES = {
   woolBlock: { texture: woolBlockTexture, opts: {} },
 };
 
-function drawBlockTileConnected(ctx, x, y, color, texture, leftSame, rightSame, upSame, downSame, opts = {}) {
+const ISOLATED_FACES = {
+  leftSame: false,
+  rightSame: false,
+  northSame: false,
+  southSame: false,
+  covered: false,
+  sittingOn: false,
+  showTop: true,
+};
+
+// Décide quelles faces d'un bloc 2.5D sont visibles / fusionnées.
+//
+// Chaque cube montre son dessus — c'est une vue top-down, on voit le
+// sommet de TOUS les blocs, qu'ils soient en ligne, en colonne, en L
+// ou en T. Le dessus n'est caché QUE si un autre bloc est vraiment
+// empilé dessus (couche 2) : le socle fusionne alors avec la face
+// avant du sommet.
+export function resolveBlockFaces(world, id, tx, ty, layer = 1) {
+  const leftSame = world.blockAt(tx - 1, ty, layer) === id;
+  const rightSame = world.blockAt(tx + 1, ty, layer) === id;
+  const northSame = world.blockAt(tx, ty - 1, layer) === id;
+  const southSame = world.blockAt(tx, ty + 1, layer) === id;
+  const covered = layer === 1 && world.blockAt(tx, ty, 2) !== null;
+  const sittingOn = layer === 2 && world.blockAt(tx, ty, 1) !== null;
+  const showTop = !covered;
+  return { leftSame, rightSame, northSame, southSame, covered, sittingOn, showTop };
+}
+
+function drawBlockTileConnected(ctx, x, y, color, texture, faces, opts = {}) {
   const top = shade(color, 1.14);
   const side = shade(color, 0.84);
   const sideDark = shade(color, 0.68);
-  const H = S + BLOCK_EXTRUDE; // 40
+  const {
+    leftSame, rightSame, northSame, southSame, sittingOn, showTop,
+  } = faces;
+
+  // Largeur du dessus / de l'avant : on mange les biseaux aux raccords E-O
+  // pour que deux blocs voisins se touchent pile sur la frontière de tuile.
+  const x0 = leftSame ? 0 : TOP_INSET_L;
+  const x1 = rightSame ? S : S - RIGHT_FACE_W;
+  const fw = x1 - x0;
+
+  // Coin / T avec voisin nord : le dessus démarre à y = 0 (plus de bande
+  // de 2 px « side ») pour recouvrir proprement l'extrusion du voisin.
+  const topY0 = (showTop && northSame) ? 0 : TOP_INSET_T;
+  const topH = FRONT_Y - topY0;
+
+  // Face droite : biseau y = 2 seulement pour un cube isolé (pas de voisin N).
+  // Aux coins et sur un mur étiré, elle part de y = 0 pour rester continue.
+  const rightY0 = (showTop && !northSame) ? TOP_INSET_T : 0;
+
+  const fy0 = showTop ? FRONT_Y : 0;
+  const fh = BLOCK_H - fy0;
 
   ctx.save();
   ctx.translate(x, y);
+  if (opts.alpha != null) ctx.globalAlpha = opts.alpha;
 
-  // 1. Fond / Côtés (remplit tout l'espace 3D pour éviter tout trou ou vide visuel)
+  // 1. Fond : toute la tuile 32×40, zéro trou d'arrière-plan.
   ctx.fillStyle = side;
-  ctx.fillRect(0, 0, S, H);
+  ctx.fillRect(0, 0, S, BLOCK_H);
 
-  // 2. Face supérieure (dessus du bloc)
-  // Dessinée uniquement s'il n'y a pas de bloc au-dessus (sinon elle est masquée/interne)
-  const tx0 = leftSame ? 0 : 2;
-  const tx1 = rightSame ? S : S - 6;
-  const tw = tx1 - tx0;
-
-  if (!upSame) {
-    const ty0 = 2;
-    const ty1 = S - 6; // 26
-    const th = ty1 - ty0;
-
+  // 2. Face supérieure — uniquement sur les sommets visibles.
+  if (showTop && fw > 0 && topH > 0) {
     ctx.fillStyle = top;
-    ctx.fillRect(tx0, ty0, tw, th);
+    ctx.fillRect(x0, topY0, fw, topH);
   }
 
-  // 3. Face avant (front face)
-  // Si connecté vers le haut (upSame), la face avant monte tout en haut (y = 0)
-  const fx0 = tx0;
-  const fw = tw;
-  const fy0 = upSame ? 0 : S - 6; // 0 si connecté en haut, sinon 26
-  const fy1 = H; // Descend toujours tout en bas (40) pour un alignement horizontal parfait
-  const fh = fy1 - fy0;
-
+  // 3. Face avant. Pleine hauteur si le dessus est caché (mur N-S ou
+  //    socle d'un empilement), sinon bande basse y = 26 → 40.
   ctx.fillStyle = sideDark;
-  ctx.fillRect(fx0, fy0, fw, fh);
+  if (fw > 0 && fh > 0) ctx.fillRect(x0, fy0, fw, fh);
 
-  // Reflet haut-gauche (uniquement à l'angle extérieur absolu pour éviter les bandes blanches/banderolles)
-  if (!upSame && !leftSame) {
-    ctx.fillStyle = withAlpha('#ffffff', opts.shine ?? 0.26);
-    ctx.fillRect(2, 2, tw - 2, 2);
-    ctx.fillRect(2, 2, 2, S - 8);
+  // 4. Face droite (biseau est) : remplie en sideDark, comme l'avant.
+  if (!rightSame) {
+    ctx.fillRect(S - RIGHT_FACE_W, rightY0, RIGHT_FACE_W, BLOCK_H - rightY0);
   }
 
-  // Peindre la texture
-  const paintFace = (face, fx, fy, fw, fh) => {
+  // Reflet haut-gauche : seulement à l'angle extérieur, jamais le long
+  // d'un raccord (sinon bande blanche sur tout le mur).
+  if (showTop && !leftSame) {
+    ctx.fillStyle = withAlpha('#ffffff', opts.shine ?? 0.26);
+    ctx.fillRect(x0, topY0, Math.max(0, fw - 2), 2);
+    ctx.fillRect(x0, topY0, 2, FRONT_Y - topY0);
+  }
+
+  const paintFace = (face, px, py, pw, ph) => {
+    if (pw <= 0 || ph <= 0) return;
     ctx.save();
     ctx.beginPath();
-    ctx.rect(fx, fy, fw, fh);
+    ctx.rect(px, py, pw, ph);
     ctx.clip();
-    texture(ctx, face, { x: fx, y: fy, w: fw, h: fh, top, side, dark: sideDark });
+    texture(ctx, face, { x: px, y: py, w: pw, h: ph, top, side, dark: sideDark });
     ctx.restore();
   };
-  if (!upSame) {
-    paintFace('top', tx0, 2, tw, S - 8);
-  }
-  paintFace('front', fx0, fy0, fw, fh);
+  if (showTop) paintFace('top', x0, topY0, fw, topH);
+  paintFace('front', x0, fy0, fw, fh);
   if (!rightSame) {
-    paintFace('right', S - 6, 2, 6, S - 2 + BLOCK_EXTRUDE);
+    paintFace('right', S - RIGHT_FACE_W, rightY0, RIGHT_FACE_W, BLOCK_H - rightY0);
   }
 
-  // 4. Silhouettes de contour extérieur (seulement sur les côtés libres)
+  // 5. Silhouette : uniquement les arêtes libres, pixels à .5 pour un trait net.
   ctx.strokeStyle = shade(color, 0.48);
   ctx.lineWidth = 1;
   ctx.beginPath();
-  
-  if (!upSame) {
+
+  if (showTop) {
     ctx.moveTo(leftSame ? 0 : 0.5, 0.5);
     ctx.lineTo(rightSame ? S : S - 0.5, 0.5);
   }
-  if (!downSame) {
-    ctx.moveTo(leftSame ? 0 : 0.5, H - 0.5);
-    ctx.lineTo(rightSame ? S : S - 0.5, H - 0.5);
+  const mergeDown = southSame || sittingOn;
+  if (!mergeDown) {
+    ctx.moveTo(leftSame ? 0 : 0.5, BLOCK_H - 0.5);
+    ctx.lineTo(rightSame ? S : S - 0.5, BLOCK_H - 0.5);
   }
   if (!leftSame) {
-    ctx.moveTo(0.5, upSame ? 0 : 0.5);
-    ctx.lineTo(0.5, downSame ? H : H - 0.5);
+    ctx.moveTo(0.5, showTop ? 0.5 : 0);
+    ctx.lineTo(0.5, mergeDown ? BLOCK_H : BLOCK_H - 0.5);
   }
   if (!rightSame) {
-    ctx.moveTo(S - 0.5, upSame ? 0 : 0.5);
-    ctx.lineTo(S - 0.5, downSame ? H : H - 0.5);
+    ctx.moveTo(S - 0.5, showTop ? 0.5 : 0);
+    ctx.lineTo(S - 0.5, mergeDown ? BLOCK_H : BLOCK_H - 0.5);
   }
   ctx.stroke();
 
@@ -1229,31 +1262,20 @@ function drawBlockTileConnected(ctx, x, y, color, texture, leftSame, rightSame, 
 
 export function drawBlockConnected(ctx, id, tx, ty, world, layer = 1) {
   const cfg = BLOCK_TEXTURES[id];
-  const offset = (layer === 2) ? 32 : 0;
+  const offset = (layer === 2) ? S : 0;
   if (!cfg) {
     ctx.drawImage(getTileCanvas(id), tx * S, ty * S - BLOCK_EXTRUDE - offset);
     return;
   }
 
-  const leftSame = world.blockAt(tx - 1, ty, layer) === id;
-  const rightSame = world.blockAt(tx + 1, ty, layer) === id;
-
-  // Connexion verticale intelligente :
-  // En couche 1 (base), on est connecté en haut s'il y a un bloc de même type au-dessus (grille) OU si un bloc (quelconque !) est empilé sur nous (couche 2).
-  // En couche 2 (sommet), on est connecté en bas s'il y a un bloc de même type en dessous (grille) OU s'il y a un bloc (quelconque !) sous nous (couche 1).
-  const upSame = world.blockAt(tx, ty - 1, layer) === id || (layer === 1 && world.blockAt(tx, ty, 2) !== null);
-  const downSame = world.blockAt(tx, ty + 1, layer) === id || (layer === 2 && world.blockAt(tx, ty, 1) !== null);
-
+  const faces = resolveBlockFaces(world, id, tx, ty, layer);
   drawBlockTileConnected(
     ctx,
     tx * S,
     ty * S - BLOCK_EXTRUDE - offset,
     BLOCK_DEFS[id].color,
     cfg.texture,
-    leftSame,
-    rightSame,
-    upSame,
-    downSame,
-    cfg.opts
+    faces,
+    cfg.opts,
   );
 }
