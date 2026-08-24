@@ -628,98 +628,99 @@ const CHEST_LID_L = 2;       // bords est/ouest du couvercle
 const CHEST_LID_R = 26;
 const CHEST_CAV = { x: 5, y: 5, w: 18, h: 17 }; // cavité (intérieur)
 
+// Lames de chêne façon Minecraft : la texture 16×16 d'origine échantillonnée
+// grossièrement — 4 lames de teintes légèrement différentes, bord sombre en
+// bas de lame, liseré clair en haut, veinage ondulé et extrémités de lames.
+// Sert au coffre (dessus, face avant, face est, dessous du couvercle) et à
+// son icône d'inventaire.
+const MC_OAK_ROWS = ['#b8945f', '#c19d67', '#ae8b55', '#b8945f'];
+export function mcOakPlanks(ctx, x, y, w, h, rows, opts = {}) {
+  const tint = opts.tint ?? 1;
+  const rowH = h / rows;
+  for (let r = 0; r < rows; r++) {
+    const ry = y + r * rowH;
+    ctx.fillStyle = shade(MC_OAK_ROWS[r % 4], tint);
+    ctx.fillRect(x, ry, w, Math.ceil(rowH));
+    // bord sombre bas de la lame + liseré clair en haut
+    ctx.fillStyle = withAlpha('#6e4f27', 0.55);
+    ctx.fillRect(x, ry + rowH - 1, w, 1);
+    ctx.fillStyle = withAlpha('#d8b87e', 0.32);
+    ctx.fillRect(x, ry, w, 1);
+    // veinage ondulé (deterministe, façon texture MC)
+    ctx.strokeStyle = withAlpha('#7a5a2e', 0.42);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 1, ry + rowH * 0.5);
+    for (let xx = x + 1; xx < x + w - 1; xx += 2) {
+      const wob = (((xx * 7 + r * 13) % 3) - 1) * 0.6;
+      ctx.lineTo(xx + 1, ry + rowH * 0.5 + wob);
+    }
+    ctx.stroke();
+    // extrémité de lame (petit trait vertical, position décalée)
+    if (rowH >= 4) {
+      ctx.fillStyle = withAlpha('#6e4f27', 0.5);
+      const endX = x + 4 + ((r * 11 + Math.round(x)) % Math.max(1, w - 8));
+      ctx.fillRect(endX, ry + 1, 1, Math.max(1, rowH - 2));
+    }
+  }
+}
+
 function chestEaseOut(t) { return 1 - Math.pow(1 - t, 3); }
 
-// Côté du couvercle (texture + teintes) : `t` = 0 fermé (dessus) à
-// 1 ouvert (dessous, plus clair).
-function chestLidColors(t) {
-  const base = BLOCK_DEFS.chest.color;
-  return {
-    fill: shade(base, 1.18 + 0.14 * t),
-    seam: withAlpha('#241305', 0.5 + 0.2 * t),
-    gap: withAlpha('#150a02', 0.8),
-    hi: withAlpha('#ffe2ac', 0.22 + 0.16 * t),
-    grain: withAlpha('#5e3a1c', 0.32),
-  };
-}
+
 
 function drawChestTile(ctx, openT = 0) {
   const base = BLOCK_DEFS.chest.color;
-  const side = shade(base, 0.84);
-  const sideDark = shade(base, 0.58);
-  const iron = '#3d4046';
-  const ironHi = '#838a96';
-  const gold = '#e0b13c';
 
   ctx.save();
   ctx.translate(0, CHEST_TOP_PAD); // la boîte tient sur 0..40, marge en haut
 
   // 1. Fond : toute la tuile, zéro trou d'arrière-plan.
-  ctx.fillStyle = sideDark;
+  ctx.fillStyle = shade(base, 0.5);
   ctx.fillRect(0, 0, S, BLOCK_H);
 
-  // 2. Face est (biseau) : bois sombre, lames horizontales.
-  ctx.fillStyle = sideDark;
-  ctx.fillRect(26, 2, 6, 38);
-  ctx.strokeStyle = withAlpha('#150b03', 0.55);
-  ctx.lineWidth = 1;
-  for (const y of [9.5, 16.5, 23.5, 33.5]) {
-    ctx.beginPath(); ctx.moveTo(26, y); ctx.lineTo(32, y); ctx.stroke();
-  }
-  ctx.fillStyle = withAlpha('#ffd9a0', 0.1);
-  ctx.fillRect(26, 2, 1, 38);
+  // 2. Face est (biseau) : planches de chêne MC, 4 lames.
+  mcOakPlanks(ctx, 26, 2, 6, 38, 4, { tint: 0.66 });
 
-  // 3. Face avant : deux lames + fermoir métallique.
-  ctx.fillStyle = side;
-  ctx.fillRect(2, 26, 24, 14);
-  ctx.strokeStyle = withAlpha('#241305', 0.55);
-  ctx.beginPath(); ctx.moveTo(2, 33.5); ctx.lineTo(26, 33.5); ctx.stroke();
-  // grain du bois
-  ctx.fillStyle = withAlpha('#241305', 0.3);
-  ctx.fillRect(5, 28.5, 6, 1); ctx.fillRect(17, 29.5, 5, 1);
-  ctx.fillRect(6, 36.5, 5, 1); ctx.fillRect(15, 37.5, 6, 1);
-  ctx.fillStyle = withAlpha('#ffd9a0', 0.16);
-  ctx.fillRect(4, 27, 8, 1); ctx.fillRect(11, 35, 7, 1);
-  // patins de fer en bas (pieds de la boîte)
-  ctx.fillStyle = iron;
-  ctx.fillRect(3, 37, 4, 2); ctx.fillRect(21, 37, 4, 2);
-  // bande de métal verticale (monture du fermoir) + rivets
-  ctx.fillStyle = iron;
-  ctx.fillRect(13, 26, 3, 14);
-  ctx.fillStyle = ironHi;
-  ctx.fillRect(13, 26, 1, 14);
-  ctx.fillStyle = withAlpha('#111318', 0.6);
-  ctx.fillRect(14, 27, 1, 1); ctx.fillRect(14, 38, 1, 1);
-  // serrure dorée avec trou
-  ctx.fillStyle = gold;
-  ctx.fillRect(12, 30, 5, 4);
-  ctx.fillStyle = '#ffe9a0';
-  ctx.fillRect(12, 30, 5, 1);
-  ctx.fillStyle = withAlpha('#000000', 0.35);
-  ctx.fillRect(12, 33, 5, 1);
-  ctx.fillStyle = '#4a3208';
-  ctx.fillRect(14, 31, 1, 2);
+  // 3. Face avant : planches MC + joint « bord du couvercle / corps » +
+  //    le petit fermoir en fer, comme la texture chest_front d'origine.
+  mcOakPlanks(ctx, 2, 26, 24, 14, 2, { tint: 0.85 });
+  // le bord du couvercle (haut) reçoit un peu plus de lumière
+  ctx.fillStyle = withAlpha('#ffffff', 0.07);
+  ctx.fillRect(2, 26, 24, 4);
+  // joint couvercle / corps
+  ctx.fillStyle = withAlpha('#4e3818', 0.9);
+  ctx.fillRect(2, 30, 24, 1);
+  // fermoir en fer (petit, centré, sous le joint — pas de serrure dorée)
+  ctx.fillStyle = '#33343a';
+  ctx.fillRect(13, 31, 4, 4);
+  ctx.fillStyle = '#8b8d92';
+  ctx.fillRect(13, 31, 4, 1);
+  ctx.fillStyle = '#62646a';
+  ctx.fillRect(13, 32, 1, 2);
+  ctx.fillStyle = '#26272c';
+  ctx.fillRect(15, 32, 2, 2);
 
   // 4. Dessus : liseré de la boîte + cavité (révélée par l'ouverture).
-  ctx.fillStyle = shade(base, 0.96);
+  ctx.fillStyle = '#a07c48';
   ctx.fillRect(2, 2, 24, 24);
   // liseré sud (bord de la boîte, face lumière)
-  ctx.fillStyle = shade(base, 1.1);
+  ctx.fillStyle = '#b8945f';
   ctx.fillRect(2, 22, 24, 4);
-  // cavité
-  ctx.fillStyle = '#1c0f07';
+  // cavité : parois sombres (chest_inside_bottom)
+  ctx.fillStyle = '#20110a';
   ctx.fillRect(CHEST_CAV.x, CHEST_CAV.y, CHEST_CAV.w, CHEST_CAV.h);
-  // fond de la cavité : lames sombres
-  ctx.fillStyle = '#38220f';
-  ctx.fillRect(CHEST_CAV.x, 15, CHEST_CAV.w, 6);
-  ctx.strokeStyle = withAlpha('#120a03', 0.85);
-  ctx.beginPath(); ctx.moveTo(10.5, 15); ctx.lineTo(10.5, 21); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(16.5, 15); ctx.lineTo(16.5, 21); ctx.stroke();
+  // fond de la cavité : planches sombres
+  const floorRows = [[15, 2, '#3f2812'], [17, 2, '#4a2f15'], [19, 2, '#442b14'], [21, 1, '#38230f']];
+  for (const [fy, fh, fc] of floorRows) {
+    ctx.fillStyle = fc;
+    ctx.fillRect(CHEST_CAV.x, fy, CHEST_CAV.w, fh);
+  }
   // ombres intérieures (nord + ouest)
-  ctx.fillStyle = withAlpha('#000000', 0.5);
-  ctx.fillRect(CHEST_CAV.x, CHEST_CAV.y, CHEST_CAV.w, 2);
-  ctx.fillStyle = withAlpha('#000000', 0.32);
-  ctx.fillRect(CHEST_CAV.x, 7, CHEST_CAV.w, 2);
+  ctx.fillStyle = withAlpha('#000000', 0.55);
+  ctx.fillRect(CHEST_CAV.x, CHEST_CAV.y, CHEST_CAV.w, 3);
+  ctx.fillStyle = withAlpha('#000000', 0.3);
+  ctx.fillRect(CHEST_CAV.x, 8, CHEST_CAV.w, 2);
   ctx.fillRect(CHEST_CAV.x, CHEST_CAV.y, 2, CHEST_CAV.h);
   ctx.fillStyle = withAlpha('#000000', 0.18);
   ctx.fillRect(22, CHEST_CAV.y, 1, CHEST_CAV.h);
@@ -739,7 +740,6 @@ function drawChestTile(ctx, openT = 0) {
   const dy = yBot - yTop; // signé : + fermé (bande vers le bas), − ouvert
   const yA = Math.min(yTop, yBot);
   const bandH = Math.max(1, Math.abs(dy));
-  const L = chestLidColors(t);
 
   // ombre du couvercle sur l'intérieur (sauf quasi ouvert)
   if (t > 0.03 && t < 0.9) {
@@ -750,58 +750,29 @@ function drawChestTile(ctx, openT = 0) {
     }
   }
 
-  // bande du couvercle (dessous visible quand il pivote vers le sud)
-  ctx.fillStyle = L.fill;
-  ctx.fillRect(CHEST_LID_L, yA, CHEST_LID_R - CHEST_LID_L, bandH);
+  // bande du couvercle : planches de chêne MC (4 lames) qui suivent la
+  // projection — quand il pivote vers le sud, c'est le dessous (plus
+  // clair) qui est visible.
   ctx.save();
   ctx.beginPath();
   ctx.rect(CHEST_LID_L, yA, CHEST_LID_R - CHEST_LID_L, bandH);
   ctx.clip();
-  // lames du couvercle (joints proportionnels, projection linéaire)
-  ctx.strokeStyle = L.seam;
-  ctx.lineWidth = 1;
-  for (const f of [0.3, 0.7]) {
-    const y = yTop + dy * f + 0.5;
-    ctx.beginPath(); ctx.moveTo(CHEST_LID_L, y); ctx.lineTo(CHEST_LID_R, y); ctx.stroke();
-  }
-  // joint central du couvercle (sombre) + liseré clair
+  mcOakPlanks(ctx, CHEST_LID_L, yA, CHEST_LID_R - CHEST_LID_L, bandH, 4,
+    { tint: 1.02 + 0.1 * t });
+  // joint central du couvercle (les deux moitiés) + liseré clair
   const gapY = Math.round(yTop + dy * 0.5);
-  ctx.fillStyle = L.gap;
+  ctx.fillStyle = withAlpha('#3a2812', 0.85);
   ctx.fillRect(CHEST_LID_L, gapY, CHEST_LID_R - CHEST_LID_L, 1);
-  ctx.fillStyle = L.hi;
+  ctx.fillStyle = withAlpha('#d8b87e', 0.3);
   ctx.fillRect(CHEST_LID_L, gapY + (dy >= 0 ? 1 : -1), CHEST_LID_R - CHEST_LID_L, 1);
-  // grain
-  ctx.fillStyle = L.grain;
-  ctx.fillRect(5, Math.round(yTop + dy * 0.16), 5, 1);
-  ctx.fillRect(16, Math.round(yTop + dy * 0.12), 4, 1);
-  ctx.fillRect(8, Math.round(yTop + dy * 0.8), 5, 1);
-  ctx.fillRect(19, Math.round(yTop + dy * 0.86), 4, 1);
   // arête charnière
-  ctx.fillStyle = withAlpha('#150a02', 0.6);
+  ctx.fillStyle = withAlpha('#150a02', 0.5);
   ctx.fillRect(CHEST_LID_L, Math.round(yTop) - (dy >= 0 ? 0 : 1), CHEST_LID_R - CHEST_LID_L, 1);
-  // arête soulevée : liseré clair de rebord + trait sombre
-  const edgeHiY = dy >= 0 ? Math.round(yBot) - 2 : Math.round(yBot);
-  const edgeLoY = dy >= 0 ? Math.round(yBot) - 1 : Math.round(yBot) + 1;
-  ctx.fillStyle = withAlpha('#ffe2ac', 0.4);
-  ctx.fillRect(CHEST_LID_L, edgeHiY, CHEST_LID_R - CHEST_LID_L, 1);
+  // arête soulevée : trait sombre fin de rebord
+  const edgeY = dy >= 0 ? Math.round(yBot) - 1 : Math.round(yBot);
   ctx.fillStyle = withAlpha('#150a02', 0.45);
-  ctx.fillRect(CHEST_LID_L, edgeLoY, CHEST_LID_R - CHEST_LID_L, 1);
+  ctx.fillRect(CHEST_LID_L, edgeY, CHEST_LID_R - CHEST_LID_L, 1);
   ctx.restore();
-
-  // coins de fer du couvercle (visibles quand il est presque à plat)
-  if (bandH >= 16) {
-    const hingeY = dy >= 0 ? Math.round(yTop) + 1 : Math.round(yTop) - 2;
-    const liftedY = dy >= 0 ? Math.round(yBot) - 3 : Math.round(yBot);
-    ctx.fillStyle = iron;
-    for (const by of [hingeY, liftedY]) {
-      for (const bx of [CHEST_LID_L, CHEST_LID_R - 3]) {
-        ctx.fillRect(bx, by, 3, 2);
-      }
-    }
-    ctx.fillStyle = withAlpha('#c9ced6', 0.5);
-    ctx.fillRect(CHEST_LID_L, hingeY, 1, 2);
-    ctx.fillRect(CHEST_LID_R - 3, hingeY, 1, 2);
-  }
 
   // 6. Silhouette de la boîte (le couvercle a son propre rebord).
   ctx.strokeStyle = shade(base, 0.38);

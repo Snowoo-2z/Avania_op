@@ -10,7 +10,7 @@
 // ============================================================
 
 import { ALL_ITEMS, ITEM_DEFS, BLOCK_DEFS } from './blocks.js';
-import { buildTileset, shade } from './tileset.js';
+import { buildTileset, shade, mcOakPlanks } from './tileset.js';
 
 const SIZE = 32;
 const urlCache = new Map();
@@ -333,58 +333,36 @@ function drawDoorIcon(ctx) {
   ctx.restore();
 }
 
-// --- Coffre : vue de face, boîte en chêne + couvercle + fermoir métallique
+// --- Coffre : vue de face façon chest_front Minecraft — planches de chêne,
+// joint « bord du couvercle / corps » et petit fermoir en fer.
 function drawChestIcon(ctx) {
-  const wood = '#8a5a2e', woodDark = '#54331a', woodLight = '#b07a3e';
-  const seam = '#3a2210', metal = '#3d4046', metalHi = '#838a96', gold = '#e0b13c';
   ctx.save();
   ctx.translate(16, 15);
-  // Corps de la boîte (bord sombre + fond bois)
-  ctx.fillStyle = woodDark;
+  // Bord sombre de la boîte
+  ctx.fillStyle = '#6e5330';
   ctx.fillRect(-12, -10, 24, 20);
-  ctx.fillStyle = wood;
-  ctx.fillRect(-11, -9, 22, 18);
-  // Lames horizontales + grain
-  ctx.fillStyle = seam;
-  ctx.fillRect(-11, -2, 22, 1);
-  ctx.fillRect(-11, 5, 22, 1);
-  ctx.fillStyle = withAlpha('#2a1809', 0.35);
-  ctx.fillRect(-8, 1, 4, 1); ctx.fillRect(3, 2, 4, 1);
-  ctx.fillRect(-7, 7, 4, 1); ctx.fillRect(4, 8, 4, 1);
-  // Couvercle : partie haute avec son joint central
-  ctx.fillStyle = woodLight;
+  // Bord du couvercle (haut, 6 px) — planches plus claires
+  mcOakPlanks(ctx, -11, -9, 22, 6, 1, { tint: 1.05 });
+  ctx.fillStyle = withAlpha('#ffffff', 0.08);
   ctx.fillRect(-11, -9, 22, 6);
-  ctx.fillStyle = withAlpha('#ffffff', 0.18);
-  ctx.fillRect(-11, -9, 22, 1);
-  ctx.fillStyle = withAlpha('#000000', 0.3);
+  // Joint couvercle / corps
+  ctx.fillStyle = withAlpha('#4e3818', 0.9);
   ctx.fillRect(-11, -3, 22, 1);
-  ctx.fillStyle = seam;
-  ctx.fillRect(0, -9, 1, 5);
-  // Reflet haut-gauche
-  ctx.fillStyle = withAlpha('#ffffff', 0.22);
-  ctx.fillRect(-11, -9, 1, 18);
-  ctx.fillRect(-10, -8, 1, 2);
-  // Coins de fer
-  ctx.fillStyle = metal;
-  ctx.fillRect(-11, -9, 2, 2); ctx.fillRect(9, -9, 2, 2);
-  ctx.fillRect(-11, 7, 2, 2); ctx.fillRect(9, 7, 2, 2);
-  ctx.fillStyle = withAlpha('#c9ced6', 0.5);
-  ctx.fillRect(-11, -9, 1, 2); ctx.fillRect(9, -9, 1, 2);
-  // Fermeture : bande de métal vertical + serrure dorée avec trou
-  ctx.fillStyle = metal;
-  ctx.fillRect(-1, -3, 3, 12);
-  ctx.fillStyle = metalHi;
-  ctx.fillRect(-1, -3, 1, 12);
-  ctx.fillStyle = withAlpha('#111318', 0.6);
-  ctx.fillRect(0, -2, 1, 1); ctx.fillRect(0, 7, 1, 1);
-  ctx.fillStyle = gold;
-  ctx.fillRect(-2, 0, 5, 4);
-  ctx.fillStyle = '#ffe9a0';
-  ctx.fillRect(-2, 0, 5, 1);
-  ctx.fillStyle = withAlpha('#000000', 0.35);
-  ctx.fillRect(-2, 3, 5, 1);
-  ctx.fillStyle = '#4a3208';
-  ctx.fillRect(0, 1, 1, 2);
+  // Corps : 2 lames de chêne
+  mcOakPlanks(ctx, -11, -2, 22, 11, 2, { tint: 0.88 });
+  // Fermeture : petit fermoir en fer centré sous le joint
+  ctx.fillStyle = '#33343a';
+  ctx.fillRect(-2, -1, 4, 4);
+  ctx.fillStyle = '#8b8d92';
+  ctx.fillRect(-2, -1, 4, 1);
+  ctx.fillStyle = '#62646a';
+  ctx.fillRect(-2, 0, 1, 2);
+  ctx.fillStyle = '#26272c';
+  ctx.fillRect(0, 0, 2, 2);
+  // Contour sombre
+  ctx.strokeStyle = '#4e3818';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-11.5, -9.5, 23, 19);
   ctx.restore();
 }
 
