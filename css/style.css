@@ -2420,6 +2420,48 @@ html.low-power .craft-output.ready {
 }
 
 /* ============================================================
+   Coffre — panneau de rangement façon Minecraft (27 cases)
+   ============================================================ */
+.panel-frame--chest {
+  width: min(560px, calc(100vw - 24px));
+}
+.chest-body {
+  margin-top: 14px;
+}
+.chest-workbench {
+  padding: 18px 20px 20px;
+  border-bottom: 2px solid rgba(25,27,29,0.55);
+  background:
+    radial-gradient(420px 220px at 50% 0%, rgba(196,138,66,0.08), transparent 72%),
+    rgba(38,41,44,0.26);
+}
+.chest-workbench .section-title { margin-top: 0; }
+.chest-grid {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(34px, 1fr));
+  gap: 7px;
+}
+.chest-grid .slot {
+  width: 100%;
+  height: 50px;
+  min-width: 0;
+  max-width: none;
+  background: rgba(10,19,13,0.76);
+}
+.chest-grid .slot-icon { inset: 5px; }
+.chest .craft-inventory {
+  padding-top: 12px;
+}
+.chest .chest-grid .slot-icon img,
+.chest .inventory-grid .slot-icon img {
+  image-rendering: pixelated;
+}
+@media (max-width: 500px) {
+  .chest-grid { gap: 4px; }
+  .chest-grid .slot { height: 42px; }
+}
+
+/* ============================================================
    Icônes SVG (remplacement des emojis) + Raccourcis rebindables
    ============================================================ */
 .ic-svg {

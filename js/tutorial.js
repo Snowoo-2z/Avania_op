@@ -7,7 +7,7 @@
 // ============================================================
 
 import { getItemSprite } from './icons.js';
-import { getTileCanvas, getFurnaceCanvas, drawTreeObject, drawRockObject } from './tileset.js';
+import { getTileCanvas, getFurnaceCanvas, getChestCanvas, drawTreeObject, drawRockObject } from './tileset.js';
 import { drawCharacter } from './character.js';
 import { drawHeldItem } from './held.js';
 import { Mob, drawMob } from './mobs/index.js';
@@ -240,6 +240,20 @@ function illFurnace(ctx, app) {
   ctx.fillText('clic D', 44, 88);
 }
 
+function illChest(ctx, app) {
+  backdrop(ctx);
+  ctx.drawImage(getChestCanvas(), 40, 42, 32, 40);
+  drawShadow(ctx, 40 + 16, 42 + 40, 12);
+  drawArrowRight(ctx, 88, 62, '#ffffff', 18);
+  // Quelques affaires qui entrent dans le coffre
+  drawItem(ctx, 'plank', 126, 40, 22);
+  drawItem(ctx, 'ironIngot', 140, 62, 20);
+  drawItem(ctx, 'wool', 124, 80, 20);
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = 'bold 10px system-ui, sans-serif';
+  ctx.fillText('clic D', 44, 94);
+}
+
 const CARDS = [
   {
     title: 'Te déplacer',
@@ -285,6 +299,11 @@ const CARDS = [
     title: 'Le four',
     text: '8 pierres → four. Fonds minerai et sable, cuit la viande.',
     draw: illFurnace,
+  },
+  {
+    title: 'Le coffre',
+    text: '8 planches → coffre. Clic droit pour ranger tes affaires (27 cases).',
+    draw: illChest,
   },
 ];
 

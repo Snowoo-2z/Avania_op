@@ -15,6 +15,7 @@ import { Input } from './input.js';
 import { Inventory } from './inventory.js';
 import {
   buildTileset, getTileCanvas, getDoorCanvas, getFurnaceCanvas, getWaterFrame,
+  getChestFrame, CHEST_TOP_PAD,
   drawTreeObject, drawRockObject, drawIronOreObject,
   getObjectSprite, getObjectSpriteInfo, treeVariantAt, treeDropCount,
   treeBreakTime, TREE_VARIANTS, WATER_FRAMES, isExtrudedBlock, drawBlockConnected,
@@ -217,8 +218,10 @@ export class Game {
     // Fours posés : contenu + progression (clé numérique = index de tuile,
     // finies les chaînes "tx,ty" allouées dans la boucle de rendu).
     this.furnaceData = new Map();
-    // Rappels branchés par l'UI (ex. ouvrir le panneau du four).
-    this.uiCallbacks = { openFurnace: null };
+    // Coffres posés : 27 cases de rangement (clé = index de tuile).
+    this.chestData = new Map();
+    // Rappels branchés par l'UI (ex. ouvrir le panneau du four / du coffre).
+    this.uiCallbacks = { openFurnace: null, openChest: null };
     // Particules de casse (débris légers, courte durée de vie).
     this.particles = [];
     this.lastTime = performance.now();
@@ -352,6 +355,9 @@ export class Game {
     this.lastTime = now;
 
     const renderStart = performance.now();
+    // Le couvercle du coffre s'anime même quand le jeu est en pause
+    // (panneau ouvert), sinon l'ouverture ne se verrait qu'après.
+    this.updateChests(dt);
     this.update(dt);
     this.render();
     this.trackPerformance(performance.now() - renderStart);
@@ -479,6 +485,37 @@ export class Game {
       this.furnaceData.set(key, entry);
     }
     return entry;
+  }
+
+  // Entrée de stockage d'un coffre posé (27 cases, comme Minecraft) +
+  // état d'animation du couvercle (openT : 0 fermé → 1 ouvert).
+  getChestEntry(tx, ty) {
+    const key = ty * WORLD_W + tx;
+    let entry = this.chestData.get(key);
+    if (!entry) {
+      entry = { slots: new Array(27).fill(null), openT: 0, openTarget: 0 };
+      this.chestData.set(key, entry);
+    }
+    return entry;
+  }
+
+  // Ouvre / ferme le couvercle du coffre posé (l'animation avance dans
+  // updateChests, même pendant la pause du panneau).
+  setChestOpen(tx, ty, open) {
+    const entry = this.chestData.get(ty * WORLD_W + tx);
+    if (entry) entry.openTarget = open ? 1 : 0;
+  }
+
+  // Avance l'animation du couvercle de chaque coffre ouvert.
+  updateChests(dt) {
+    for (const entry of this.chestData.values()) {
+      const target = entry.openTarget ? 1 : 0;
+      if (entry.openT === target) continue;
+      const speed = dt / (target ? 0.24 : 0.2);
+      entry.openT = target > entry.openT
+        ? Math.min(target, entry.openT + speed)
+        : Math.max(target, entry.openT - speed);
+    }
   }
 
   // ------------------------------------------------------------
@@ -718,6 +755,14 @@ export class Game {
       this.actionCooldown = 0.25;
       return;
     }
+    if (targetBlock === 'chest') {
+      this.setChestOpen(this.targetTx, this.targetTy, true);
+      if (this.uiCallbacks.openChest) {
+        this.uiCallbacks.openChest(this.targetTx, this.targetTy);
+      }
+      this.actionCooldown = 0.25;
+      return;
+    }
     this.placeSelectedBlock();
   }
 
@@ -790,6 +835,17 @@ export class Game {
     const i = this.world.idx(this.targetTx, this.targetTy);
     const oldFloor = this.world.floor[i];
     const drop = this.world.breakBlock(this.targetTx, this.targetTy);
+    // Un coffre cassé rejette son contenu au sol (comme dans Minecraft) :
+    // rien ne se perd en démolissant sa maison.
+    if (existingBlock === 'chest') {
+      const chestEntry = this.chestData.get(i);
+      if (chestEntry) {
+        this.chestData.delete(i);
+        for (const stack of chestEntry.slots) {
+          if (stack) this.spawnDrop(this.targetTx, this.targetTy, stack.id, stack.count);
+        }
+      }
+    }
     if (drop) {
       if (existingBlock && BLOCK_DEFS[existingBlock]?.kind === 'object') {
         this.removeStaticObjectAt(this.targetTx, this.targetTy);
@@ -1630,6 +1686,16 @@ export class Game {
         } else if (block === 'furnace') {
           const entry = this.furnaceData.get(this.world.idx(tx, ty));
           ctx.drawImage(getFurnaceCanvas(Boolean(entry && entry.fuelTime > 0)), tx * TILE, ty * TILE);
+        } else if (block === 'chest') {
+          // Boîte complète : frame selon l'avancement d'ouverture du
+          // couvercle, pas de raccord auto-tiling. CHEST_TOP_PAD : marge
+          // haute de la canvas (couvercle soulevé dépasse de la boîte).
+          const entry = this.chestData.get(this.world.idx(tx, ty));
+          const offset = (layer === 2) ? 32 : 0;
+          ctx.drawImage(
+            getChestFrame(entry ? entry.openT : 0),
+            tx * TILE, ty * TILE - BLOCK_EXTRUDE - CHEST_TOP_PAD - offset,
+          );
         } else {
           if (isExtrudedBlock(block)) {
             // Rendu de connexion intelligente avec biseau et bordures dynamiques

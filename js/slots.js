@@ -37,6 +37,9 @@ export class SlotManager {
     // Cases du four ouvert : { input: [..], fuel: [..], output: [..] }
     // (tableaux de longueur 1), définies par le panneau du four.
     this.furnaceArrays = null;
+    // Cases du coffre ouvert : tableau de 27 piles, défini par le panneau
+    // du coffre (null quand aucun coffre n'est ouvert).
+    this.chestSlots = null;
 
     this.dragging = false;
     this.hovered = null;
@@ -62,6 +65,7 @@ export class SlotManager {
     if (kind === 'furnaceIn') return this.furnaceArrays ? this.furnaceArrays.input : null;
     if (kind === 'furnaceFuel') return this.furnaceArrays ? this.furnaceArrays.fuel : null;
     if (kind === 'furnaceOut') return this.furnaceArrays ? this.furnaceArrays.output : null;
+    if (kind === 'chest') return this.chestSlots;
     return inv.slots;
   }
 
@@ -69,6 +73,7 @@ export class SlotManager {
     if (kind === 'furnaceIn' || kind === 'furnaceFuel' || kind === 'furnaceOut') return 1;
     if (kind === 'craft') return 9;
     if (kind === 'craft2') return 4;
+    if (kind === 'chest') return 27;
     return this.inventory.slotCount;
   }
 
@@ -146,8 +151,12 @@ export class SlotManager {
       else if (kind === 'craft2') inv.quickMoveFromCraft2(index);
       else if (kind === 'furnaceIn' || kind === 'furnaceFuel' || kind === 'furnaceOut') {
         this.quickMoveFurnaceToInventory(kind, index);
+      } else if (kind === 'chest') {
+        this.quickMoveChestToInventory(index);
       } else if (this.canFillCraftGrid() && inv.quickMoveToCraft(index) && !inv.slots[index]) {
         // déplacé vers la grille de l'établi
+      } else if (this.chestSlots && this.quickMoveInventoryToChest(index)) {
+        // déplacé vers le coffre ouvert
       } else if (this.furnaceArrays && this.quickMoveInventoryToFurnace(index)) {
         // déplacé vers le four (entrée ou combustible)
       } else {
@@ -156,9 +165,10 @@ export class SlotManager {
       return;
     }
 
-    // Double-clic : ramasser toutes les piles du même objet.
+    // Double-clic : ramasser toutes les piles du même objet
+    // (coffre ouvert inclus, comme dans Minecraft).
     if (!right && this.lastClickEl === el && now - this.lastClickAt < DOUBLE_CLICK_MS) {
-      if (inv.cursor) inv.collectItemType(inv.cursor.id);
+      if (inv.cursor) inv.collectItemType(inv.cursor.id, this.chestSlots ? [this.chestSlots] : []);
       this.lastClickEl = null;
       this.lastClickAt = 0;
       return;
@@ -242,6 +252,46 @@ export class SlotManager {
     const added = this.inventory.add(stack.id, stack.count, stack);
     if (added >= stack.count) arr[index] = null;
     else stack.count -= added;
+  }
+
+  // Shift-clic dans une case du coffre : la pile part vers l'inventaire
+  // (complète les piles existantes, puis les cases libres).
+  quickMoveChestToInventory(index) {
+    const arr = this.chestSlots;
+    if (!arr) return;
+    const stack = arr[index];
+    if (!stack) return;
+    const added = this.inventory.add(stack.id, stack.count, stack);
+    if (added >= stack.count) arr[index] = null;
+    else stack.count -= added;
+  }
+
+  // Shift-clic dans l'inventaire : la pile part vers le coffre ouvert
+  // (première pile de même type, puis première case libre).
+  quickMoveInventoryToChest(index) {
+    const stack = this.inventory.slots[index];
+    if (!stack || !this.chestSlots) return false;
+    const chest = this.chestSlots;
+    const def = ITEM_DEFS[stack.id];
+    const max = def.maxStack || 64;
+
+    if (max > 1) {
+      for (let i = 0; i < chest.length && stack && stack.count > 0; i++) {
+        const target = chest[i];
+        if (!target || target.id !== stack.id || target.count >= max) continue;
+        const add = Math.min(stack.count, max - target.count);
+        target.count += add;
+        stack.count -= add;
+        if (stack.count <= 0) this.inventory.slots[index] = null;
+      }
+    }
+    for (let i = 0; i < chest.length && stack && stack.count > 0; i++) {
+      if (chest[i]) continue;
+      chest[i] = { ...stack };
+      this.inventory.slots[index] = null;
+    }
+    this.inventory._touch();
+    return true;
   }
 
   // Shift-clic d'un objet du sac : entrée du four si ça se fond, sinon

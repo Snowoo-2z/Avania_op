@@ -248,6 +248,11 @@ function stoneTexture(ctx, face) {
     { x: 2,  y: 21, w: 6,  h: 4,  c: '#84858a' },
     { x: 9,  y: 22, w: 7,  h: 4,  c: '#7a7b7f' },
     { x: 17, y: 21, w: 8,  h: 5,  c: '#8f9094' },
+    // rangée de raccord N-S : complète le dessus jusqu'au bord de tuile
+    // (y = 32) pour que deux dessus voisins fusionnent sans bande plate
+    { x: 2,  y: 27, w: 7,  h: 4,  c: '#7e7f84' },
+    { x: 11, y: 27, w: 6,  h: 4,  c: '#929396' },
+    { x: 18, y: 28, w: 5,  h: 4,  c: '#838488' },
   ];
 
   const pavesSide = [
@@ -282,6 +287,7 @@ function stoneTexture(ctx, face) {
     ctx.fillRect(0, 7, S, 1);
     ctx.fillRect(0, 14, S, 1);
     ctx.fillRect(0, 20, S, 1);
+    ctx.fillRect(0, 26, S, 1); // joint avant la rangée de raccord N-S
     ctx.fillRect(9,  2, 1, 6);
     ctx.fillRect(16, 2, 1, 6);
     ctx.fillRect(7,  8, 1, 6);
@@ -290,6 +296,8 @@ function stoneTexture(ctx, face) {
     ctx.fillRect(16, 15, 1, 6);
     ctx.fillRect(8,  21, 1, 5);
     ctx.fillRect(16, 21, 1, 5);
+    ctx.fillRect(13, 27, 1, 4);
+    ctx.fillRect(23, 27, 1, 4);
 
     ctx.fillStyle = withAlpha('#c8c9c6', 0.38);
     ctx.fillRect(5,  4,  2, 1);
@@ -503,6 +511,10 @@ function furnaceTexture(ctx, face) {
       { x: 2, y: 15, w: 8, h: 5, c: '#84858a' },
       { x: 11, y: 15, w: 5, h: 6, c: '#999a9e' },
       { x: 17, y: 15, w: 7, h: 5, c: '#76777b' },
+      // rangée de raccord N-S (jusqu'au bord de tuile, y = 32)
+      { x: 2, y: 22, w: 8, h: 5, c: '#7a7b7f' },
+      { x: 12, y: 23, w: 6, h: 4, c: '#8a8b90' },
+      { x: 19, y: 22, w: 5, h: 5, c: '#84858a' },
     ];
     for (const p of pavesTop) {
       ctx.fillStyle = p.c;
@@ -519,6 +531,8 @@ function furnaceTexture(ctx, face) {
     ctx.fillRect(16, 8, 1, 6);
     ctx.fillRect(10, 15, 1, 5);
     ctx.fillRect(16, 15, 1, 5);
+    ctx.fillRect(11, 22, 1, 5);
+    ctx.fillRect(18, 22, 1, 5);
     return;
   }
 
@@ -595,6 +609,182 @@ function woolBlockTexture(ctx, top, dark) {
     ctx.arc(x, y, 1.8, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+// --- Coffre : boîte en chêne avec couvercle, charnières et fermoir,
+// façon Minecraft. Cube 32×40 comme les autres blocs (lumière NE).
+//
+// Le couvercle s'ouvre en rotation sur sa charnière nord : 13 frames
+// pré-rendues (comme l'eau), de fermé (0) à ouvert (~75°). La canvas fait
+// 16 px de marge en haut : l'arête du couvercle soulevée dépasse du dessus
+// de la boîte et peut chevaucher la tuile nord (dessinée avant → correct).
+export const CHEST_OPEN_FRAMES = 13;
+export const CHEST_TOP_PAD = 16; // marge haute (couvercle soulevé)
+const CHEST_MAX_ANGLE = (75 * Math.PI) / 180;
+const CHEST_LIFT_K = 0.9;    // hauteur écran de l'arête soulevée (facteur 2.5D)
+const CHEST_HINGE_Y = 3;     // charnière, au bord nord du dessus
+const CHEST_LID_DEPTH = 23;  // profondeur du couvercle (charnière → bord sud)
+const CHEST_LID_L = 2;       // bords est/ouest du couvercle
+const CHEST_LID_R = 26;
+const CHEST_CAV = { x: 5, y: 5, w: 18, h: 17 }; // cavité (intérieur)
+
+// Lames de chêne façon Minecraft : la texture 16×16 d'origine échantillonnée
+// grossièrement — 4 lames de teintes légèrement différentes, bord sombre en
+// bas de lame, liseré clair en haut, veinage ondulé et extrémités de lames.
+// Sert au coffre (dessus, face avant, face est, dessous du couvercle) et à
+// son icône d'inventaire.
+const MC_OAK_ROWS = ['#b8945f', '#c19d67', '#ae8b55', '#b8945f'];
+export function mcOakPlanks(ctx, x, y, w, h, rows, opts = {}) {
+  const tint = opts.tint ?? 1;
+  const rowH = h / rows;
+  for (let r = 0; r < rows; r++) {
+    const ry = y + r * rowH;
+    ctx.fillStyle = shade(MC_OAK_ROWS[r % 4], tint);
+    ctx.fillRect(x, ry, w, Math.ceil(rowH));
+    // bord sombre bas de la lame + liseré clair en haut
+    ctx.fillStyle = withAlpha('#6e4f27', 0.55);
+    ctx.fillRect(x, ry + rowH - 1, w, 1);
+    ctx.fillStyle = withAlpha('#d8b87e', 0.32);
+    ctx.fillRect(x, ry, w, 1);
+    // veinage ondulé (deterministe, façon texture MC)
+    ctx.strokeStyle = withAlpha('#7a5a2e', 0.42);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 1, ry + rowH * 0.5);
+    for (let xx = x + 1; xx < x + w - 1; xx += 2) {
+      const wob = (((xx * 7 + r * 13) % 3) - 1) * 0.6;
+      ctx.lineTo(xx + 1, ry + rowH * 0.5 + wob);
+    }
+    ctx.stroke();
+    // extrémité de lame (petit trait vertical, position décalée)
+    if (rowH >= 4) {
+      ctx.fillStyle = withAlpha('#6e4f27', 0.5);
+      const endX = x + 4 + ((r * 11 + Math.round(x)) % Math.max(1, w - 8));
+      ctx.fillRect(endX, ry + 1, 1, Math.max(1, rowH - 2));
+    }
+  }
+}
+
+function chestEaseOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+
+
+function drawChestTile(ctx, openT = 0) {
+  const base = BLOCK_DEFS.chest.color;
+
+  ctx.save();
+  ctx.translate(0, CHEST_TOP_PAD); // la boîte tient sur 0..40, marge en haut
+
+  // 1. Fond : toute la tuile, zéro trou d'arrière-plan.
+  ctx.fillStyle = shade(base, 0.5);
+  ctx.fillRect(0, 0, S, BLOCK_H);
+
+  // 2. Face est (biseau) : planches de chêne MC, 4 lames.
+  mcOakPlanks(ctx, 26, 2, 6, 38, 4, { tint: 0.66 });
+
+  // 3. Face avant : planches MC + joint « bord du couvercle / corps » +
+  //    le petit fermoir en fer, comme la texture chest_front d'origine.
+  mcOakPlanks(ctx, 2, 26, 24, 14, 2, { tint: 0.85 });
+  // le bord du couvercle (haut) reçoit un peu plus de lumière
+  ctx.fillStyle = withAlpha('#ffffff', 0.07);
+  ctx.fillRect(2, 26, 24, 4);
+  // joint couvercle / corps
+  ctx.fillStyle = withAlpha('#4e3818', 0.9);
+  ctx.fillRect(2, 30, 24, 1);
+  // fermoir en fer (petit, centré, sous le joint — pas de serrure dorée)
+  ctx.fillStyle = '#33343a';
+  ctx.fillRect(13, 31, 4, 4);
+  ctx.fillStyle = '#8b8d92';
+  ctx.fillRect(13, 31, 4, 1);
+  ctx.fillStyle = '#62646a';
+  ctx.fillRect(13, 32, 1, 2);
+  ctx.fillStyle = '#26272c';
+  ctx.fillRect(15, 32, 2, 2);
+
+  // 4. Dessus : liseré de la boîte + cavité (révélée par l'ouverture).
+  ctx.fillStyle = '#a07c48';
+  ctx.fillRect(2, 2, 24, 24);
+  // liseré sud (bord de la boîte, face lumière)
+  ctx.fillStyle = '#b8945f';
+  ctx.fillRect(2, 22, 24, 4);
+  // cavité : parois sombres (chest_inside_bottom)
+  ctx.fillStyle = '#20110a';
+  ctx.fillRect(CHEST_CAV.x, CHEST_CAV.y, CHEST_CAV.w, CHEST_CAV.h);
+  // fond de la cavité : planches sombres
+  const floorRows = [[15, 2, '#3f2812'], [17, 2, '#4a2f15'], [19, 2, '#442b14'], [21, 1, '#38230f']];
+  for (const [fy, fh, fc] of floorRows) {
+    ctx.fillStyle = fc;
+    ctx.fillRect(CHEST_CAV.x, fy, CHEST_CAV.w, fh);
+  }
+  // ombres intérieures (nord + ouest)
+  ctx.fillStyle = withAlpha('#000000', 0.55);
+  ctx.fillRect(CHEST_CAV.x, CHEST_CAV.y, CHEST_CAV.w, 3);
+  ctx.fillStyle = withAlpha('#000000', 0.3);
+  ctx.fillRect(CHEST_CAV.x, 8, CHEST_CAV.w, 2);
+  ctx.fillRect(CHEST_CAV.x, CHEST_CAV.y, 2, CHEST_CAV.h);
+  ctx.fillStyle = withAlpha('#000000', 0.18);
+  ctx.fillRect(22, CHEST_CAV.y, 1, CHEST_CAV.h);
+
+  // 5. Couvercle — rotation sur la charnière nord.
+  // Projection : un point à la profondeur d (de la charnière) se projette
+  // en y = HINGE + d * (cos − sin·K) : linéaire en d. Quand l'arête
+  // soulevée passe au-dessus de la charnière à l'écran (ouverture > ~48°),
+  // la bande remonte AU-DESSUS de yTop — on dessine avec une hauteur
+  // signée (min/abs), jamais une hauteur négative.
+  const t = chestEaseOut(Math.max(0, Math.min(1, openT)));
+  const ang = CHEST_MAX_ANGLE * t;
+  const cos = Math.cos(ang);
+  const sin = Math.sin(ang);
+  const yTop = CHEST_HINGE_Y;
+  const yBot = CHEST_HINGE_Y + CHEST_LID_DEPTH * cos - CHEST_LID_DEPTH * sin * CHEST_LIFT_K;
+  const dy = yBot - yTop; // signé : + fermé (bande vers le bas), − ouvert
+  const yA = Math.min(yTop, yBot);
+  const bandH = Math.max(1, Math.abs(dy));
+
+  // ombre du couvercle sur l'intérieur (sauf quasi ouvert)
+  if (t > 0.03 && t < 0.9) {
+    const sy = Math.max(CHEST_CAV.y, Math.ceil(Math.min(yBot, CHEST_CAV.y + CHEST_CAV.h)));
+    if (sy < 21) {
+      ctx.fillStyle = withAlpha('#000000', 0.3 * (1 - t));
+      ctx.fillRect(CHEST_CAV.x, sy, CHEST_CAV.w, Math.min(3, 21 - sy));
+    }
+  }
+
+  // bande du couvercle : planches de chêne MC (4 lames) qui suivent la
+  // projection — quand il pivote vers le sud, c'est le dessous (plus
+  // clair) qui est visible.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(CHEST_LID_L, yA, CHEST_LID_R - CHEST_LID_L, bandH);
+  ctx.clip();
+  mcOakPlanks(ctx, CHEST_LID_L, yA, CHEST_LID_R - CHEST_LID_L, bandH, 4,
+    { tint: 1.02 + 0.1 * t });
+  // joint central du couvercle (les deux moitiés) + liseré clair
+  const gapY = Math.round(yTop + dy * 0.5);
+  ctx.fillStyle = withAlpha('#3a2812', 0.85);
+  ctx.fillRect(CHEST_LID_L, gapY, CHEST_LID_R - CHEST_LID_L, 1);
+  ctx.fillStyle = withAlpha('#d8b87e', 0.3);
+  ctx.fillRect(CHEST_LID_L, gapY + (dy >= 0 ? 1 : -1), CHEST_LID_R - CHEST_LID_L, 1);
+  // arête charnière
+  ctx.fillStyle = withAlpha('#150a02', 0.5);
+  ctx.fillRect(CHEST_LID_L, Math.round(yTop) - (dy >= 0 ? 0 : 1), CHEST_LID_R - CHEST_LID_L, 1);
+  // arête soulevée : trait sombre fin de rebord
+  const edgeY = dy >= 0 ? Math.round(yBot) - 1 : Math.round(yBot);
+  ctx.fillStyle = withAlpha('#150a02', 0.45);
+  ctx.fillRect(CHEST_LID_L, edgeY, CHEST_LID_R - CHEST_LID_L, 1);
+  ctx.restore();
+
+  // 6. Silhouette de la boîte (le couvercle a son propre rebord).
+  ctx.strokeStyle = shade(base, 0.38);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 1.5, S - 1, BLOCK_H - 2);
+  // liseré clair du liseré sud quand le couvercle est ouvert
+  if (t > 0.05) {
+    ctx.fillStyle = withAlpha('#ffe2ac', 0.25 * Math.min(1, t * 2));
+    ctx.fillRect(2, 22, 24, 1);
+  }
+
+  ctx.restore();
 }
 
 // --- Porte : fermée (vue de face) ou ouverte (à plat sur le sol) ---
@@ -878,8 +1068,33 @@ export function buildTileset() {
   lctx.fillRect(17, 9, 1, 1);
   lctx.fillRect(12, 9, 1, 1);
   cache.furnaceLit = lit;
+
+  // Coffre : 13 frames d'ouverture du couvercle (comme l'eau). Pas de
+  // raccord auto-tiling, comme le four.
+  const chestFrames = [];
+  for (let f = 0; f < CHEST_OPEN_FRAMES; f++) {
+    const c = makeCanvas(S, H + CHEST_TOP_PAD);
+    const chctx = c.getContext('2d');
+    chctx.imageSmoothingEnabled = false;
+    drawChestTile(chctx, f / (CHEST_OPEN_FRAMES - 1));
+    chestFrames.push(c);
+  }
+  cache.chestFrames = chestFrames;
+
   built = true;
   return cache;
+}
+
+// Frame du coffre selon l'avancement d'ouverture (0 = fermé, 1 = ouvert).
+export function getChestFrame(openT = 0) {
+  const t = Math.max(0, Math.min(1, openT));
+  const idx = Math.round(t * (CHEST_OPEN_FRAMES - 1));
+  return cache.chestFrames ? cache.chestFrames[idx] : cache.chestFrames?.[0];
+}
+
+// Tuile de coffre fermée (tutoriel, aperçus…).
+export function getChestCanvas() {
+  return cache.chestFrames ? cache.chestFrames[0] : null;
 }
 
 // Tuile de four, allumé ou éteint.
@@ -1149,6 +1364,11 @@ const ISOLATED_FACES = {
 // ou en T. Le dessus n'est caché QUE si un autre bloc est vraiment
 // empilé dessus (couche 2) : le socle fusionne alors avec la face
 // avant du sommet.
+//
+// Raccord N-S (même matériau) : le dessus descend jusqu'à la frontière
+// de tuile pour fusionner avec le dessus du voisin sud, exactement
+// comme un raccord E-O — ni bande de face avant ni trait de séparation
+// entre les deux blocs.
 export function resolveBlockFaces(world, id, tx, ty, layer = 1) {
   const leftSame = world.blockAt(tx - 1, ty, layer) === id;
   const rightSame = world.blockAt(tx + 1, ty, layer) === id;
@@ -1177,13 +1397,22 @@ function drawBlockTileConnected(ctx, x, y, color, texture, faces, opts = {}) {
   // Coin / T avec voisin nord : le dessus démarre à y = 0 (plus de bande
   // de 2 px « side ») pour recouvrir proprement l'extrusion du voisin.
   const topY0 = (showTop && northSame) ? 0 : TOP_INSET_T;
-  const topH = FRONT_Y - topY0;
+
+  // Raccord N-S : avec un voisin sud du même matériau, le dessus descend
+  // jusqu'à la frontière de tuile (y = 32) au lieu de s'arrêter à y = 26.
+  // Les deux dessus se touchent alors pile, exactement comme sur un
+  // raccord E-O : plus de bande de « face avant » ni de trait qui
+  // cloisonnent les blocs (L, T, colonnes…), la paroi ne montre sa face
+  // avant qu'au bord sud du mur. Le voisin sud, dessiné après, recouvre
+  // toute l'extrusion restante.
+  const topBottom = (showTop && southSame) ? S : FRONT_Y;
+  const topH = topBottom - topY0;
 
   // Face droite : biseau y = 2 seulement pour un cube isolé (pas de voisin N).
   // Aux coins et sur un mur étiré, elle part de y = 0 pour rester continue.
   const rightY0 = (showTop && !northSame) ? TOP_INSET_T : 0;
 
-  const fy0 = showTop ? FRONT_Y : 0;
+  const fy0 = showTop ? topBottom : 0;
   const fh = BLOCK_H - fy0;
 
   ctx.save();
@@ -1213,9 +1442,15 @@ function drawBlockTileConnected(ctx, x, y, color, texture, faces, opts = {}) {
   // Reflet haut-gauche : seulement à l'angle extérieur, jamais le long
   // d'un raccord (sinon bande blanche sur tout le mur).
   if (showTop && !leftSame) {
+    // Bande horizontale : uniquement si le bord nord du dessus est libre
+    // (avec un voisin nord fusionné, elle tomberait pile sur le raccord).
+    if (!northSame) {
+      ctx.fillStyle = withAlpha('#ffffff', opts.shine ?? 0.26);
+      ctx.fillRect(x0, topY0, Math.max(0, fw - 2), 2);
+    }
+    // Bande verticale le long du biseau ouest (arête libre).
     ctx.fillStyle = withAlpha('#ffffff', opts.shine ?? 0.26);
-    ctx.fillRect(x0, topY0, Math.max(0, fw - 2), 2);
-    ctx.fillRect(x0, topY0, 2, FRONT_Y - topY0);
+    ctx.fillRect(x0, topY0, 2, topH);
   }
 
   const paintFace = (face, px, py, pw, ph) => {
@@ -1238,7 +1473,10 @@ function drawBlockTileConnected(ctx, x, y, color, texture, faces, opts = {}) {
   ctx.lineWidth = 1;
   ctx.beginPath();
 
-  if (showTop) {
+  // Arête nord du dessus : libre seulement sans voisin nord fusionné —
+  // avec un voisin nord, le dessus continue depuis le bloc du haut et un
+  // trait au milieu du mur casserait l'effet de raccord.
+  if (showTop && !northSame) {
     ctx.moveTo(leftSame ? 0 : 0.5, 0.5);
     ctx.lineTo(rightSame ? S : S - 0.5, 0.5);
   }

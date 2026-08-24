@@ -10,7 +10,7 @@
 // ============================================================
 
 import { ALL_ITEMS, ITEM_DEFS, BLOCK_DEFS } from './blocks.js';
-import { buildTileset, shade } from './tileset.js';
+import { buildTileset, shade, mcOakPlanks } from './tileset.js';
 
 const SIZE = 32;
 const urlCache = new Map();
@@ -333,7 +333,41 @@ function drawDoorIcon(ctx) {
   ctx.restore();
 }
 
+// --- Coffre : vue de face façon chest_front Minecraft — planches de chêne,
+// joint « bord du couvercle / corps » et petit fermoir en fer.
+function drawChestIcon(ctx) {
+  ctx.save();
+  ctx.translate(16, 15);
+  // Bord sombre de la boîte
+  ctx.fillStyle = '#6e5330';
+  ctx.fillRect(-12, -10, 24, 20);
+  // Bord du couvercle (haut, 6 px) — planches plus claires
+  mcOakPlanks(ctx, -11, -9, 22, 6, 1, { tint: 1.05 });
+  ctx.fillStyle = withAlpha('#ffffff', 0.08);
+  ctx.fillRect(-11, -9, 22, 6);
+  // Joint couvercle / corps
+  ctx.fillStyle = withAlpha('#4e3818', 0.9);
+  ctx.fillRect(-11, -3, 22, 1);
+  // Corps : 2 lames de chêne
+  mcOakPlanks(ctx, -11, -2, 22, 11, 2, { tint: 0.88 });
+  // Fermeture : petit fermoir en fer centré sous le joint
+  ctx.fillStyle = '#33343a';
+  ctx.fillRect(-2, -1, 4, 4);
+  ctx.fillStyle = '#8b8d92';
+  ctx.fillRect(-2, -1, 4, 1);
+  ctx.fillStyle = '#62646a';
+  ctx.fillRect(-2, 0, 1, 2);
+  ctx.fillStyle = '#26272c';
+  ctx.fillRect(0, 0, 2, 2);
+  // Contour sombre
+  ctx.strokeStyle = '#4e3818';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-11.5, -9.5, 23, 19);
+  ctx.restore();
+}
+
 const TOOL_DRAWERS = {
+  chest:          (ctx) => drawChestIcon(ctx),
   wooden_pickaxe: (ctx) => drawPickaxe(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
   stone_pickaxe:  (ctx) => drawPickaxe(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
   iron_pickaxe:   (ctx) => drawPickaxe(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
