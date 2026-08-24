@@ -333,7 +333,48 @@ function drawDoorIcon(ctx) {
   ctx.restore();
 }
 
+// --- Coffre : vue de face, boîte en chêne + couvercle + fermoir métallique
+function drawChestIcon(ctx) {
+  const wood = '#8a5a2e', woodDark = '#5e3a1c', woodLight = '#b07a3e';
+  const seam = '#432812', metal = '#4a4c52', metalHi = '#787d86', gold = '#e8c44e';
+  ctx.save();
+  ctx.translate(16, 15);
+  // Corps de la boîte (bord sombre + fond bois)
+  ctx.fillStyle = woodDark;
+  ctx.fillRect(-12, -10, 24, 20);
+  ctx.fillStyle = wood;
+  ctx.fillRect(-11, -9, 22, 18);
+  // Lames horizontales
+  ctx.fillStyle = seam;
+  ctx.fillRect(-11, -2, 22, 1);
+  ctx.fillRect(-11, 5, 22, 1);
+  // Couvercle : partie haute avec son joint central
+  ctx.fillStyle = woodLight;
+  ctx.fillRect(-11, -9, 22, 6);
+  ctx.fillStyle = withAlpha('#ffffff', 0.16);
+  ctx.fillRect(-11, -9, 22, 1);
+  ctx.fillStyle = withAlpha('#000000', 0.28);
+  ctx.fillRect(-11, -3, 22, 1);
+  ctx.fillStyle = seam;
+  ctx.fillRect(0, -9, 1, 5);
+  // Reflet haut-gauche
+  ctx.fillStyle = withAlpha('#ffffff', 0.22);
+  ctx.fillRect(-11, -9, 1, 18);
+  ctx.fillRect(-10, -8, 1, 2);
+  // Fermeture : bande de métal vertical + serrure dorée
+  ctx.fillStyle = metal;
+  ctx.fillRect(-1, -3, 3, 12);
+  ctx.fillStyle = metalHi;
+  ctx.fillRect(-1, -3, 1, 12);
+  ctx.fillStyle = gold;
+  ctx.fillRect(-1, 0, 3, 4);
+  ctx.fillStyle = '#fff2b0';
+  ctx.fillRect(-1, 0, 3, 1);
+  ctx.restore();
+}
+
 const TOOL_DRAWERS = {
+  chest:          (ctx) => drawChestIcon(ctx),
   wooden_pickaxe: (ctx) => drawPickaxe(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
   stone_pickaxe:  (ctx) => drawPickaxe(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
   iron_pickaxe:   (ctx) => drawPickaxe(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),

@@ -15,6 +15,7 @@ import { Input } from './input.js';
 import { Inventory } from './inventory.js';
 import {
   buildTileset, getTileCanvas, getDoorCanvas, getFurnaceCanvas, getWaterFrame,
+  getChestCanvas,
   drawTreeObject, drawRockObject, drawIronOreObject,
   getObjectSprite, getObjectSpriteInfo, treeVariantAt, treeDropCount,
   treeBreakTime, TREE_VARIANTS, WATER_FRAMES, isExtrudedBlock, drawBlockConnected,
@@ -217,8 +218,10 @@ export class Game {
     // Fours posés : contenu + progression (clé numérique = index de tuile,
     // finies les chaînes "tx,ty" allouées dans la boucle de rendu).
     this.furnaceData = new Map();
-    // Rappels branchés par l'UI (ex. ouvrir le panneau du four).
-    this.uiCallbacks = { openFurnace: null };
+    // Coffres posés : 27 cases de rangement (clé = index de tuile).
+    this.chestData = new Map();
+    // Rappels branchés par l'UI (ex. ouvrir le panneau du four / du coffre).
+    this.uiCallbacks = { openFurnace: null, openChest: null };
     // Particules de casse (débris légers, courte durée de vie).
     this.particles = [];
     this.lastTime = performance.now();
@@ -481,6 +484,17 @@ export class Game {
     return entry;
   }
 
+  // Entrée de stockage d'un coffre posé (27 cases, comme Minecraft).
+  getChestEntry(tx, ty) {
+    const key = ty * WORLD_W + tx;
+    let entry = this.chestData.get(key);
+    if (!entry) {
+      entry = { slots: new Array(27).fill(null) };
+      this.chestData.set(key, entry);
+    }
+    return entry;
+  }
+
   // ------------------------------------------------------------
   //  Mobs (moutons, vaches) : errance + fuite quand on les frappe.
   // ------------------------------------------------------------
@@ -718,6 +732,13 @@ export class Game {
       this.actionCooldown = 0.25;
       return;
     }
+    if (targetBlock === 'chest') {
+      if (this.uiCallbacks.openChest) {
+        this.uiCallbacks.openChest(this.targetTx, this.targetTy);
+      }
+      this.actionCooldown = 0.25;
+      return;
+    }
     this.placeSelectedBlock();
   }
 
@@ -790,6 +811,17 @@ export class Game {
     const i = this.world.idx(this.targetTx, this.targetTy);
     const oldFloor = this.world.floor[i];
     const drop = this.world.breakBlock(this.targetTx, this.targetTy);
+    // Un coffre cassé rejette son contenu au sol (comme dans Minecraft) :
+    // rien ne se perd en démolissant sa maison.
+    if (existingBlock === 'chest') {
+      const chestEntry = this.chestData.get(i);
+      if (chestEntry) {
+        this.chestData.delete(i);
+        for (const stack of chestEntry.slots) {
+          if (stack) this.spawnDrop(this.targetTx, this.targetTy, stack.id, stack.count);
+        }
+      }
+    }
     if (drop) {
       if (existingBlock && BLOCK_DEFS[existingBlock]?.kind === 'object') {
         this.removeStaticObjectAt(this.targetTx, this.targetTy);
@@ -1630,6 +1662,10 @@ export class Game {
         } else if (block === 'furnace') {
           const entry = this.furnaceData.get(this.world.idx(tx, ty));
           ctx.drawImage(getFurnaceCanvas(Boolean(entry && entry.fuelTime > 0)), tx * TILE, ty * TILE);
+        } else if (block === 'chest') {
+          // Boîte complète : sprite unique, pas de raccord auto-tiling.
+          const offset = (layer === 2) ? 32 : 0;
+          ctx.drawImage(getChestCanvas(), tx * TILE, ty * TILE - BLOCK_EXTRUDE - offset);
         } else {
           if (isExtrudedBlock(block)) {
             // Rendu de connexion intelligente avec biseau et bordures dynamiques

@@ -65,6 +65,12 @@ export const BLOCK_DEFS = {
     drop: 'furnace', color: '#5d5d62', requiredTool: 'pickaxe', breakTime: 2.0,
   },
 
+  // --- coffre (rangement : clic droit pour ouvrir) ---
+  chest: {
+    id: 'chest', label: 'Coffre', kind: 'block', solid: true, breakable: true,
+    drop: 'chest', color: '#8a5a2e', requiredTool: null, breakTime: 0.5,
+  },
+
   // --- bloc de laine (4 laines → 1 bloc, comme Minecraft) ---
   woolBlock: {
     id: 'woolBlock', label: 'Bloc de laine', kind: 'block', solid: true, breakable: true,
@@ -84,6 +90,7 @@ export const ITEM_DEFS = {
   ironBlock: { id: 'ironBlock', label: 'Bloc de fer', color: '#d8dde2', type: 'material', maxStack: 64, place: 'ironBlock' },
   door: { id: 'door', label: 'Porte en bois', color: '#c89a5e', type: 'material', maxStack: 64, place: 'door' },
   furnace: { id: 'furnace', label: 'Four', color: '#5d5d62', type: 'material', maxStack: 64, place: 'furnace' },
+  chest: { id: 'chest', label: 'Coffre', color: '#8a5a2e', type: 'material', maxStack: 64, place: 'chest' },
   wool: { id: 'wool', label: 'Laine', color: '#e8e8e8', type: 'resource', maxStack: 64 },
   woolBlock: { id: 'woolBlock', label: 'Bloc de laine', color: '#e8e8e8', type: 'material', maxStack: 64, place: 'woolBlock' },
   rawBeef: { id: 'rawBeef', label: 'Bœuf cru', color: '#c0504a', type: 'resource', maxStack: 64 },
@@ -250,6 +257,10 @@ export const RECIPES = [
   {
     id: 'woolBlock', label: 'Bloc de laine', out: 'woolBlock', outN: 1,
     inputs: { wool: 4 }, pattern: [['wool', 'wool'], ['wool', 'wool']], category: 'construction',
+  },
+  {
+    id: 'chest', label: 'Coffre', out: 'chest', outN: 1,
+    inputs: { plank: 8 }, pattern: [['plank', 'plank', 'plank'], ['plank', null, 'plank'], ['plank', 'plank', 'plank']], category: 'construction',
   },
 ];
 

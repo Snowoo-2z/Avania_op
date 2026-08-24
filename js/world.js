@@ -216,6 +216,9 @@ export class World {
       this.blocks[i] = item.place;
       return true;
     } else {
+      // Un coffre est une boîte complète : on n'empile rien dessus
+      // (comme dans Minecraft, un coffre ne supporte pas d'objet posé).
+      if (baseBlock === 'chest') return false;
       // Si un bloc existe déjà, on tente de l'empiler en couche 2!
       const baseDef = BLOCK_DEFS[baseBlock];
       if (baseDef && baseDef.kind === 'block' && this.blocks2[i] === null) {

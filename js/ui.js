@@ -761,6 +761,114 @@ export class FurnacePanel {
 }
 
 // ------------------------------------------------------------
+//  Coffre (clic droit sur un coffre posé) : 27 cases de rangement
+//  + inventaire du joueur en bas — comme l'interface du coffre Minecraft.
+// ------------------------------------------------------------
+export class ChestPanel {
+  constructor(root, inventory, slotManager, game, onVisibilityChange = () => {}) {
+    this.root = root;
+    this.inventory = inventory;
+    this.slotManager = slotManager;
+    this.game = game;
+    this.onVisibilityChange = onVisibilityChange;
+    this.backdrop = root.querySelector('.panel-backdrop');
+    this.gridRoot = document.getElementById('chest-grid');
+    this.invGridRoot = document.getElementById('chest-inv-grid');
+    this.invHotbarRoot = document.getElementById('chest-inv-hotbar');
+    this.key = null;
+    this.entry = null;
+    this.timer = null;
+    this.chestSlotEls = [];
+    this.invSlots = [];
+    this.invHotbarSlots = [];
+    this.build();
+    this.backdrop.addEventListener('pointerdown', () => this.close());
+  }
+
+  build() {
+    // Les 27 cases du coffre (3 rangées × 9, comme dans Minecraft).
+    this.gridRoot.innerHTML = '';
+    this.chestSlotEls = [];
+    for (let index = 0; index < 27; index++) {
+      const el = makeSlotElement('chest', index);
+      el.classList.add('craft-slot');
+      this.slotManager.register(el, 'chest', index);
+      this.gridRoot.appendChild(el);
+      this.chestSlotEls.push({ el, index });
+    }
+
+    // Inventaire du joueur (27 cases + barre rapide).
+    this.invGridRoot.innerHTML = '';
+    this.invHotbarRoot.innerHTML = '';
+    this.invSlots = [];
+    this.invHotbarSlots = [];
+    for (let index = 0; index < this.inventory.hotbarStart; index++) {
+      const el = makeSlotElement('inv', index);
+      this.slotManager.register(el, 'inv', index);
+      this.invGridRoot.appendChild(el);
+      this.invSlots.push({ el, index });
+    }
+    for (let i = 0; i < this.inventory.hotbarSize; i++) {
+      const index = this.inventory.hotbarStart + i;
+      const el = makeSlotElement('inv', index);
+      this.slotManager.register(el, 'inv', index);
+      this.invHotbarRoot.appendChild(el);
+      this.invHotbarSlots.push({ el, index });
+    }
+  }
+
+  update() {
+    if (this.root.classList.contains('hidden') || !this.entry) return;
+    const slots = this.entry.slots;
+    this.chestSlotEls.forEach(({ el, index }) => {
+      updateSlotVisual(el, slots[index], this.inventory, index);
+    });
+    this.invSlots.forEach(({ el, index }) => {
+      updateSlotVisual(el, this.inventory.getSlot(index), this.inventory, index);
+    });
+    this.invHotbarSlots.forEach(({ el, index }, i) => {
+      updateSlotVisual(el, this.inventory.getSlot(index), this.inventory, index);
+      el.classList.toggle('selected', this.inventory.selected === i);
+    });
+    this.slotManager.updateCursor((icon, id) => applyItemIcon(icon, id));
+  }
+
+  open(tx, ty) {
+    if (!this.root.classList.contains('hidden')) return;
+    this.key = `${tx},${ty}`;
+    this.entry = this.game.getChestEntry(tx, ty);
+    this.slotManager.chestSlots = this.entry.slots;
+    this.root.classList.remove('hidden');
+    this.update();
+    // Rafraîchissement léger : le contenu change uniquement quand le
+    // joueur manipule les cases (le timer couvre aussi l'inventaire).
+    this.timer = setInterval(() => this.update(), 150);
+    this.onVisibilityChange(true);
+  }
+
+  close() {
+    if (this.root.classList.contains('hidden')) return;
+    // Fermer en tenant une pile (Échap, fond…) : la pile revient dans
+    // l'inventaire, comme dans Minecraft — rien ne se perd.
+    this.inventory.returnCursor();
+    this.root.classList.add('hidden');
+    if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    this.slotManager.chestSlots = null;
+    this.slotManager.updateCursor((icon, id) => applyItemIcon(icon, id));
+    this.onVisibilityChange(false);
+  }
+
+  toggle(tx, ty) {
+    if (this.root.classList.contains('hidden')) this.open(tx, ty);
+    else this.close();
+  }
+
+  get isOpen() {
+    return !this.root.classList.contains('hidden');
+  }
+}
+
+// ------------------------------------------------------------
 //  Établi façon Minecraft (touche C) :
 //  grille 3×3 + résultat, livre de recettes repliable, inventaire en bas.
 // ------------------------------------------------------------

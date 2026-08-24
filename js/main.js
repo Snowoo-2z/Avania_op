@@ -8,7 +8,7 @@
 
 import { PERFORMANCE } from './config.js';
 import {
-  openCharacterCreation, HUD, Hotbar, InventoryPanel, Crafting, FurnacePanel,
+  openCharacterCreation, HUD, Hotbar, InventoryPanel, Crafting, FurnacePanel, ChestPanel,
 } from './ui.js';
 import { SlotManager } from './slots.js';
 import { initIcons } from './icons.js';
@@ -75,6 +75,7 @@ const LOADING_TIPS = [
   'Astuce : le fer est rare — cherche bien !',
   'Astuce : les moutons donnent de la laine.',
   'Astuce : construis un four pour fondre le fer.',
+  'Astuce : 8 planches → un coffre pour ranger tes affaires.',
   'Astuce : touche Q pour lâcher un objet au sol.',
   'Astuce : les portes bloquent le passage une fois fermées.',
 ];
@@ -191,7 +192,7 @@ async function boot() {
   const slotManager = new SlotManager(game.inventory, {
     cursorEl: document.getElementById('cursor-stack'),
     tooltipEl: document.getElementById('slot-tooltip'),
-    isPanelOpen: () => Boolean(inventoryPanel?.isOpen || crafting?.isOpen || furnacePanel?.isOpen),
+    isPanelOpen: () => Boolean(inventoryPanel?.isOpen || crafting?.isOpen || furnacePanel?.isOpen || chestPanel?.isOpen),
     // Sortir une pile de l'inventaire la fait tomber dans le monde.
     onDropCursor: (stack) => game.spawnDropAtPlayer(stack.id, stack.count),
   });
@@ -202,8 +203,9 @@ async function boot() {
   let inventoryPanel;
   let crafting;
   let furnacePanel;
+  let chestPanel;
   const syncPause = () => game.setPaused(Boolean(
-    inventoryPanel?.isOpen || crafting?.isOpen || furnacePanel?.isOpen || settings?.isOpen,
+    inventoryPanel?.isOpen || crafting?.isOpen || furnacePanel?.isOpen || chestPanel?.isOpen || settings?.isOpen,
   ));
   // Fermer les paramètres (croix, fond, Échap) doit aussi dé-pauser le jeu.
   settings.onToggle = syncPause;
@@ -240,24 +242,41 @@ async function boot() {
       syncPause();
     },
   );
-  // Clic droit sur un four posé → ouvre son panneau.
+  chestPanel = new ChestPanel(
+    document.getElementById('chest'),
+    game.inventory,
+    slotManager,
+    game,
+    (open) => {
+      if (open) {
+        if (inventoryPanel?.isOpen) inventoryPanel.close();
+        if (crafting?.isOpen) crafting.close();
+      }
+      syncPause();
+    },
+  );
+  // Clic droit sur un four / un coffre posé → ouvre son panneau.
   game.uiCallbacks.openFurnace = (tx, ty) => furnacePanel.open(tx, ty);
+  game.uiCallbacks.openChest = (tx, ty) => chestPanel.open(tx, ty);
 
   document.getElementById('inventory-close').onclick = () => inventoryPanel.close();
   document.getElementById('craft-btn').onclick = () => crafting.toggle();
   document.getElementById('craft-close').onclick = () => crafting.close();
   document.getElementById('furnace-close').onclick = () => furnacePanel.close();
+  document.getElementById('chest-close').onclick = () => chestPanel.close();
   // Dispatch des actions d'interface (rebindables) : clavier ET souris.
   const handlePanelTrigger = (e, t) => {
     let acted = false;
     if (bindings.inventory === t) {
       e.preventDefault();
       if (furnacePanel.isOpen) furnacePanel.close();
+      else if (chestPanel.isOpen) chestPanel.close();
       else inventoryPanel.toggle();
       acted = true;
     } else if (bindings.craft === t) {
       e.preventDefault();
       if (furnacePanel.isOpen) furnacePanel.close();
+      else if (chestPanel.isOpen) chestPanel.close();
       else crafting.toggle();
       acted = true;
     } else if (bindings.sort === t && inventoryPanel.isOpen) {
@@ -269,6 +288,7 @@ async function boot() {
       if (inventoryPanel.isOpen) inventoryPanel.close();
       if (crafting.isOpen) crafting.close();
       if (furnacePanel.isOpen) furnacePanel.close();
+      if (chestPanel.isOpen) chestPanel.close();
       settings.toggle();
       acted = true;
     }
@@ -282,6 +302,7 @@ async function boot() {
         inventoryPanel.close();
         crafting.close();
         furnacePanel.close();
+        chestPanel.close();
         if (tutorial.isOpen) closeTutorial();
       }
       return;

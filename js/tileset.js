@@ -248,6 +248,11 @@ function stoneTexture(ctx, face) {
     { x: 2,  y: 21, w: 6,  h: 4,  c: '#84858a' },
     { x: 9,  y: 22, w: 7,  h: 4,  c: '#7a7b7f' },
     { x: 17, y: 21, w: 8,  h: 5,  c: '#8f9094' },
+    // rangée de raccord N-S : complète le dessus jusqu'au bord de tuile
+    // (y = 32) pour que deux dessus voisins fusionnent sans bande plate
+    { x: 2,  y: 27, w: 7,  h: 4,  c: '#7e7f84' },
+    { x: 11, y: 27, w: 6,  h: 4,  c: '#929396' },
+    { x: 18, y: 28, w: 5,  h: 4,  c: '#838488' },
   ];
 
   const pavesSide = [
@@ -282,6 +287,7 @@ function stoneTexture(ctx, face) {
     ctx.fillRect(0, 7, S, 1);
     ctx.fillRect(0, 14, S, 1);
     ctx.fillRect(0, 20, S, 1);
+    ctx.fillRect(0, 26, S, 1); // joint avant la rangée de raccord N-S
     ctx.fillRect(9,  2, 1, 6);
     ctx.fillRect(16, 2, 1, 6);
     ctx.fillRect(7,  8, 1, 6);
@@ -290,6 +296,8 @@ function stoneTexture(ctx, face) {
     ctx.fillRect(16, 15, 1, 6);
     ctx.fillRect(8,  21, 1, 5);
     ctx.fillRect(16, 21, 1, 5);
+    ctx.fillRect(13, 27, 1, 4);
+    ctx.fillRect(23, 27, 1, 4);
 
     ctx.fillStyle = withAlpha('#c8c9c6', 0.38);
     ctx.fillRect(5,  4,  2, 1);
@@ -503,6 +511,10 @@ function furnaceTexture(ctx, face) {
       { x: 2, y: 15, w: 8, h: 5, c: '#84858a' },
       { x: 11, y: 15, w: 5, h: 6, c: '#999a9e' },
       { x: 17, y: 15, w: 7, h: 5, c: '#76777b' },
+      // rangée de raccord N-S (jusqu'au bord de tuile, y = 32)
+      { x: 2, y: 22, w: 8, h: 5, c: '#7a7b7f' },
+      { x: 12, y: 23, w: 6, h: 4, c: '#8a8b90' },
+      { x: 19, y: 22, w: 5, h: 5, c: '#84858a' },
     ];
     for (const p of pavesTop) {
       ctx.fillStyle = p.c;
@@ -519,6 +531,8 @@ function furnaceTexture(ctx, face) {
     ctx.fillRect(16, 8, 1, 6);
     ctx.fillRect(10, 15, 1, 5);
     ctx.fillRect(16, 15, 1, 5);
+    ctx.fillRect(11, 22, 1, 5);
+    ctx.fillRect(18, 22, 1, 5);
     return;
   }
 
@@ -595,6 +609,74 @@ function woolBlockTexture(ctx, top, dark) {
     ctx.arc(x, y, 1.8, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+// --- Coffre : boîte en chêne avec couvercle et fermoir, façon Minecraft.
+// Cube 32×40 comme les autres blocs posés (lumière NE : face est visible).
+function drawChestTile(ctx) {
+  const base = BLOCK_DEFS.chest.color;
+  const top = shade(base, 1.16);
+  const side = shade(base, 0.84);
+  const sideDark = shade(base, 0.62);
+  const seam = withAlpha('#33200f', 0.72);
+
+  // 1. Fond : toute la tuile 32×40, zéro trou d'arrière-plan.
+  ctx.fillStyle = sideDark;
+  ctx.fillRect(0, 0, S, BLOCK_H);
+
+  // 2. Dessus : le couvercle — lames claires + joint central du couvercle.
+  ctx.fillStyle = top;
+  ctx.fillRect(2, 2, 24, 24);
+  ctx.strokeStyle = seam;
+  ctx.lineWidth = 1;
+  for (const y of [10, 18]) {
+    ctx.beginPath(); ctx.moveTo(2, y + 0.5); ctx.lineTo(26, y + 0.5); ctx.stroke();
+  }
+  // Joint central du couvercle (sombre) + liseré clair dessous
+  ctx.fillStyle = withAlpha('#1d1006', 0.85);
+  ctx.fillRect(2, 13, 24, 1);
+  ctx.fillStyle = withAlpha('#ffd9a0', 0.28);
+  ctx.fillRect(2, 14, 24, 1);
+  // Reflet haut-gauche
+  ctx.fillStyle = withAlpha('#ffffff', 0.3);
+  ctx.fillRect(2, 2, 22, 2);
+  ctx.fillRect(2, 2, 2, 24);
+  // Grain léger
+  ctx.fillStyle = withAlpha('#5e3a1c', 0.3);
+  ctx.fillRect(6, 5, 5, 1);
+  ctx.fillRect(15, 6, 4, 1);
+  ctx.fillRect(9, 17, 5, 1);
+  ctx.fillRect(18, 20, 4, 1);
+
+  // 3. Face avant : lames plus sombres + fermoir métallique.
+  ctx.fillStyle = side;
+  ctx.fillRect(2, 26, 24, 14);
+  ctx.strokeStyle = withAlpha('#33200f', 0.6);
+  ctx.beginPath(); ctx.moveTo(2, 33.5); ctx.lineTo(26, 33.5); ctx.stroke();
+  // Bande de métal verticale (charnière du fermoir)
+  ctx.fillStyle = '#4a4c52';
+  ctx.fillRect(13, 26, 3, 14);
+  ctx.fillStyle = '#666a72';
+  ctx.fillRect(13, 26, 1, 14);
+  // Serrure dorée
+  ctx.fillStyle = '#c8a23c';
+  ctx.fillRect(13, 30, 3, 4);
+  ctx.fillStyle = '#ffe080';
+  ctx.fillRect(13, 30, 3, 1);
+  ctx.fillStyle = withAlpha('#000000', 0.25);
+  ctx.fillRect(13, 33, 3, 1);
+
+  // 4. Face est (biseau) : bois le plus sombre.
+  ctx.fillStyle = sideDark;
+  ctx.fillRect(26, 2, 6, 38);
+  ctx.strokeStyle = withAlpha('#1f1108', 0.5);
+  ctx.beginPath(); ctx.moveTo(26, 13.5); ctx.lineTo(32, 13.5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(26, 33.5); ctx.lineTo(32, 33.5); ctx.stroke();
+
+  // 5. Silhouette de la boîte.
+  ctx.strokeStyle = shade(base, 0.4);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 1.5, S - 1, BLOCK_H - 2);
 }
 
 // --- Porte : fermée (vue de face) ou ouverte (à plat sur le sol) ---
@@ -878,8 +960,21 @@ export function buildTileset() {
   lctx.fillRect(17, 9, 1, 1);
   lctx.fillRect(12, 9, 1, 1);
   cache.furnaceLit = lit;
+
+  // Coffre : boîte complète (pas de raccord auto-tiling, comme le four).
+  const chest = makeCanvas(S, H);
+  const chctx = chest.getContext('2d');
+  chctx.imageSmoothingEnabled = false;
+  drawChestTile(chctx);
+  cache.chest = chest;
+
   built = true;
   return cache;
+}
+
+// Tuile de coffre (boîte en chêne avec fermoir).
+export function getChestCanvas() {
+  return cache.chest;
 }
 
 // Tuile de four, allumé ou éteint.
@@ -1149,6 +1244,11 @@ const ISOLATED_FACES = {
 // ou en T. Le dessus n'est caché QUE si un autre bloc est vraiment
 // empilé dessus (couche 2) : le socle fusionne alors avec la face
 // avant du sommet.
+//
+// Raccord N-S (même matériau) : le dessus descend jusqu'à la frontière
+// de tuile pour fusionner avec le dessus du voisin sud, exactement
+// comme un raccord E-O — ni bande de face avant ni trait de séparation
+// entre les deux blocs.
 export function resolveBlockFaces(world, id, tx, ty, layer = 1) {
   const leftSame = world.blockAt(tx - 1, ty, layer) === id;
   const rightSame = world.blockAt(tx + 1, ty, layer) === id;
@@ -1177,13 +1277,22 @@ function drawBlockTileConnected(ctx, x, y, color, texture, faces, opts = {}) {
   // Coin / T avec voisin nord : le dessus démarre à y = 0 (plus de bande
   // de 2 px « side ») pour recouvrir proprement l'extrusion du voisin.
   const topY0 = (showTop && northSame) ? 0 : TOP_INSET_T;
-  const topH = FRONT_Y - topY0;
+
+  // Raccord N-S : avec un voisin sud du même matériau, le dessus descend
+  // jusqu'à la frontière de tuile (y = 32) au lieu de s'arrêter à y = 26.
+  // Les deux dessus se touchent alors pile, exactement comme sur un
+  // raccord E-O : plus de bande de « face avant » ni de trait qui
+  // cloisonnent les blocs (L, T, colonnes…), la paroi ne montre sa face
+  // avant qu'au bord sud du mur. Le voisin sud, dessiné après, recouvre
+  // toute l'extrusion restante.
+  const topBottom = (showTop && southSame) ? S : FRONT_Y;
+  const topH = topBottom - topY0;
 
   // Face droite : biseau y = 2 seulement pour un cube isolé (pas de voisin N).
   // Aux coins et sur un mur étiré, elle part de y = 0 pour rester continue.
   const rightY0 = (showTop && !northSame) ? TOP_INSET_T : 0;
 
-  const fy0 = showTop ? FRONT_Y : 0;
+  const fy0 = showTop ? topBottom : 0;
   const fh = BLOCK_H - fy0;
 
   ctx.save();
@@ -1213,9 +1322,15 @@ function drawBlockTileConnected(ctx, x, y, color, texture, faces, opts = {}) {
   // Reflet haut-gauche : seulement à l'angle extérieur, jamais le long
   // d'un raccord (sinon bande blanche sur tout le mur).
   if (showTop && !leftSame) {
+    // Bande horizontale : uniquement si le bord nord du dessus est libre
+    // (avec un voisin nord fusionné, elle tomberait pile sur le raccord).
+    if (!northSame) {
+      ctx.fillStyle = withAlpha('#ffffff', opts.shine ?? 0.26);
+      ctx.fillRect(x0, topY0, Math.max(0, fw - 2), 2);
+    }
+    // Bande verticale le long du biseau ouest (arête libre).
     ctx.fillStyle = withAlpha('#ffffff', opts.shine ?? 0.26);
-    ctx.fillRect(x0, topY0, Math.max(0, fw - 2), 2);
-    ctx.fillRect(x0, topY0, 2, FRONT_Y - topY0);
+    ctx.fillRect(x0, topY0, 2, topH);
   }
 
   const paintFace = (face, px, py, pw, ph) => {
@@ -1238,7 +1353,10 @@ function drawBlockTileConnected(ctx, x, y, color, texture, faces, opts = {}) {
   ctx.lineWidth = 1;
   ctx.beginPath();
 
-  if (showTop) {
+  // Arête nord du dessus : libre seulement sans voisin nord fusionné —
+  // avec un voisin nord, le dessus continue depuis le bloc du haut et un
+  // trait au milieu du mur casserait l'effet de raccord.
+  if (showTop && !northSame) {
     ctx.moveTo(leftSame ? 0 : 0.5, 0.5);
     ctx.lineTo(rightSame ? S : S - 0.5, 0.5);
   }

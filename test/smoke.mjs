@@ -403,6 +403,32 @@ const fInv = new Inventory();
 fInv.add('stone', 8);
 assert(fInv.craft(furnaceRecipe) === true, '8 pierres → 1 four');
 assert(fInv.count('furnace') === 1, 'le four est fabriqué');
+
+console.log('▶ Coffre (rangement)');
+const chestRecipe = RECIPES.find((r) => r.id === 'chest');
+const cInv = new Inventory();
+cInv.add('plank', 8);
+assert(cInv.craft(chestRecipe) === true, '8 planches → 1 coffre');
+assert(cInv.count('chest') === 1, 'le coffre est fabriqué');
+// pose sur une case forcée libre
+const wchest = new World(20260821);
+wchest.setBlock(30, 30, null);
+assert(wchest.placeBlock(30, 30, 'chest') === true, 'coffre posé sur l\'herbe');
+assert(wchest.blocks[wchest.idx(30, 30)] === 'chest', 'le coffre est dans le monde');
+assert(wchest.isSolidTile(30, 30), 'le coffre est un obstacle');
+assert(wchest.placeBlock(30, 30, 'chest') === false, 'on n\'empile pas sur un coffre');
+assert(wchest.placeBlock(30, 30, 'plank') === false, 'on ne pose rien sur un coffre');
+const chestDrop = wchest.breakBlock(30, 30);
+assert(chestDrop === 'chest', 'casser un coffre le donne en drop');
+// Double-clic : collecte l'inventaire ET les cases du coffre ouvert
+const chestSlots = new Array(27).fill(null);
+chestSlots[0] = { id: 'plank', count: 5 };
+chestSlots[3] = { id: 'plank', count: 3 };
+cInv.slots[2] = { id: 'plank', count: 4 };
+cInv.cursor = { id: 'plank', count: 1 };
+cInv.collectItemType('plank', [chestSlots]);
+assert(cInv.cursor.count === 13, 'double-clic : tout le bois est ramassé (sac + coffre)');
+assert(chestSlots[0] === null && chestSlots[3] === null && cInv.slots[2] === null, 'cases vidées');
 const woolBlockRecipe = RECIPES.find((r) => r.id === 'woolBlock');
 const wInv = new Inventory();
 wInv.add('wool', 4);

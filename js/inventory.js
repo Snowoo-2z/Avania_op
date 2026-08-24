@@ -258,19 +258,22 @@ export class Inventory {
   }
 
   // Double-clic : ramasse dans le curseur toutes les piles du même objet
-  // (l'inventaire + la barre rapide), comme dans Minecraft.
-  collectItemType(id) {
+  // (l'inventaire + la barre rapide, et les cases `extra` — ex. un coffre
+  // ouvert), comme dans Minecraft.
+  collectItemType(id, extra = []) {
     const def = ITEM_DEFS[id];
     if (!def || !this.cursor || this.cursor.id !== id) return false;
     const max = def.maxStack || 64;
     if (this.cursor.count >= max) return false;
-    for (let i = 0; i < this.slotCount && this.cursor.count < max; i++) {
-      const stack = this.slots[i];
-      if (!stack || stack.id !== id) continue;
-      const take = Math.min(stack.count, max - this.cursor.count);
-      stack.count -= take;
-      this.cursor.count += take;
-      if (stack.count <= 0) this.slots[i] = null;
+    for (const arr of [this.slots, ...extra]) {
+      for (let i = 0; i < arr.length && this.cursor.count < max; i++) {
+        const stack = arr[i];
+        if (!stack || stack.id !== id) continue;
+        const take = Math.min(stack.count, max - this.cursor.count);
+        stack.count -= take;
+        this.cursor.count += take;
+        if (stack.count <= 0) arr[i] = null;
+      }
     }
     this._touch();
     return true;

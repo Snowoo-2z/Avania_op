@@ -195,6 +195,33 @@
     </div>
   </section>
 
+  <!-- Coffre : 27 cases de rangement + inventaire du joueur -->
+  <section id="chest" class="crafting chest hidden" aria-label="Coffre">
+    <div class="panel-backdrop"></div>
+    <div class="panel-frame panel-frame--chest">
+      <header class="crafting-header">
+        <div>
+          <span class="panel-eyebrow">RANGEMENT</span>
+          <strong><span class="ic" data-icon="package"></span> Coffre</strong>
+        </div>
+        <div class="crafting-header-actions">
+          <button id="chest-close" class="craft-close" title="Fermer"><span class="ic" data-icon="close"></span></button>
+        </div>
+      </header>
+      <div class="chest-body">
+        <div class="chest-workbench">
+          <div class="section-title">Coffre (27 cases)</div>
+          <div id="chest-grid" class="chest-grid"></div>
+        </div>
+        <div class="craft-inventory">
+          <div class="inventory-grid-shell"><div id="chest-inv-grid" class="inventory-grid"></div></div>
+          <div class="inventory-divider"><span></span><b>BARRE RAPIDE</b><span></span></div>
+          <div class="inventory-hotbar-shell"><div id="chest-inv-hotbar" class="inventory-grid inventory-hotbar-grid"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Pile flottante (curseur) + infobulle, façon Minecraft -->
   <div id="cursor-stack" class="cursor-stack hidden" aria-hidden="true">
     <span class="slot-icon"></span>

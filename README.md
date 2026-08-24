@@ -59,6 +59,10 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   **fer brut → lingots**, **sable → verre**, **bœuf cru → steak cuit**.
   Interface façon Minecraft avec flamme, flèche de progression et
   inventaire du joueur en bas. Les fours cuisent même quand on les ferme.
+- **🧰 Le coffre** : 8 planches → 1 coffre. Posé comme un bloc, il s'ouvre
+  au **clic droit** : 27 cases de rangement avec toutes les manipulations
+  Minecraft (clic, clic droit, double-clic, shift-clic, glisser). Un coffre
+  cassé **rejette son contenu au sol** — rien ne se perd.
 - **🐑 Mobs passifs** : des **moutons** (→ laine, craftable en blocs de
   laine) et des **vaches** (→ bœuf cru, cuisable au four) errent sur
   l'herbe, fuient quand on les frappe. Clic gauche pour attaquer (une épée
