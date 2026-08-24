@@ -776,6 +776,8 @@ export class ChestPanel {
     this.invGridRoot = document.getElementById('chest-inv-grid');
     this.invHotbarRoot = document.getElementById('chest-inv-hotbar');
     this.key = null;
+    this.tx = null;
+    this.ty = null;
     this.entry = null;
     this.timer = null;
     this.chestSlotEls = [];
@@ -836,6 +838,8 @@ export class ChestPanel {
   open(tx, ty) {
     if (!this.root.classList.contains('hidden')) return;
     this.key = `${tx},${ty}`;
+    this.tx = tx;
+    this.ty = ty;
     this.entry = this.game.getChestEntry(tx, ty);
     this.slotManager.chestSlots = this.entry.slots;
     this.root.classList.remove('hidden');
@@ -848,6 +852,8 @@ export class ChestPanel {
 
   close() {
     if (this.root.classList.contains('hidden')) return;
+    // Le couvercle se referme dans le monde (animation dans updateChests).
+    if (this.game && this.tx != null) this.game.setChestOpen(this.tx, this.ty, false);
     // Fermer en tenant une pile (Échap, fond…) : la pile revient dans
     // l'inventaire, comme dans Minecraft — rien ne se perd.
     this.inventory.returnCursor();

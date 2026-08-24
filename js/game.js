@@ -15,7 +15,7 @@ import { Input } from './input.js';
 import { Inventory } from './inventory.js';
 import {
   buildTileset, getTileCanvas, getDoorCanvas, getFurnaceCanvas, getWaterFrame,
-  getChestCanvas,
+  getChestFrame, CHEST_TOP_PAD,
   drawTreeObject, drawRockObject, drawIronOreObject,
   getObjectSprite, getObjectSpriteInfo, treeVariantAt, treeDropCount,
   treeBreakTime, TREE_VARIANTS, WATER_FRAMES, isExtrudedBlock, drawBlockConnected,
@@ -355,6 +355,9 @@ export class Game {
     this.lastTime = now;
 
     const renderStart = performance.now();
+    // Le couvercle du coffre s'anime même quand le jeu est en pause
+    // (panneau ouvert), sinon l'ouverture ne se verrait qu'après.
+    this.updateChests(dt);
     this.update(dt);
     this.render();
     this.trackPerformance(performance.now() - renderStart);
@@ -484,15 +487,35 @@ export class Game {
     return entry;
   }
 
-  // Entrée de stockage d'un coffre posé (27 cases, comme Minecraft).
+  // Entrée de stockage d'un coffre posé (27 cases, comme Minecraft) +
+  // état d'animation du couvercle (openT : 0 fermé → 1 ouvert).
   getChestEntry(tx, ty) {
     const key = ty * WORLD_W + tx;
     let entry = this.chestData.get(key);
     if (!entry) {
-      entry = { slots: new Array(27).fill(null) };
+      entry = { slots: new Array(27).fill(null), openT: 0, openTarget: 0 };
       this.chestData.set(key, entry);
     }
     return entry;
+  }
+
+  // Ouvre / ferme le couvercle du coffre posé (l'animation avance dans
+  // updateChests, même pendant la pause du panneau).
+  setChestOpen(tx, ty, open) {
+    const entry = this.chestData.get(ty * WORLD_W + tx);
+    if (entry) entry.openTarget = open ? 1 : 0;
+  }
+
+  // Avance l'animation du couvercle de chaque coffre ouvert.
+  updateChests(dt) {
+    for (const entry of this.chestData.values()) {
+      const target = entry.openTarget ? 1 : 0;
+      if (entry.openT === target) continue;
+      const speed = dt / (target ? 0.24 : 0.2);
+      entry.openT = target > entry.openT
+        ? Math.min(target, entry.openT + speed)
+        : Math.max(target, entry.openT - speed);
+    }
   }
 
   // ------------------------------------------------------------
@@ -733,6 +756,7 @@ export class Game {
       return;
     }
     if (targetBlock === 'chest') {
+      this.setChestOpen(this.targetTx, this.targetTy, true);
       if (this.uiCallbacks.openChest) {
         this.uiCallbacks.openChest(this.targetTx, this.targetTy);
       }
@@ -1663,9 +1687,15 @@ export class Game {
           const entry = this.furnaceData.get(this.world.idx(tx, ty));
           ctx.drawImage(getFurnaceCanvas(Boolean(entry && entry.fuelTime > 0)), tx * TILE, ty * TILE);
         } else if (block === 'chest') {
-          // Boîte complète : sprite unique, pas de raccord auto-tiling.
+          // Boîte complète : frame selon l'avancement d'ouverture du
+          // couvercle, pas de raccord auto-tiling. CHEST_TOP_PAD : marge
+          // haute de la canvas (couvercle soulevé dépasse de la boîte).
+          const entry = this.chestData.get(this.world.idx(tx, ty));
           const offset = (layer === 2) ? 32 : 0;
-          ctx.drawImage(getChestCanvas(), tx * TILE, ty * TILE - BLOCK_EXTRUDE - offset);
+          ctx.drawImage(
+            getChestFrame(entry ? entry.openT : 0),
+            tx * TILE, ty * TILE - BLOCK_EXTRUDE - CHEST_TOP_PAD - offset,
+          );
         } else {
           if (isExtrudedBlock(block)) {
             // Rendu de connexion intelligente avec biseau et bordures dynamiques

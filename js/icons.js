@@ -335,8 +335,8 @@ function drawDoorIcon(ctx) {
 
 // --- Coffre : vue de face, boîte en chêne + couvercle + fermoir métallique
 function drawChestIcon(ctx) {
-  const wood = '#8a5a2e', woodDark = '#5e3a1c', woodLight = '#b07a3e';
-  const seam = '#432812', metal = '#4a4c52', metalHi = '#787d86', gold = '#e8c44e';
+  const wood = '#8a5a2e', woodDark = '#54331a', woodLight = '#b07a3e';
+  const seam = '#3a2210', metal = '#3d4046', metalHi = '#838a96', gold = '#e0b13c';
   ctx.save();
   ctx.translate(16, 15);
   // Corps de la boîte (bord sombre + fond bois)
@@ -344,16 +344,19 @@ function drawChestIcon(ctx) {
   ctx.fillRect(-12, -10, 24, 20);
   ctx.fillStyle = wood;
   ctx.fillRect(-11, -9, 22, 18);
-  // Lames horizontales
+  // Lames horizontales + grain
   ctx.fillStyle = seam;
   ctx.fillRect(-11, -2, 22, 1);
   ctx.fillRect(-11, 5, 22, 1);
+  ctx.fillStyle = withAlpha('#2a1809', 0.35);
+  ctx.fillRect(-8, 1, 4, 1); ctx.fillRect(3, 2, 4, 1);
+  ctx.fillRect(-7, 7, 4, 1); ctx.fillRect(4, 8, 4, 1);
   // Couvercle : partie haute avec son joint central
   ctx.fillStyle = woodLight;
   ctx.fillRect(-11, -9, 22, 6);
-  ctx.fillStyle = withAlpha('#ffffff', 0.16);
+  ctx.fillStyle = withAlpha('#ffffff', 0.18);
   ctx.fillRect(-11, -9, 22, 1);
-  ctx.fillStyle = withAlpha('#000000', 0.28);
+  ctx.fillStyle = withAlpha('#000000', 0.3);
   ctx.fillRect(-11, -3, 22, 1);
   ctx.fillStyle = seam;
   ctx.fillRect(0, -9, 1, 5);
@@ -361,15 +364,27 @@ function drawChestIcon(ctx) {
   ctx.fillStyle = withAlpha('#ffffff', 0.22);
   ctx.fillRect(-11, -9, 1, 18);
   ctx.fillRect(-10, -8, 1, 2);
-  // Fermeture : bande de métal vertical + serrure dorée
+  // Coins de fer
+  ctx.fillStyle = metal;
+  ctx.fillRect(-11, -9, 2, 2); ctx.fillRect(9, -9, 2, 2);
+  ctx.fillRect(-11, 7, 2, 2); ctx.fillRect(9, 7, 2, 2);
+  ctx.fillStyle = withAlpha('#c9ced6', 0.5);
+  ctx.fillRect(-11, -9, 1, 2); ctx.fillRect(9, -9, 1, 2);
+  // Fermeture : bande de métal vertical + serrure dorée avec trou
   ctx.fillStyle = metal;
   ctx.fillRect(-1, -3, 3, 12);
   ctx.fillStyle = metalHi;
   ctx.fillRect(-1, -3, 1, 12);
+  ctx.fillStyle = withAlpha('#111318', 0.6);
+  ctx.fillRect(0, -2, 1, 1); ctx.fillRect(0, 7, 1, 1);
   ctx.fillStyle = gold;
-  ctx.fillRect(-1, 0, 3, 4);
-  ctx.fillStyle = '#fff2b0';
-  ctx.fillRect(-1, 0, 3, 1);
+  ctx.fillRect(-2, 0, 5, 4);
+  ctx.fillStyle = '#ffe9a0';
+  ctx.fillRect(-2, 0, 5, 1);
+  ctx.fillStyle = withAlpha('#000000', 0.35);
+  ctx.fillRect(-2, 3, 5, 1);
+  ctx.fillStyle = '#4a3208';
+  ctx.fillRect(0, 1, 1, 2);
   ctx.restore();
 }
 

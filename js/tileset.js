@@ -611,72 +611,209 @@ function woolBlockTexture(ctx, top, dark) {
   }
 }
 
-// --- Coffre : boîte en chêne avec couvercle et fermoir, façon Minecraft.
-// Cube 32×40 comme les autres blocs posés (lumière NE : face est visible).
-function drawChestTile(ctx) {
-  const base = BLOCK_DEFS.chest.color;
-  const top = shade(base, 1.16);
-  const side = shade(base, 0.84);
-  const sideDark = shade(base, 0.62);
-  const seam = withAlpha('#33200f', 0.72);
+// --- Coffre : boîte en chêne avec couvercle, charnières et fermoir,
+// façon Minecraft. Cube 32×40 comme les autres blocs (lumière NE).
+//
+// Le couvercle s'ouvre en rotation sur sa charnière nord : 13 frames
+// pré-rendues (comme l'eau), de fermé (0) à ouvert (~75°). La canvas fait
+// 16 px de marge en haut : l'arête du couvercle soulevée dépasse du dessus
+// de la boîte et peut chevaucher la tuile nord (dessinée avant → correct).
+export const CHEST_OPEN_FRAMES = 13;
+export const CHEST_TOP_PAD = 16; // marge haute (couvercle soulevé)
+const CHEST_MAX_ANGLE = (75 * Math.PI) / 180;
+const CHEST_LIFT_K = 0.9;    // hauteur écran de l'arête soulevée (facteur 2.5D)
+const CHEST_HINGE_Y = 3;     // charnière, au bord nord du dessus
+const CHEST_LID_DEPTH = 23;  // profondeur du couvercle (charnière → bord sud)
+const CHEST_LID_L = 2;       // bords est/ouest du couvercle
+const CHEST_LID_R = 26;
+const CHEST_CAV = { x: 5, y: 5, w: 18, h: 17 }; // cavité (intérieur)
 
-  // 1. Fond : toute la tuile 32×40, zéro trou d'arrière-plan.
+function chestEaseOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+// Côté du couvercle (texture + teintes) : `t` = 0 fermé (dessus) à
+// 1 ouvert (dessous, plus clair).
+function chestLidColors(t) {
+  const base = BLOCK_DEFS.chest.color;
+  return {
+    fill: shade(base, 1.18 + 0.14 * t),
+    seam: withAlpha('#241305', 0.5 + 0.2 * t),
+    gap: withAlpha('#150a02', 0.8),
+    hi: withAlpha('#ffe2ac', 0.22 + 0.16 * t),
+    grain: withAlpha('#5e3a1c', 0.32),
+  };
+}
+
+function drawChestTile(ctx, openT = 0) {
+  const base = BLOCK_DEFS.chest.color;
+  const side = shade(base, 0.84);
+  const sideDark = shade(base, 0.58);
+  const iron = '#3d4046';
+  const ironHi = '#838a96';
+  const gold = '#e0b13c';
+
+  ctx.save();
+  ctx.translate(0, CHEST_TOP_PAD); // la boîte tient sur 0..40, marge en haut
+
+  // 1. Fond : toute la tuile, zéro trou d'arrière-plan.
   ctx.fillStyle = sideDark;
   ctx.fillRect(0, 0, S, BLOCK_H);
 
-  // 2. Dessus : le couvercle — lames claires + joint central du couvercle.
-  ctx.fillStyle = top;
-  ctx.fillRect(2, 2, 24, 24);
-  ctx.strokeStyle = seam;
-  ctx.lineWidth = 1;
-  for (const y of [10, 18]) {
-    ctx.beginPath(); ctx.moveTo(2, y + 0.5); ctx.lineTo(26, y + 0.5); ctx.stroke();
-  }
-  // Joint central du couvercle (sombre) + liseré clair dessous
-  ctx.fillStyle = withAlpha('#1d1006', 0.85);
-  ctx.fillRect(2, 13, 24, 1);
-  ctx.fillStyle = withAlpha('#ffd9a0', 0.28);
-  ctx.fillRect(2, 14, 24, 1);
-  // Reflet haut-gauche
-  ctx.fillStyle = withAlpha('#ffffff', 0.3);
-  ctx.fillRect(2, 2, 22, 2);
-  ctx.fillRect(2, 2, 2, 24);
-  // Grain léger
-  ctx.fillStyle = withAlpha('#5e3a1c', 0.3);
-  ctx.fillRect(6, 5, 5, 1);
-  ctx.fillRect(15, 6, 4, 1);
-  ctx.fillRect(9, 17, 5, 1);
-  ctx.fillRect(18, 20, 4, 1);
-
-  // 3. Face avant : lames plus sombres + fermoir métallique.
-  ctx.fillStyle = side;
-  ctx.fillRect(2, 26, 24, 14);
-  ctx.strokeStyle = withAlpha('#33200f', 0.6);
-  ctx.beginPath(); ctx.moveTo(2, 33.5); ctx.lineTo(26, 33.5); ctx.stroke();
-  // Bande de métal verticale (charnière du fermoir)
-  ctx.fillStyle = '#4a4c52';
-  ctx.fillRect(13, 26, 3, 14);
-  ctx.fillStyle = '#666a72';
-  ctx.fillRect(13, 26, 1, 14);
-  // Serrure dorée
-  ctx.fillStyle = '#c8a23c';
-  ctx.fillRect(13, 30, 3, 4);
-  ctx.fillStyle = '#ffe080';
-  ctx.fillRect(13, 30, 3, 1);
-  ctx.fillStyle = withAlpha('#000000', 0.25);
-  ctx.fillRect(13, 33, 3, 1);
-
-  // 4. Face est (biseau) : bois le plus sombre.
+  // 2. Face est (biseau) : bois sombre, lames horizontales.
   ctx.fillStyle = sideDark;
   ctx.fillRect(26, 2, 6, 38);
-  ctx.strokeStyle = withAlpha('#1f1108', 0.5);
-  ctx.beginPath(); ctx.moveTo(26, 13.5); ctx.lineTo(32, 13.5); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(26, 33.5); ctx.lineTo(32, 33.5); ctx.stroke();
+  ctx.strokeStyle = withAlpha('#150b03', 0.55);
+  ctx.lineWidth = 1;
+  for (const y of [9.5, 16.5, 23.5, 33.5]) {
+    ctx.beginPath(); ctx.moveTo(26, y); ctx.lineTo(32, y); ctx.stroke();
+  }
+  ctx.fillStyle = withAlpha('#ffd9a0', 0.1);
+  ctx.fillRect(26, 2, 1, 38);
 
-  // 5. Silhouette de la boîte.
-  ctx.strokeStyle = shade(base, 0.4);
+  // 3. Face avant : deux lames + fermoir métallique.
+  ctx.fillStyle = side;
+  ctx.fillRect(2, 26, 24, 14);
+  ctx.strokeStyle = withAlpha('#241305', 0.55);
+  ctx.beginPath(); ctx.moveTo(2, 33.5); ctx.lineTo(26, 33.5); ctx.stroke();
+  // grain du bois
+  ctx.fillStyle = withAlpha('#241305', 0.3);
+  ctx.fillRect(5, 28.5, 6, 1); ctx.fillRect(17, 29.5, 5, 1);
+  ctx.fillRect(6, 36.5, 5, 1); ctx.fillRect(15, 37.5, 6, 1);
+  ctx.fillStyle = withAlpha('#ffd9a0', 0.16);
+  ctx.fillRect(4, 27, 8, 1); ctx.fillRect(11, 35, 7, 1);
+  // patins de fer en bas (pieds de la boîte)
+  ctx.fillStyle = iron;
+  ctx.fillRect(3, 37, 4, 2); ctx.fillRect(21, 37, 4, 2);
+  // bande de métal verticale (monture du fermoir) + rivets
+  ctx.fillStyle = iron;
+  ctx.fillRect(13, 26, 3, 14);
+  ctx.fillStyle = ironHi;
+  ctx.fillRect(13, 26, 1, 14);
+  ctx.fillStyle = withAlpha('#111318', 0.6);
+  ctx.fillRect(14, 27, 1, 1); ctx.fillRect(14, 38, 1, 1);
+  // serrure dorée avec trou
+  ctx.fillStyle = gold;
+  ctx.fillRect(12, 30, 5, 4);
+  ctx.fillStyle = '#ffe9a0';
+  ctx.fillRect(12, 30, 5, 1);
+  ctx.fillStyle = withAlpha('#000000', 0.35);
+  ctx.fillRect(12, 33, 5, 1);
+  ctx.fillStyle = '#4a3208';
+  ctx.fillRect(14, 31, 1, 2);
+
+  // 4. Dessus : liseré de la boîte + cavité (révélée par l'ouverture).
+  ctx.fillStyle = shade(base, 0.96);
+  ctx.fillRect(2, 2, 24, 24);
+  // liseré sud (bord de la boîte, face lumière)
+  ctx.fillStyle = shade(base, 1.1);
+  ctx.fillRect(2, 22, 24, 4);
+  // cavité
+  ctx.fillStyle = '#1c0f07';
+  ctx.fillRect(CHEST_CAV.x, CHEST_CAV.y, CHEST_CAV.w, CHEST_CAV.h);
+  // fond de la cavité : lames sombres
+  ctx.fillStyle = '#38220f';
+  ctx.fillRect(CHEST_CAV.x, 15, CHEST_CAV.w, 6);
+  ctx.strokeStyle = withAlpha('#120a03', 0.85);
+  ctx.beginPath(); ctx.moveTo(10.5, 15); ctx.lineTo(10.5, 21); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(16.5, 15); ctx.lineTo(16.5, 21); ctx.stroke();
+  // ombres intérieures (nord + ouest)
+  ctx.fillStyle = withAlpha('#000000', 0.5);
+  ctx.fillRect(CHEST_CAV.x, CHEST_CAV.y, CHEST_CAV.w, 2);
+  ctx.fillStyle = withAlpha('#000000', 0.32);
+  ctx.fillRect(CHEST_CAV.x, 7, CHEST_CAV.w, 2);
+  ctx.fillRect(CHEST_CAV.x, CHEST_CAV.y, 2, CHEST_CAV.h);
+  ctx.fillStyle = withAlpha('#000000', 0.18);
+  ctx.fillRect(22, CHEST_CAV.y, 1, CHEST_CAV.h);
+
+  // 5. Couvercle — rotation sur la charnière nord.
+  // Projection : un point à la profondeur d (de la charnière) se projette
+  // en y = HINGE + d * (cos − sin·K) : linéaire en d. Quand l'arête
+  // soulevée passe au-dessus de la charnière à l'écran (ouverture > ~48°),
+  // la bande remonte AU-DESSUS de yTop — on dessine avec une hauteur
+  // signée (min/abs), jamais une hauteur négative.
+  const t = chestEaseOut(Math.max(0, Math.min(1, openT)));
+  const ang = CHEST_MAX_ANGLE * t;
+  const cos = Math.cos(ang);
+  const sin = Math.sin(ang);
+  const yTop = CHEST_HINGE_Y;
+  const yBot = CHEST_HINGE_Y + CHEST_LID_DEPTH * cos - CHEST_LID_DEPTH * sin * CHEST_LIFT_K;
+  const dy = yBot - yTop; // signé : + fermé (bande vers le bas), − ouvert
+  const yA = Math.min(yTop, yBot);
+  const bandH = Math.max(1, Math.abs(dy));
+  const L = chestLidColors(t);
+
+  // ombre du couvercle sur l'intérieur (sauf quasi ouvert)
+  if (t > 0.03 && t < 0.9) {
+    const sy = Math.max(CHEST_CAV.y, Math.ceil(Math.min(yBot, CHEST_CAV.y + CHEST_CAV.h)));
+    if (sy < 21) {
+      ctx.fillStyle = withAlpha('#000000', 0.3 * (1 - t));
+      ctx.fillRect(CHEST_CAV.x, sy, CHEST_CAV.w, Math.min(3, 21 - sy));
+    }
+  }
+
+  // bande du couvercle (dessous visible quand il pivote vers le sud)
+  ctx.fillStyle = L.fill;
+  ctx.fillRect(CHEST_LID_L, yA, CHEST_LID_R - CHEST_LID_L, bandH);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(CHEST_LID_L, yA, CHEST_LID_R - CHEST_LID_L, bandH);
+  ctx.clip();
+  // lames du couvercle (joints proportionnels, projection linéaire)
+  ctx.strokeStyle = L.seam;
+  ctx.lineWidth = 1;
+  for (const f of [0.3, 0.7]) {
+    const y = yTop + dy * f + 0.5;
+    ctx.beginPath(); ctx.moveTo(CHEST_LID_L, y); ctx.lineTo(CHEST_LID_R, y); ctx.stroke();
+  }
+  // joint central du couvercle (sombre) + liseré clair
+  const gapY = Math.round(yTop + dy * 0.5);
+  ctx.fillStyle = L.gap;
+  ctx.fillRect(CHEST_LID_L, gapY, CHEST_LID_R - CHEST_LID_L, 1);
+  ctx.fillStyle = L.hi;
+  ctx.fillRect(CHEST_LID_L, gapY + (dy >= 0 ? 1 : -1), CHEST_LID_R - CHEST_LID_L, 1);
+  // grain
+  ctx.fillStyle = L.grain;
+  ctx.fillRect(5, Math.round(yTop + dy * 0.16), 5, 1);
+  ctx.fillRect(16, Math.round(yTop + dy * 0.12), 4, 1);
+  ctx.fillRect(8, Math.round(yTop + dy * 0.8), 5, 1);
+  ctx.fillRect(19, Math.round(yTop + dy * 0.86), 4, 1);
+  // arête charnière
+  ctx.fillStyle = withAlpha('#150a02', 0.6);
+  ctx.fillRect(CHEST_LID_L, Math.round(yTop) - (dy >= 0 ? 0 : 1), CHEST_LID_R - CHEST_LID_L, 1);
+  // arête soulevée : liseré clair de rebord + trait sombre
+  const edgeHiY = dy >= 0 ? Math.round(yBot) - 2 : Math.round(yBot);
+  const edgeLoY = dy >= 0 ? Math.round(yBot) - 1 : Math.round(yBot) + 1;
+  ctx.fillStyle = withAlpha('#ffe2ac', 0.4);
+  ctx.fillRect(CHEST_LID_L, edgeHiY, CHEST_LID_R - CHEST_LID_L, 1);
+  ctx.fillStyle = withAlpha('#150a02', 0.45);
+  ctx.fillRect(CHEST_LID_L, edgeLoY, CHEST_LID_R - CHEST_LID_L, 1);
+  ctx.restore();
+
+  // coins de fer du couvercle (visibles quand il est presque à plat)
+  if (bandH >= 16) {
+    const hingeY = dy >= 0 ? Math.round(yTop) + 1 : Math.round(yTop) - 2;
+    const liftedY = dy >= 0 ? Math.round(yBot) - 3 : Math.round(yBot);
+    ctx.fillStyle = iron;
+    for (const by of [hingeY, liftedY]) {
+      for (const bx of [CHEST_LID_L, CHEST_LID_R - 3]) {
+        ctx.fillRect(bx, by, 3, 2);
+      }
+    }
+    ctx.fillStyle = withAlpha('#c9ced6', 0.5);
+    ctx.fillRect(CHEST_LID_L, hingeY, 1, 2);
+    ctx.fillRect(CHEST_LID_R - 3, hingeY, 1, 2);
+  }
+
+  // 6. Silhouette de la boîte (le couvercle a son propre rebord).
+  ctx.strokeStyle = shade(base, 0.38);
   ctx.lineWidth = 1;
   ctx.strokeRect(0.5, 1.5, S - 1, BLOCK_H - 2);
+  // liseré clair du liseré sud quand le couvercle est ouvert
+  if (t > 0.05) {
+    ctx.fillStyle = withAlpha('#ffe2ac', 0.25 * Math.min(1, t * 2));
+    ctx.fillRect(2, 22, 24, 1);
+  }
+
+  ctx.restore();
 }
 
 // --- Porte : fermée (vue de face) ou ouverte (à plat sur le sol) ---
@@ -961,20 +1098,32 @@ export function buildTileset() {
   lctx.fillRect(12, 9, 1, 1);
   cache.furnaceLit = lit;
 
-  // Coffre : boîte complète (pas de raccord auto-tiling, comme le four).
-  const chest = makeCanvas(S, H);
-  const chctx = chest.getContext('2d');
-  chctx.imageSmoothingEnabled = false;
-  drawChestTile(chctx);
-  cache.chest = chest;
+  // Coffre : 13 frames d'ouverture du couvercle (comme l'eau). Pas de
+  // raccord auto-tiling, comme le four.
+  const chestFrames = [];
+  for (let f = 0; f < CHEST_OPEN_FRAMES; f++) {
+    const c = makeCanvas(S, H + CHEST_TOP_PAD);
+    const chctx = c.getContext('2d');
+    chctx.imageSmoothingEnabled = false;
+    drawChestTile(chctx, f / (CHEST_OPEN_FRAMES - 1));
+    chestFrames.push(c);
+  }
+  cache.chestFrames = chestFrames;
 
   built = true;
   return cache;
 }
 
-// Tuile de coffre (boîte en chêne avec fermoir).
+// Frame du coffre selon l'avancement d'ouverture (0 = fermé, 1 = ouvert).
+export function getChestFrame(openT = 0) {
+  const t = Math.max(0, Math.min(1, openT));
+  const idx = Math.round(t * (CHEST_OPEN_FRAMES - 1));
+  return cache.chestFrames ? cache.chestFrames[idx] : cache.chestFrames?.[0];
+}
+
+// Tuile de coffre fermée (tutoriel, aperçus…).
 export function getChestCanvas() {
-  return cache.chest;
+  return cache.chestFrames ? cache.chestFrames[0] : null;
 }
 
 // Tuile de four, allumé ou éteint.
