@@ -9,7 +9,7 @@ import { Inventory } from '../js/inventory.js';
 import { appearanceColors } from '../js/character.js';
 import { TILE, BLOCK_EXTRUDE } from '../js/config.js';
 import { BLOCK_DEFS, ITEM_DEFS } from '../js/blocks.js';
-import { treeVariantAt, treeDropCount, treeBreakTime, TREE_VARIANTS } from '../js/tileset.js';
+import { treeVariantAt, treeDropCount, treeBreakTime, TREE_VARIANTS, resolveBlockFaces } from '../js/tileset.js';
 
 let failures = 0;
 function assert(cond, msg) {
@@ -411,6 +411,84 @@ assert(wInv.craft(woolBlockRecipe) === true, '4 laines → 1 bloc de laine');
 console.log('▶ Construction 3D');
 assert(BLOCK_EXTRUDE >= 0, 'constante d\'extrusion définie');
 assert(BLOCK_DEFS.wood.kind === 'block' && BLOCK_DEFS.glass.kind === 'block', 'bois et verre sont des blocs constructibles');
+
+console.log('▶ Faces 2.5D : coins, murs, empilements');
+const wfaces = new World(20260821);
+// On pose via setBlock (placeBlock refuse derrière un mur en perspective).
+const CX = 40, CY = 40;
+const put = (tx, ty, id, layer = 1) => {
+  if (layer === 2) wfaces.blocks2[wfaces.idx(tx, ty)] = id;
+  else wfaces.setBlock(tx, ty, id);
+};
+const facesAt = (tx, ty, id = 'brick', layer = 1) => resolveBlockFaces(wfaces, id, tx, ty, layer);
+
+// Maison rectangulaire 4×3
+//   (40,40) (41,40) (42,40) (43,40)
+//   (40,41)                 (43,41)
+//   (40,42) (41,42) (42,42) (43,42)
+for (let x = 0; x < 4; x++) { put(CX + x, CY, 'brick'); put(CX + x, CY + 2, 'brick'); }
+put(CX, CY + 1, 'brick');
+put(CX + 3, CY + 1, 'brick');
+
+const nw = facesAt(CX, CY);
+const ne = facesAt(CX + 3, CY);
+const sw = facesAt(CX, CY + 2);
+const se = facesAt(CX + 3, CY + 2);
+const northMid = facesAt(CX + 1, CY);
+const southMid = facesAt(CX + 1, CY + 2);
+const westMid = facesAt(CX, CY + 1);
+const eastMid = facesAt(CX + 3, CY + 1);
+
+assert(nw.showTop && ne.showTop, 'coins nord : dessus visible');
+assert(sw.showTop && se.showTop, 'coins sud : dessus visible');
+assert(northMid.showTop && southMid.showTop, 'murs E-O : dessus visible sur toute la longueur');
+assert(westMid.showTop && eastMid.showTop, 'segments N-S : chaque cube garde son dessus');
+assert(sw.northSame && sw.rightSame && !sw.leftSame, 'coin SO : voisin nord + est');
+assert(se.northSame && se.leftSame && !se.rightSame, 'coin SE : voisin nord + ouest');
+
+// Colonne verticale de 3 + virage à droite
+put(50, 50, 'plank');
+put(50, 51, 'plank');
+put(50, 52, 'plank');
+put(51, 52, 'plank');
+put(52, 52, 'plank');
+assert(facesAt(50, 50, 'plank').showTop, 'premier bloc du mur vertical : dessus');
+assert(facesAt(50, 51, 'plank').showTop, 'bloc ajouté en dessous : dessus aussi');
+assert(facesAt(50, 52, 'plank').showTop, 'encore en dessous : dessus aussi');
+assert(facesAt(51, 52, 'plank').showTop && facesAt(52, 52, 'plank').showTop, 'bras horizontal du L : dessus continu');
+
+// Virage à gauche (miroir)
+put(60, 50, 'plank');
+put(60, 51, 'plank');
+put(59, 51, 'plank');
+assert(facesAt(60, 51, 'plank').showTop, 'coin L (virage à gauche) : dessus visible aussi');
+
+// T-junction
+put(70, 50, 'brick');
+put(69, 51, 'brick');
+put(70, 51, 'brick');
+put(71, 51, 'brick');
+assert(facesAt(70, 51).showTop, 'jonction en T : dessus visible');
+
+// Empilement
+put(80, 50, 'wood');
+put(80, 50, 'wood', 2);
+const base = facesAt(80, 50, 'wood', 1);
+const cap = facesAt(80, 50, 'wood', 2);
+assert(base.covered && !base.showTop, 'couche 1 empilée : dessus caché (fusion avec le bloc du dessus)');
+assert(!cap.covered && cap.sittingOn && cap.showTop, 'couche 2 : dessus net, posée sur la couche 1');
+
+// Empilement mixte (brique sur bois) : on cache quand même
+put(81, 50, 'wood');
+put(81, 50, 'brick', 2);
+assert(!facesAt(81, 50, 'wood', 1).showTop, 'empilement mixte : le socle cache son dessus');
+assert(facesAt(81, 50, 'brick', 2).showTop, 'empilement mixte : le sommet garde son dessus');
+
+// Types différents côte à côte : pas de fusion
+put(90, 50, 'wood');
+put(91, 50, 'brick');
+assert(!facesAt(90, 50, 'wood').rightSame, 'bois à côté de brique : pas de raccord');
+assert(facesAt(90, 50, 'wood').showTop && facesAt(91, 50, 'brick').showTop, 'matériaux distincts : chacun garde son dessus');
 
 console.log('▶ Couleurs d\'apparence');
 const cols = appearanceColors({ skin: 'ebene', hairColor: 'roux', eyes: 'violet', shirt: 'noir', pants: 'jean' });
