@@ -19,12 +19,18 @@ export function resolveColor(list, id) {
 }
 
 export function appearanceColors(app) {
+  const shirtId = app.shirt === 'none' ? null : app.shirt;
+  const pantsId = app.pants === 'none' ? null : app.pants;
+  const skinColor = resolveColor(SKIN_TONES, app.skin);
   return {
-    skin: resolveColor(SKIN_TONES, app.skin),
+    skin: skinColor,
     hair: resolveColor(HAIR_COLORS, app.hairColor),
     eyes: resolveColor(EYE_COLORS, app.eyes),
-    shirt: resolveColor(SHIRT_COLORS, app.shirt),
-    pants: resolveColor(PANTS_COLORS, app.pants),
+    // Si 'none', on affiche la peau (torse nu / jambes nues)
+    shirt: shirtId ? resolveColor(SHIRT_COLORS, shirtId) : skinColor,
+    pants: pantsId ? resolveColor(PANTS_COLORS, pantsId) : skinColor,
+    shirtNone: !shirtId,
+    pantsNone: !pantsId,
   };
 }
 

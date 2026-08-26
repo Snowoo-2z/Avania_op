@@ -69,6 +69,14 @@ export const ICONS = {
   chevronDown: wrap('M12 19l-9-9 1.4-1.4L12 16.2l7.6-7.6L21 10z'),
   chevronLeft: wrap('M5 12l9-9 1.4 1.4L7.8 12l7.6 7.6L14 21z'),
   chevronRight: wrap('M19 12l-9 9-1.4-1.4L16.2 12 8.6 4.4 10 3z'),
+
+  // Vêtements
+  hat: wrap('M12 3c-3.5 0-6 2.5-6 5v2h12v-2c0-2.5-2.5-5-6-5z M4 10c0 1 1 2 3 2h10c2 0 3-1 3-2v1c0 1-1 2-3 2H7c-2 0-3-1-3-2v-1z'),
+  glasses: wrap('M3 11c0-1 .8-2 1.8-2h3.4c1 0 1.8 1 1.8 2v2c0 1-.8 2-1.8 2H4.8C3.8 15 3 14 3 12v-1z M14 11c0-1 .8-2 1.8-2h3.4c1 0 1.8 1 1.8 2v2c0 1-.8 2-1.8 2h-3.4c-1 0-1.8-1-1.8-2v-1z M10 12h4v1h-4z'),
+  shirt: wrap('M12 2l-2 2-4 1-2 3 2 1 1-1 2 7h6l2-7 1 1 2-1-2-3-4-1z'),
+  pants: wrap('M8 3h8v2l1 12h-3l-1-6-1 6H9l-1-6-1 6H4l1-12z'),
+  beard: wrap('M8 9c0 3 2 7 4 7s4-4 4-7H8z M9 11h2v2H9z M13 11h2v2h-2z'),
+  hair: wrap('M12 2c-4 0-7 3-7 6 0 1 .5 2 1 2h1c0-1 1-3 3-3h4c2 0 3 2 3 3h1c.5 0 1-1 1-2 0-3-3-6-7-6z'),
 };
 
 // Renvoie le markup SVG d'une icône (pour injection en JS).

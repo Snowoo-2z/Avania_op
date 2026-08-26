@@ -247,6 +247,21 @@ async function boot() {
   // Fermer les paramètres (croix, fond, Échap) doit aussi dé-pauser le jeu.
   settings.onToggle = syncPause;
 
+  // Garde l'apparence de base pour pouvoir retirer les vêtements
+  const baseAppearance = { ...appearance };
+  // Fonction qui calcule l'apparence effective (base + vêtements équipés)
+  function refreshPlayerAppearance() {
+    const clothing = game.inventory.getClothingAppearance ? game.inventory.getClothingAppearance() : {};
+    const effective = { ...baseAppearance, ...clothing };
+    // Si shirt/pants = none, on garde none (character.js gère torse nu)
+    game.player.appearance = effective;
+    // Met à jour aussi le preview de l'inventaire
+    if (inventoryPanel) {
+      inventoryPanel.baseAppearance = baseAppearance;
+      inventoryPanel.appearance = effective;
+    }
+  }
+
   inventoryPanel = new InventoryPanel(
     document.getElementById('inventory-panel'),
     game.inventory,
@@ -257,6 +272,47 @@ async function boot() {
       syncPause();
     },
   );
+  // Quand l'inventaire change (équipement), on rafraîchit l'apparence du joueur
+  game.inventory.subscribe(() => refreshPlayerAppearance());
+  // Initialise l'équipement avec les vêtements de base si on veut pouvoir les retirer
+  // On crée des items de vêtements correspondant au choix de base et on les équipe
+  try {
+    const hatMap = {
+      'casquette': 'hat_casquette',
+      'bonnet': 'hat_bonnet',
+      'paille': 'hat_paille',
+      'casque': 'hat_casque',
+      'haut-de-forme': 'hat_haut',
+      'melon': 'hat_melon',
+      'couronne': 'hat_couronne',
+    };
+    const glassesMap = {
+      'rondes': 'glasses_rondes',
+      'carrees': 'glasses_carrees',
+      'demi-lune': 'glasses_demilune',
+      'soleil': 'glasses_soleil',
+    };
+    const baseClothingMap = {
+      hat: baseAppearance.hat && baseAppearance.hat !== 'none' ? (hatMap[baseAppearance.hat] || null) : null,
+      glasses: baseAppearance.glasses && baseAppearance.glasses !== 'none' ? (glassesMap[baseAppearance.glasses] || null) : null,
+      shirt: baseAppearance.shirt ? `shirt_${baseAppearance.shirt}` : null,
+      pants: baseAppearance.pants ? `pants_${baseAppearance.pants}` : null,
+      facialHair: baseAppearance.facialHair && baseAppearance.facialHair !== 'none' ? `beard_${baseAppearance.facialHair}` : null,
+      hairStyle: baseAppearance.hairStyle && baseAppearance.hairStyle !== 'chauve' ? `hair_${baseAppearance.hairStyle}` : null,
+    };
+    // On équipe directement sans passer par l'inventaire pour que le joueur
+    // puisse retirer ses vêtements de base (ex: torse nu)
+    for (const [slot, itemId] of Object.entries(baseClothingMap)) {
+      if (!itemId) continue;
+      const def = ITEM_DEFS[itemId];
+      if (def) {
+        game.inventory.equipment[slot] = { id: itemId, count: 1 };
+      }
+    }
+    refreshPlayerAppearance();
+  } catch (e) {
+    console.warn('Init vêtements de base', e);
+  }
   crafting = new Crafting(
     document.getElementById('crafting'),
     game.inventory,

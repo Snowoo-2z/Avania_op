@@ -7,9 +7,9 @@
 // ============================================================
 
 import {
-  ITEMS, ALL_ITEMS, ITEM_DEFS, RECIPES,
+  ITEMS, ALL_ITEMS, ITEM_DEFS, RECIPES, CLOTHING_SLOTS, isClothing, getClothingSlot,
 } from './blocks.js';
-import { INVENTORY_SLOTS, HOTBAR_SLOTS } from './config.js';
+import { INVENTORY_SLOTS, HOTBAR_SLOTS, CLOTHING_SLOT_IDS } from './config.js';
 
 function cloneStack(stack) {
   return stack ? { ...stack } : null;
@@ -38,6 +38,13 @@ export class Inventory {
     // maintient le clic et qu'on survole plusieurs cases, la pile du
     // curseur est répartie entre elles au relâchement.
     this.drag = null;
+
+    // Équipement vestimentaire (comme l'armure Minecraft)
+    // Chaque slot contient soit null soit un stack clothing
+    this.equipment = {};
+    for (const sid of (CLOTHING_SLOT_IDS || CLOTHING_SLOTS)) {
+      this.equipment[sid] = null;
+    }
 
     // Compteur pratique pour le HUD, toujours recalculé depuis les cases.
     this.items = {};
@@ -902,4 +909,157 @@ export class Inventory {
     this._touch();
     return true;
   }
+
+  // ------------------------------------------------------------
+  //  Vêtements — équipement à la Minecraft
+  // ------------------------------------------------------------
+  getEquipment(slotId) {
+    return this.equipment[slotId] ? cloneStack(this.equipment[slotId]) : null;
+  }
+
+  getEquipmentRef(slotId) {
+    return this.equipment[slotId] || null;
+  }
+
+  // Retourne l'apparence override depuis l'équipement
+  // Si un slot est vide, on renvoie 'none' (ou 'chauve' pour cheveux) pour
+  // permettre de retirer les vêtements de base (torse nu, etc.)
+  getClothingAppearance() {
+    const out = {};
+    const emptyMap = {
+      hat: 'none',
+      glasses: 'none',
+      shirt: 'none',
+      pants: 'none',
+      facialHair: 'none',
+      hairStyle: 'chauve',
+    };
+    for (const slotId of Object.keys(this.equipment)) {
+      const stack = this.equipment[slotId];
+      if (!stack) {
+        // Slot vide → on force l'apparence à vide
+        if (emptyMap[slotId]) out[slotId] = emptyMap[slotId];
+        continue;
+      }
+      const def = ITEM_DEFS[stack.id];
+      if (!def || def.type !== 'clothing') continue;
+      const key = def.clothingSlot;
+      if (key) out[key] = def.clothingValue;
+    }
+    return out;
+  }
+
+  // Équipe un vêtement depuis l'inventaire ou le curseur
+  // slotId = id du slot d'équipement (hat, shirt, etc)
+  // fromIndex = index dans slots (ou null si depuis curseur)
+  equipFromSlot(slotId, fromIndex) {
+    if (!CLOTHING_SLOT_IDS.includes(slotId)) return false;
+    const stack = fromIndex != null ? this.slots[fromIndex] : this.cursor;
+    if (!stack) return false;
+    const def = ITEM_DEFS[stack.id];
+    if (!def || def.type !== 'clothing') return false;
+    if (def.clothingSlot !== slotId) return false;
+
+    // Si un vêtement est déjà équipé, on le remet dans l'inventaire
+    const prev = this.equipment[slotId];
+    if (prev) {
+      const added = this._addInternal(prev.id, prev.count, prev);
+      if (added < prev.count) return false; // pas de place
+    }
+
+    // On équipe
+    this.equipment[slotId] = { ...stack, count: 1 };
+    if (fromIndex != null) {
+      // Retirer de l'inventaire
+      const s = this.slots[fromIndex];
+      if (s.count > 1) s.count -= 1;
+      else this.slots[fromIndex] = null;
+    } else {
+      // Depuis curseur
+      if (this.cursor.count > 1) this.cursor.count -= 1;
+      else this.cursor = null;
+    }
+    if (prev) {
+      // prev déjà ajouté, mais si fromIndex était null (curseur) on a déjà
+      // consommé, donc on a remis prev dans inventaire
+    }
+    this._touch();
+    return true;
+  }
+
+  // Équipe directement depuis l'inventaire en cherchant le slot approprié
+  equipClothingFromInventory(index) {
+    const stack = this.slots[index];
+    if (!stack) return false;
+    const def = ITEM_DEFS[stack.id];
+    if (!def || def.type !== 'clothing') return false;
+    return this.equipFromSlot(def.clothingSlot, index);
+  }
+
+  // Déséquipe vers l'inventaire (ou curseur si inventaire plein)
+  unequipToInventory(slotId) {
+    if (!CLOTHING_SLOT_IDS.includes(slotId)) return false;
+    const equipped = this.equipment[slotId];
+    if (!equipped) return false;
+    const added = this._addInternal(equipped.id, equipped.count, equipped);
+    if (added >= equipped.count) {
+      this.equipment[slotId] = null;
+      this._touch();
+      return true;
+    }
+    // Si pas de place, on met sur le curseur
+    if (!this.cursor) {
+      this.cursor = { ...equipped };
+      this.equipment[slotId] = null;
+      this._touch();
+      return true;
+    }
+    return false;
+  }
+
+  // Clic sur un slot d'équipement (comme les autres slots)
+  clickEquipmentSlot(slotId, button = 'left') {
+    if (!CLOTHING_SLOT_IDS.includes(slotId)) return false;
+    const right = button === 'right';
+    const equipped = this.equipment[slotId];
+    const cursor = this.cursor;
+
+    if (!cursor) {
+      if (!equipped) return false;
+      // Prendre l'équipement
+      const take = right ? 1 : equipped.count; // toujours 1 en pratique
+      this.cursor = { ...equipped, count: take };
+      this.equipment[slotId] = null;
+      this._touch();
+      return true;
+    }
+
+    const def = ITEM_DEFS[cursor.id];
+    if (!def || def.type !== 'clothing') {
+      // On ne peut pas poser un non-vêtement dans un slot d'équipement
+      return false;
+    }
+    if (def.clothingSlot !== slotId) return false;
+
+    if (!equipped) {
+      const add = Math.min(right ? 1 : cursor.count, 1);
+      this.equipment[slotId] = { ...cursor, count: add };
+      cursor.count -= add;
+      if (cursor.count <= 0) this.cursor = null;
+      this._touch();
+      return true;
+    }
+
+    if (!right) {
+      // Échange
+      this.equipment[slotId] = cursor;
+      this.cursor = equipped;
+      this._touch();
+      return true;
+    }
+    return false;
+  }
+
+  // Pour le glisser-répartir : on ne peut pas répartir dans les slots d'équipement
+  // (maxStack 1), donc on ignore
 }

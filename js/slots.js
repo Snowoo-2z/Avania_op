@@ -19,7 +19,7 @@ import { ITEM_DEFS } from './blocks.js';
 import { SMELT_RECIPES, FUEL } from './furnace.js';
 
 const DOUBLE_CLICK_MS = 320;
-const TOOLTIP_TYPES = { resource: 'Ressource', material: 'Matériau', tool: 'Outil', block: 'Bloc' };
+const TOOLTIP_TYPES = { resource: 'Ressource', material: 'Matériau', tool: 'Outil', block: 'Bloc', clothing: 'Vêtement', gear: 'Équipement' };
 
 export class SlotManager {
   constructor(inventory, opts = {}) {
@@ -66,6 +66,11 @@ export class SlotManager {
     if (kind === 'furnaceFuel') return this.furnaceArrays ? this.furnaceArrays.fuel : null;
     if (kind === 'furnaceOut') return this.furnaceArrays ? this.furnaceArrays.output : null;
     if (kind === 'chest') return this.chestSlots;
+    if (kind === 'equipment') {
+      // On retourne un tableau fictif pour la compatibilité, mais on
+      // gère les équipements via des méthodes dédiées
+      return null;
+    }
     return inv.slots;
   }
 
@@ -74,7 +79,13 @@ export class SlotManager {
     if (kind === 'craft') return 9;
     if (kind === 'craft2') return 4;
     if (kind === 'chest') return 27;
+    if (kind === 'equipment') return 1;
     return this.inventory.slotCount;
+  }
+
+  // Récupère la pile pour un slot d'équipement
+  getEquipmentStack(slotId) {
+    return this.inventory.equipment[slotId] || null;
   }
 
   register(el, kind, index) {
@@ -95,7 +106,9 @@ export class SlotManager {
     el.addEventListener('pointerenter', () => {
       manager.hovered = { kind, index, el };
       if (manager.dragging) {
-        manager.inventory.dragDistributeEnter(manager.arrFor(kind), index);
+        if (kind !== 'equipment') {
+          manager.inventory.dragDistributeEnter(manager.arrFor(kind), index);
+        }
         el.classList.add('drag-target');
       } else {
         manager.showTooltip(kind, index);
@@ -129,6 +142,19 @@ export class SlotManager {
 
   handleDown(el, kind, index, event) {
     const inv = this.inventory;
+    // Gestion spéciale des slots d'équipement vestimentaire
+    if (kind === 'equipment') {
+      const slotId = el.dataset.clothingSlot || el.dataset.slotId || index;
+      // Shift-clic sur équipement → déséquiper vers inventaire
+      if (event.shiftKey && event.button === 0) {
+        inv.unequipToInventory(slotId);
+        return;
+      }
+      const right = event.button === 2;
+      inv.clickEquipmentSlot(slotId, right ? 'right' : 'left');
+      return;
+    }
+
     const arr = this.arrFor(kind);
     const size = this.sizeFor(kind);
     if (!arr) return;
@@ -153,14 +179,32 @@ export class SlotManager {
         this.quickMoveFurnaceToInventory(kind, index);
       } else if (kind === 'chest') {
         this.quickMoveChestToInventory(index);
-      } else if (this.canFillCraftGrid() && inv.quickMoveToCraft(index) && !inv.slots[index]) {
-        // déplacé vers la grille de l'établi
-      } else if (this.chestSlots && this.quickMoveInventoryToChest(index)) {
-        // déplacé vers le coffre ouvert
-      } else if (this.furnaceArrays && this.quickMoveInventoryToFurnace(index)) {
-        // déplacé vers le four (entrée ou combustible)
+      } else if (kind === 'inv' || kind === 'hotbar') {
+        // Si c'est un vêtement, on l'équipe directement
+        const stack = inv.slots[index];
+        const def = stack && ITEM_DEFS[stack.id];
+        if (def && def.type === 'clothing') {
+          if (inv.equipClothingFromInventory(index)) return;
+        }
+        if (this.canFillCraftGrid() && inv.quickMoveToCraft(index) && !inv.slots[index]) {
+          // déplacé vers la grille de l'établi
+        } else if (this.chestSlots && this.quickMoveInventoryToChest(index)) {
+          // déplacé vers le coffre ouvert
+        } else if (this.furnaceArrays && this.quickMoveInventoryToFurnace(index)) {
+          // déplacé vers le four (entrée ou combustible)
+        } else {
+          inv.transferSlot(index);
+        }
       } else {
-        inv.transferSlot(index);
+        if (this.canFillCraftGrid() && inv.quickMoveToCraft(index) && !inv.slots[index]) {
+          // déplacé vers la grille de l'établi
+        } else if (this.chestSlots && this.quickMoveInventoryToChest(index)) {
+          // déplacé vers le coffre ouvert
+        } else if (this.furnaceArrays && this.quickMoveInventoryToFurnace(index)) {
+          // déplacé vers le four (entrée ou combustible)
+        } else {
+          inv.transferSlot(index);
+        }
       }
       return;
     }
@@ -360,7 +404,29 @@ export class SlotManager {
     const inv = this.inventory;
     const el = this.tooltipEl;
     if (!el) return;
-    const stack = this.arrFor(kind)[index];
+    let stack = null;
+    let slotId = null;
+    if (kind === 'equipment') {
+      slotId = (this.hovered && this.hovered.el && (this.hovered.el.dataset.clothingSlot || this.hovered.el.dataset.slotId)) || index;
+      stack = inv.equipment[slotId] || null;
+      if (!stack) {
+        // Tooltip pour slot vide d'équipement
+        const labels = { hat: 'Chapeau', glasses: 'Lunettes', shirt: 'Haut', pants: 'Pantalon', facialHair: 'Barbe', hairStyle: 'Coiffure' };
+        el.innerHTML = '';
+        const name = document.createElement('div');
+        name.className = 'tt-name';
+        name.textContent = labels[slotId] || slotId;
+        el.appendChild(name);
+        const line = document.createElement('div');
+        line.className = 'tt-line';
+        line.textContent = 'Vide — glissez un vêtement ici';
+        el.appendChild(line);
+        el.classList.remove('hidden');
+        return;
+      }
+    } else {
+      stack = this.arrFor(kind)[index];
+    }
     const def = stack && ITEM_DEFS[stack.id];
     if (!def) {
       this.hideTooltip();
@@ -382,8 +448,19 @@ export class SlotManager {
     } else {
       const line = document.createElement('div');
       line.className = 'tt-line';
-      line.textContent = `${TOOLTIP_TYPES[def.type] || def.type} · ×${stack.count}`;
+      const typeLabel = TOOLTIP_TYPES[def.type] || def.type;
+      if (def.type === 'clothing') {
+        line.textContent = `${typeLabel} · ${def.clothingSlot} → ${def.clothingValue}`;
+      } else {
+        line.textContent = `${typeLabel} · ×${stack.count}`;
+      }
       el.appendChild(line);
+      if (def.flavor) {
+        const flav = document.createElement('div');
+        flav.className = 'tt-flavor';
+        flav.textContent = def.flavor;
+        el.appendChild(flav);
+      }
     }
     el.classList.remove('hidden');
   }

@@ -14,7 +14,7 @@ import { drawCharacter } from './character.js';
 import { getItemIconURL } from './icons.js';
 import { SMELT_RECIPES } from './furnace.js';
 import { isLowPowerDevice, pick } from './utils.js';
-import { icon } from './svgicons.js';
+import { icon, mountIcons } from './svgicons.js';
 
 const SAVE_KEY = 'avania.personnage';
 
@@ -496,7 +496,8 @@ export class InventoryPanel {
   constructor(root, inventory, appearance, slotManager, onVisibilityChange = () => {}) {
     this.root = root;
     this.inventory = inventory;
-    this.appearance = appearance || {};
+    this.baseAppearance = { ...(appearance || {}) };
+    this.appearance = { ...(appearance || {}) };
     this.slotManager = slotManager;
     this.onVisibilityChange = onVisibilityChange;
     this.backdrop = root.querySelector('.panel-backdrop');
@@ -507,11 +508,14 @@ export class InventoryPanel {
     this.outputIcon = document.getElementById('inventory-craft-output-icon');
     this.outputName = document.getElementById('inventory-craft-output-name');
     this.capacityEl = document.getElementById('inventory-capacity');
+    this.equipRoot = document.getElementById('inventory-equip');
     this.slots = [];
     this.hotbarSlots = [];
     this.craftSlots = [];
+    this.equipSlots = [];
     this.build();
     this.initCharacterPreview();
+    this.buildEquipSlots();
     inventory.subscribe(() => this.update());
     this.backdrop.addEventListener('pointerdown', () => this.close());
   }
@@ -575,6 +579,44 @@ export class InventoryPanel {
     this.update();
   }
 
+  buildEquipSlots() {
+    if (!this.equipRoot) return;
+    // On reconstruit les slots d'équipement (6 slots)
+    const slots = this.equipRoot.querySelectorAll('.equip-slot');
+    this.equipSlots = [];
+    slots.forEach((el) => {
+      const slotId = el.dataset.clothingSlot;
+      if (!slotId) return;
+      // On s'assure que la structure interne existe pour l'icône
+      if (!el.querySelector('.slot-icon')) {
+        const icon = document.createElement('span');
+        icon.className = 'slot-icon';
+        const count = document.createElement('span');
+        count.className = 'slot-count';
+        const dura = document.createElement('span');
+        dura.className = 'slot-durability';
+        el.appendChild(icon);
+        el.appendChild(count);
+        el.appendChild(dura);
+      }
+      el.classList.add('mc-slot');
+      el.dataset.slotKind = 'equipment';
+      el.dataset.slotId = slotId;
+      el.dataset.clothingSlot = slotId;
+      this.slotManager.register(el, 'equipment', slotId);
+      this.equipSlots.push({ el, slotId });
+    });
+    try { mountIcons(this.equipRoot); } catch {}
+  }
+
+  getEffectiveAppearance() {
+    const base = this.baseAppearance || this.appearance || {};
+    const clothing = this.inventory.getClothingAppearance ? this.inventory.getClothingAppearance() : {};
+    // On garde les couleurs de peau/cheveux/yeux de base, mais on laisse
+    // l'équipement décider des vêtements (y compris 'none' pour retirer)
+    return { ...base, ...clothing };
+  }
+
   initCharacterPreview() {
     this.charCanvas = document.getElementById('inventory-char');
     const nameEl = document.getElementById('inventory-char-name');
@@ -608,7 +650,8 @@ export class InventoryPanel {
     ctx.fill();
     const breathe = Math.sin(time * 2.2) * 0.8;
     const blink = (time % 3.6) < 0.14;
-    drawCharacter(ctx, this.appearance, cx, gy, {
+    const effective = this.getEffectiveAppearance ? this.getEffectiveAppearance() : this.appearance;
+    drawCharacter(ctx, effective, cx, gy, {
       facing: 'down', walkPhase: breathe, scale: 2.7, blink,
     });
   }
@@ -652,6 +695,22 @@ export class InventoryPanel {
       updateSlotVisual(el, this.inventory.getSlot(index), this.inventory, index);
       el.classList.toggle('selected', this.inventory.selected === i);
     });
+
+    // Équipement vestimentaire
+    if (this.equipSlots && this.equipSlots.length) {
+      this.equipSlots.forEach(({ el, slotId }) => {
+        const stack = this.inventory.equipment[slotId] || null;
+        updateSlotVisual(el, stack, this.inventory, slotId);
+        // Si vide, on garde l'icône de fond
+        if (!stack) {
+          el.classList.remove('occupied');
+        } else {
+          el.classList.add('occupied');
+        }
+      });
+      // Mettre à jour l'apparence effective pour le preview
+      this.appearance = this.getEffectiveAppearance();
+    }
 
     // Mettre à jour le compteur de capacité
     if (this.capacityEl) {

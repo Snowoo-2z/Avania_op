@@ -240,10 +240,75 @@ export const ITEM_DEFS = {
     type: 'gear', gearSlot: 'armor', maxStack: 1, maxDepth: 99, miningBoost: 1.22,
     flavor: 'Protection complète, casque inclus. On traverse un éboulement.',
   },
+
+  // ------------------------------------------------------------
+  //  Vêtements (type clothing) — s'équipent dans l'inventaire
+  //  comme l'armure dans Minecraft. Chaque vêtement a un slot
+  //  (hat, shirt, pants, glasses, facialHair, hairStyle) et une
+  //  valeur d'apparence qui override le choix de base.
+  //  On peut retirer ses vêtements de base en déséquipant (none).
+  // ------------------------------------------------------------
+  // Chapeaux
+  hat_casquette: { id: 'hat_casquette', label: 'Casquette', color: '#4a90d9', icon: 'hat', type: 'clothing', clothingSlot: 'hat', clothingValue: 'casquette', maxStack: 1, flavor: 'Casquette de tous les jours.' },
+  hat_bonnet: { id: 'hat_bonnet', label: 'Bonnet', color: '#c94f4f', icon: 'hat', type: 'clothing', clothingSlot: 'hat', clothingValue: 'bonnet', maxStack: 1, flavor: 'Chaud pour l\'hiver.' },
+  hat_paille: { id: 'hat_paille', label: 'Chapeau de paille', color: '#ecd48a', icon: 'hat', type: 'clothing', clothingSlot: 'hat', clothingValue: 'paille', maxStack: 1 },
+  hat_casque: { id: 'hat_casque', label: 'Casque de chantier', color: '#d8c040', icon: 'hat', type: 'clothing', clothingSlot: 'hat', clothingValue: 'casque', maxStack: 1 },
+  hat_haut: { id: 'hat_haut', label: 'Haut-de-forme', color: '#1c1c26', icon: 'hat', type: 'clothing', clothingSlot: 'hat', clothingValue: 'haut-de-forme', maxStack: 1, flavor: 'Très distingué.' },
+  hat_melon: { id: 'hat_melon', label: 'Chapeau melon', color: '#2c2c34', icon: 'hat', type: 'clothing', clothingSlot: 'hat', clothingValue: 'melon', maxStack: 1 },
+  hat_couronne: { id: 'hat_couronne', label: 'Couronne', color: '#e6c23c', icon: 'hat', type: 'clothing', clothingSlot: 'hat', clothingValue: 'couronne', maxStack: 1, flavor: 'Pour les rois et reines d\'Avania.' },
+
+  // Lunettes
+  glasses_rondes: { id: 'glasses_rondes', label: 'Lunettes rondes', color: '#c9a227', icon: 'glasses', type: 'clothing', clothingSlot: 'glasses', clothingValue: 'rondes', maxStack: 1 },
+  glasses_carrees: { id: 'glasses_carrees', label: 'Lunettes carrées', color: '#2a2a2a', icon: 'glasses', type: 'clothing', clothingSlot: 'glasses', clothingValue: 'carrees', maxStack: 1 },
+  glasses_demilune: { id: 'glasses_demilune', label: 'Demi-lune', color: '#2a2a2a', icon: 'glasses', type: 'clothing', clothingSlot: 'glasses', clothingValue: 'demi-lune', maxStack: 1 },
+  glasses_soleil: { id: 'glasses_soleil', label: 'Lunettes de soleil', color: '#1a1a2a', icon: 'glasses', type: 'clothing', clothingSlot: 'glasses', clothingValue: 'soleil', maxStack: 1 },
+
+  // Hauts (chemises) — couleurs
+  shirt_rouge: { id: 'shirt_rouge', label: 'T-shirt rouge', color: '#d9534f', icon: 'shirt', type: 'clothing', clothingSlot: 'shirt', clothingValue: 'rouge', maxStack: 1 },
+  shirt_orange: { id: 'shirt_orange', label: 'T-shirt orange', color: '#e8963c', icon: 'shirt', type: 'clothing', clothingSlot: 'shirt', clothingValue: 'orange', maxStack: 1 },
+  shirt_jaune: { id: 'shirt_jaune', label: 'T-shirt jaune', color: '#e6c23c', icon: 'shirt', type: 'clothing', clothingSlot: 'shirt', clothingValue: 'jaune', maxStack: 1 },
+  shirt_vert: { id: 'shirt_vert', label: 'T-shirt vert', color: '#5cb85c', icon: 'shirt', type: 'clothing', clothingSlot: 'shirt', clothingValue: 'vert', maxStack: 1 },
+  shirt_bleu: { id: 'shirt_bleu', label: 'T-shirt bleu', color: '#4a90d9', icon: 'shirt', type: 'clothing', clothingSlot: 'shirt', clothingValue: 'bleu', maxStack: 1 },
+  shirt_violet: { id: 'shirt_violet', label: 'T-shirt violet', color: '#8e6bc0', icon: 'shirt', type: 'clothing', clothingSlot: 'shirt', clothingValue: 'violet', maxStack: 1 },
+  shirt_blanc: { id: 'shirt_blanc', label: 'Chemise blanche', color: '#f0f0f0', icon: 'shirt', type: 'clothing', clothingSlot: 'shirt', clothingValue: 'blanc', maxStack: 1 },
+  shirt_noir: { id: 'shirt_noir', label: 'T-shirt noir', color: '#3a3a3a', icon: 'shirt', type: 'clothing', clothingSlot: 'shirt', clothingValue: 'noir', maxStack: 1 },
+  shirt_rose: { id: 'shirt_rose', label: 'T-shirt rose', color: '#e07a9a', icon: 'shirt', type: 'clothing', clothingSlot: 'shirt', clothingValue: 'rose', maxStack: 1 },
+  shirt_cyan: { id: 'shirt_cyan', label: 'T-shirt cyan', color: '#4fc3c3', icon: 'shirt', type: 'clothing', clothingSlot: 'shirt', clothingValue: 'cyan', maxStack: 1 },
+  shirt_kaki: { id: 'shirt_kaki', label: 'Chemise kaki', color: '#8a8a4a', icon: 'shirt', type: 'clothing', clothingSlot: 'shirt', clothingValue: 'kaki', maxStack: 1 },
+  shirt_bordeaux: { id: 'shirt_bordeaux', label: 'Chemise bordeaux', color: '#7a2f3f', icon: 'shirt', type: 'clothing', clothingSlot: 'shirt', clothingValue: 'bordeaux', maxStack: 1 },
+  shirt_none: { id: 'shirt_none', label: 'Torse nu', color: '#f1c27d', icon: 'shirt', type: 'clothing', clothingSlot: 'shirt', clothingValue: 'none', maxStack: 1, flavor: 'Retire ton haut.' },
+
+  // Pantalons
+  pants_jean: { id: 'pants_jean', label: 'Jean', color: '#3a5b8c', icon: 'pants', type: 'clothing', clothingSlot: 'pants', clothingValue: 'jean', maxStack: 1 },
+  pants_noir: { id: 'pants_noir', label: 'Pantalon noir', color: '#33343a', icon: 'pants', type: 'clothing', clothingSlot: 'pants', clothingValue: 'noir', maxStack: 1 },
+  pants_gris: { id: 'pants_gris', label: 'Pantalon gris', color: '#6a6f76', icon: 'pants', type: 'clothing', clothingSlot: 'pants', clothingValue: 'gris', maxStack: 1 },
+  pants_kaki: { id: 'pants_kaki', label: 'Pantalon kaki', color: '#7a7a4a', icon: 'pants', type: 'clothing', clothingSlot: 'pants', clothingValue: 'kaki', maxStack: 1 },
+  pants_marron: { id: 'pants_marron', label: 'Pantalon marron', color: '#6a4a2a', icon: 'pants', type: 'clothing', clothingSlot: 'pants', clothingValue: 'marron', maxStack: 1 },
+  pants_rouge: { id: 'pants_rouge', label: 'Pantalon rouge', color: '#b03a3a', icon: 'pants', type: 'clothing', clothingSlot: 'pants', clothingValue: 'rouge', maxStack: 1 },
+  pants_blanc: { id: 'pants_blanc', label: 'Pantalon blanc', color: '#e8e8e8', icon: 'pants', type: 'clothing', clothingSlot: 'pants', clothingValue: 'blanc', maxStack: 1 },
+  pants_vert: { id: 'pants_vert', label: 'Pantalon vert', color: '#4a6a3a', icon: 'pants', type: 'clothing', clothingSlot: 'pants', clothingValue: 'vert', maxStack: 1 },
+  pants_bordeaux: { id: 'pants_bordeaux', label: 'Pantalon bordeaux', color: '#6a2a3a', icon: 'pants', type: 'clothing', clothingSlot: 'pants', clothingValue: 'bordeaux', maxStack: 1 },
+  pants_none: { id: 'pants_none', label: 'Jambes nues', color: '#f1c27d', icon: 'pants', type: 'clothing', clothingSlot: 'pants', clothingValue: 'none', maxStack: 1, flavor: 'Retire ton pantalon.' },
+
+  // Barbes / pilosité
+  beard_moustache: { id: 'beard_moustache', label: 'Moustache', color: '#4a2c1a', icon: 'beard', type: 'clothing', clothingSlot: 'facialHair', clothingValue: 'moustache', maxStack: 1 },
+  beard_bouc: { id: 'beard_bouc', label: 'Bouc', color: '#4a2c1a', icon: 'beard', type: 'clothing', clothingSlot: 'facialHair', clothingValue: 'bouc', maxStack: 1 },
+  beard_barbe: { id: 'beard_barbe', label: 'Barbe', color: '#4a2c1a', icon: 'beard', type: 'clothing', clothingSlot: 'facialHair', clothingValue: 'barbe', maxStack: 1 },
+  beard_none: { id: 'beard_none', label: 'Rasé', color: '#e8e4da', icon: 'beard', type: 'clothing', clothingSlot: 'facialHair', clothingValue: 'none', maxStack: 1, flavor: 'Se raser.' },
+
+  // Coiffures (perruques)
+  hair_court: { id: 'hair_court', label: 'Cheveux courts', color: '#4a2c1a', icon: 'hair', type: 'clothing', clothingSlot: 'hairStyle', clothingValue: 'court', maxStack: 1 },
+  hair_long: { id: 'hair_long', label: 'Cheveux longs', color: '#4a2c1a', icon: 'hair', type: 'clothing', clothingSlot: 'hairStyle', clothingValue: 'long', maxStack: 1 },
+  hair_boucles: { id: 'hair_boucles', label: 'Boucles', color: '#4a2c1a', icon: 'hair', type: 'clothing', clothingSlot: 'hairStyle', clothingValue: 'boucles', maxStack: 1 },
+  hair_afro: { id: 'hair_afro', label: 'Afro', color: '#1c1a18', icon: 'hair', type: 'clothing', clothingSlot: 'hairStyle', clothingValue: 'afro', maxStack: 1 },
+  hair_chauve: { id: 'hair_chauve', label: 'Chauve', color: '#e8e4da', icon: 'hair', type: 'clothing', clothingSlot: 'hairStyle', clothingValue: 'chauve', maxStack: 1, flavor: 'Se raser la tête.' },
 };
 
 // Emplacements d'équipement de la grotte.
 export const GEAR_SLOTS = ['mask', 'armor'];
+
+// Slots vestimentaires (comme l'armure dans Minecraft)
+export const CLOTHING_SLOTS = ['hat', 'glasses', 'shirt', 'pants', 'facialHair', 'hairStyle'];
 
 // L'équipement est-il utilisable ? Un objet « gear » s'équipe en le
 // sélectionnant dans la barre rapide (pas d'interface dédiée : le jeu
@@ -251,6 +316,16 @@ export const GEAR_SLOTS = ['mask', 'armor'];
 export function isGear(itemId) {
   const def = ITEM_DEFS[itemId];
   return Boolean(def && def.type === 'gear');
+}
+
+export function isClothing(itemId) {
+  const def = ITEM_DEFS[itemId];
+  return Boolean(def && def.type === 'clothing');
+}
+
+export function getClothingSlot(itemId) {
+  const def = ITEM_DEFS[itemId];
+  return def && def.type === 'clothing' ? def.clothingSlot : null;
 }
 
 // Ordre des niveaux d'outils. Un bloc avec `minTier` exige un outil d'au
@@ -365,6 +440,21 @@ export const RECIPES = [
     id: 'chest', label: 'Coffre', out: 'chest', outN: 1,
     inputs: { plank: 8 }, pattern: [['plank', 'plank', 'plank'], ['plank', null, 'plank'], ['plank', 'plank', 'plank']], category: 'construction',
   },
+
+  // Vêtements — craft à base de laine (et cuir bientôt)
+  { id: 'hat_casquette', label: 'Casquette', out: 'hat_casquette', outN: 1, inputs: { wool: 2, plank: 1 }, pattern: [['wool', 'wool'], ['wool', 'plank']], category: 'vêtements' },
+  { id: 'hat_bonnet', label: 'Bonnet', out: 'hat_bonnet', outN: 1, inputs: { wool: 3 }, pattern: [['wool', 'wool'], ['wool', null]], category: 'vêtements' },
+  { id: 'hat_paille', label: 'Chapeau de paille', out: 'hat_paille', outN: 1, inputs: { wood: 2, wool: 1 }, pattern: [['wood', 'wool', 'wood']], category: 'vêtements' },
+  { id: 'shirt_rouge', label: 'T-shirt rouge', out: 'shirt_rouge', outN: 1, inputs: { wool: 5 }, pattern: [['wool', null, 'wool'], ['wool', 'wool', 'wool']], category: 'vêtements' },
+  { id: 'shirt_bleu', label: 'T-shirt bleu', out: 'shirt_bleu', outN: 1, inputs: { wool: 5 }, pattern: [['wool', null, 'wool'], ['wool', 'wool', 'wool']], category: 'vêtements' },
+  { id: 'shirt_noir', label: 'T-shirt noir', out: 'shirt_noir', outN: 1, inputs: { wool: 5 }, pattern: [['wool', null, 'wool'], ['wool', 'wool', 'wool']], category: 'vêtements' },
+  { id: 'shirt_blanc', label: 'Chemise blanche', out: 'shirt_blanc', outN: 1, inputs: { wool: 5 }, pattern: [['wool', null, 'wool'], ['wool', 'wool', 'wool']], category: 'vêtements' },
+  { id: 'pants_jean', label: 'Jean', out: 'pants_jean', outN: 1, inputs: { wool: 4, stone: 1 }, pattern: [['wool', 'wool', 'wool'], ['wool', null, 'wool']], category: 'vêtements' },
+  { id: 'pants_noir', label: 'Pantalon noir', out: 'pants_noir', outN: 1, inputs: { wool: 4 }, pattern: [['wool', 'wool', 'wool'], ['wool', null, 'wool']], category: 'vêtements' },
+  { id: 'glasses_rondes', label: 'Lunettes rondes', out: 'glasses_rondes', outN: 1, inputs: { glass: 2, ironIngot: 1 }, pattern: [['glass', null, 'glass'], [null, 'ironIngot', null]], category: 'vêtements' },
+  { id: 'glasses_soleil', label: 'Lunettes de soleil', out: 'glasses_soleil', outN: 1, inputs: { glass: 2, stone: 1 }, pattern: [['glass', null, 'glass'], [null, 'stone', null]], category: 'vêtements' },
+  { id: 'beard_barbe', label: 'Barbe (fausse)', out: 'beard_barbe', outN: 1, inputs: { wool: 3 }, pattern: [['wool', 'wool', 'wool']], category: 'vêtements' },
+  { id: 'hair_afro', label: 'Perruque afro', out: 'hair_afro', outN: 1, inputs: { wool: 4 }, pattern: [['wool', 'wool'], ['wool', 'wool']], category: 'vêtements' },
 ];
 
 // Sols que l'on peut creuser à la pelle (clic gauche) pour récolter.

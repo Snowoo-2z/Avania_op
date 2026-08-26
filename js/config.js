@@ -138,6 +138,7 @@ export const EYE_COLORS = [
 ];
 
 export const SHIRT_COLORS = [
+  { id: 'none',    label: 'Aucun',   color: '#00000000' },
   { id: 'rouge',   label: 'Rouge',   color: '#d9534f' },
   { id: 'orange',  label: 'Orange',  color: '#e8963c' },
   { id: 'jaune',   label: 'Jaune',   color: '#e6c23c' },
@@ -153,6 +154,7 @@ export const SHIRT_COLORS = [
 ];
 
 export const PANTS_COLORS = [
+  { id: 'none',    label: 'Aucun',   color: '#00000000' },
   { id: 'jean',    label: 'Jean',    color: '#3a5b8c' },
   { id: 'noir',    label: 'Noir',    color: '#33343a' },
   { id: 'gris',    label: 'Gris',    color: '#6a6f76' },
@@ -163,6 +165,18 @@ export const PANTS_COLORS = [
   { id: 'vert',    label: 'Vert',    color: '#4a6a3a' },
   { id: 'bordeaux', label: 'Bordeaux', color: '#6a2a3a' },
 ];
+
+// Slots d'équipement vestimentaire (comme l'armure dans Minecraft)
+// Chaque slot correspond à une clé d'apparence et peut être équipé/déséquipé
+export const CLOTHING_SLOTS = [
+  { id: 'hat',        label: 'Chapeau',   icon: 'hat',        appearanceKey: 'hat' },
+  { id: 'glasses',    label: 'Lunettes',  icon: 'glasses',    appearanceKey: 'glasses' },
+  { id: 'shirt',      label: 'Haut',      icon: 'shirt',      appearanceKey: 'shirt' },
+  { id: 'pants',      label: 'Pantalon',  icon: 'pants',      appearanceKey: 'pants' },
+  { id: 'facialHair', label: 'Barbe',     icon: 'beard',      appearanceKey: 'facialHair' },
+  { id: 'hairStyle',  label: 'Coiffure',  icon: 'hair',       appearanceKey: 'hairStyle' },
+];
+export const CLOTHING_SLOT_IDS = CLOTHING_SLOTS.map(s => s.id);
 
 export const HATS = [
   { id: 'none',          label: 'Aucun' },

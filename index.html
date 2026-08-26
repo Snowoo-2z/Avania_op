@@ -142,8 +142,20 @@
       <div class="inventory-content">
         <div class="inv-left">
           <div class="inv-player-card">
-            <canvas id="inventory-char" width="132" height="150"></canvas>
-            <div id="inventory-char-name" class="inv-player-name">Aventurier</div>
+            <div class="inv-equip-layout">
+              <div id="inventory-equip" class="inv-equip">
+                <div class="equip-slot" data-clothing-slot="hat" title="Chapeau"><span class="equip-icon" data-icon="hat"></span></div>
+                <div class="equip-slot" data-clothing-slot="glasses" title="Lunettes"><span class="equip-icon" data-icon="glasses"></span></div>
+                <div class="equip-slot" data-clothing-slot="shirt" title="Haut"><span class="equip-icon" data-icon="shirt"></span></div>
+                <div class="equip-slot" data-clothing-slot="pants" title="Pantalon"><span class="equip-icon" data-icon="pants"></span></div>
+                <div class="equip-slot" data-clothing-slot="facialHair" title="Barbe"><span class="equip-icon" data-icon="beard"></span></div>
+                <div class="equip-slot" data-clothing-slot="hairStyle" title="Coiffure"><span class="equip-icon" data-icon="hair"></span></div>
+              </div>
+              <div class="inv-player-preview">
+                <canvas id="inventory-char" width="132" height="150"></canvas>
+                <div id="inventory-char-name" class="inv-player-name">Aventurier</div>
+              </div>
+            </div>
           </div>
           <div class="inv-craft2">
             <div class="section-kicker">FABRICATION 2 × 2</div>
