@@ -85,7 +85,7 @@ export class IntroSequence {
     this.time = 0;
 
     // Le PNJ est un objet du monde comme un autre : la boucle de jeu
-    // le trie en profondeur avec le reste.
+    // le trie en profondeur avec le reste. Scale augmenté pour le rendre plus imposant et élégant.
     this.npc = {
       kind: 'gentleman',
       name: GENTLEMAN_NAME,
@@ -95,7 +95,7 @@ export class IntroSequence {
       facing: 'right',
       walkPhase: 0,
       moving: false,
-      scale: 1.15,
+      scale: 1.32,
       showHint: false,
       time: 0,
       sortY: 0,
@@ -172,6 +172,7 @@ export class IntroSequence {
   }
 
   // Portrait du représentant, rendu une seule fois avec le vrai sprite.
+  // Version améliorée : fond dégradé doré, halo lumineux, plus grande échelle
   _paintPortrait() {
     const canvas = this.el.portrait;
     if (!canvas || canvas._painted) return;
@@ -179,14 +180,34 @@ export class IntroSequence {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Le sprite a ses pieds à y = 48 : on le cale en bas du portrait.
-    drawGentleman(ctx, canvas.width / 2, canvas.height - 6, {
+    const W = canvas.width, H = canvas.height;
+    // Fond radial élégant
+    const bg = ctx.createRadialGradient(W * 0.5, H * 0.35, 4, W * 0.5, H * 0.5, H * 0.9);
+    bg.addColorStop(0, '#6b7a8a');
+    bg.addColorStop(0.35, '#4a5566');
+    bg.addColorStop(0.7, '#3a3f4a');
+    bg.addColorStop(1, '#2a2f3a');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    // Halo doré subtil derrière
+    const halo = ctx.createRadialGradient(W * 0.5, H * 0.6, 2, W * 0.5, H * 0.6, 38);
+    halo.addColorStop(0, 'rgba(212,175,55,0.22)');
+    halo.addColorStop(0.5, 'rgba(212,175,55,0.06)');
+    halo.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, W, H);
+    // Le sprite a ses pieds à y = 48 : on le cale en bas du portrait, plus grand et centré
+    drawGentleman(ctx, W / 2, H - 4, {
       facing: 'right',
       walkPhase: 0,
-      scale: 1.5,
-      shadow: false,
+      scale: 1.9,
+      shadow: true,
     });
+    // Petit éclat doré en haut à droite
+    ctx.fillStyle = 'rgba(232,201,106,0.18)';
+    ctx.beginPath();
+    ctx.arc(W * 0.75, H * 0.22, 10, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   _setLine(index, silent = false) {

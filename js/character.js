@@ -487,8 +487,12 @@ function drawFacialHair(ctx, kind, color, x0, y0, S, facing) {
   ctx.fillStyle = color;
 
   if (kind === 'moustache') {
-    ctx.fillRect(x0 + 10 + ox, y0 + 14, 4, 2);
-    ctx.fillRect(x0 + 16 + ox, y0 + 14, 4, 2);
+    // Moustache en guidon, plus fournie et soignée
+    ctx.fillRect(x0 + 9 + ox, y0 + 13.5, 5, 2.2);
+    ctx.fillRect(x0 + 16 + ox, y0 + 13.5, 5, 2.2);
+    ctx.fillStyle = shade(color, 0.75);
+    ctx.fillRect(x0 + 9 + ox, y0 + 15, 5, 0.8);
+    ctx.fillRect(x0 + 16 + ox, y0 + 15, 5, 0.8);
   } else if (kind === 'bouc') {
     ctx.fillRect(x0 + 10 + ox, y0 + 14, 4, 2);
     ctx.fillRect(x0 + 16 + ox, y0 + 14, 4, 2);
@@ -510,16 +514,31 @@ function drawGlasses(ctx, kind, x0, y0, S, facing) {
   const eyeY = y0 + 9;
   const lens = kind === 'soleil' ? 'rgba(25,25,35,0.9)' : 'rgba(190,230,250,0.45)';
   const frame = '#2a2a2a';
+  const goldFrame = '#c9a227';
+  const goldLight = '#e6c86a';
 
   if (kind === 'rondes') {
-    ctx.fillStyle = frame;
-    ctx.beginPath(); ctx.arc(x0 + 12 + ox, eyeY + 2, 3.4, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(x0 + 18 + ox, eyeY + 2, 3.4, 0, Math.PI * 2); ctx.fill();
+    // Monture dorée fine, plus élégante
+    const isGold = true; // on passe tout en doré pour le côté luxe
+    const fCol = isGold ? goldFrame : frame;
+    const fLight = goldLight;
+    ctx.fillStyle = fCol;
+    ctx.beginPath(); ctx.arc(x0 + 12 + ox, eyeY + 2, 3.6, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x0 + 18 + ox, eyeY + 2, 3.6, 0, Math.PI * 2); ctx.fill();
+    // Reflet doré
+    ctx.fillStyle = fLight;
+    ctx.beginPath(); ctx.arc(x0 + 11.3 + ox, eyeY + 1.2, 0.9, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x0 + 17.3 + ox, eyeY + 1.2, 0.9, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = lens;
-    ctx.beginPath(); ctx.arc(x0 + 12 + ox, eyeY + 2, 2.2, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(x0 + 18 + ox, eyeY + 2, 2.2, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = frame;
-    ctx.fillRect(x0 + 14 + ox, eyeY + 1, 2, 3);
+    ctx.beginPath(); ctx.arc(x0 + 12 + ox, eyeY + 2, 2.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x0 + 18 + ox, eyeY + 2, 2.4, 0, Math.PI * 2); ctx.fill();
+    // Pont
+    ctx.fillStyle = fCol;
+    ctx.fillRect(x0 + 14 + ox, eyeY + 1.2, 2, 1.2);
+    // Reflet verre
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.beginPath(); ctx.arc(x0 + 11.2 + ox, eyeY + 1.3, 0.7, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x0 + 17.2 + ox, eyeY + 1.3, 0.7, 0, Math.PI * 2); ctx.fill();
   } else if (kind === 'demi-lune') {
     ctx.fillStyle = frame;
     ctx.fillRect(x0 + 8 + ox, eyeY + 3, 6, 3);
@@ -569,15 +588,42 @@ function drawHat(ctx, app, c, x0, y0, S, facing) {
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.fillRect(cx - 6, y0 - 10, 12, 2);
   } else if (hat === 'melon') {
-    voxel(ctx, x0 - 2, y0 - 5, S + 4, 4, '#2a2a2a');
-    voxel(ctx, cx - 5, y0 - 11, 10, 7, '#3a3a3a');
-    ctx.fillStyle = 'rgba(255,255,255,0.2)';
-    ctx.fillRect(cx - 5, y0 - 11, 10, 2);
+    // Melon plus raffiné : bord brillant, calotte bombée, ruban satin
+    voxel(ctx, x0 - 3, y0 - 6, S + 6, 5, '#1e1e24');
+    voxel(ctx, cx - 6, y0 - 12, 12, 8, '#2c2c34');
+    // Ruban noir satiné
+    ctx.fillStyle = '#111116';
+    ctx.fillRect(cx - 6, y0 - 7, 12, 2.5);
+    // Reflet soyeux sur la calotte
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(cx - 6, y0 - 12, 12, 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(cx - 6, y0 - 10, 3, 4);
   } else if (hat === 'haut-de-forme') {
-    voxel(ctx, x0 - 2, y0 - 5, S + 4, 4, '#2a2a2a');
-    voxel(ctx, cx - 5, y0 - 16, 10, 12, '#3a3a3a');
-    ctx.fillStyle = '#c94040';
-    ctx.fillRect(cx - 5, y0 - 9, 10, 2);
+    // Haut-de-forme luxueux : noir profond, bord large brillant, ruban bordeaux et boucle dorée
+    // Bord
+    voxel(ctx, x0 - 4, y0 - 6, S + 8, 5, '#14141a');
+    // Reflet sur le bord
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(x0 - 4, y0 - 6, S + 8, 1.5);
+    // Tube haut
+    voxel(ctx, cx - 6, y0 - 20, 12, 15, '#1c1c26');
+    // Ombre douce côté
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(cx + 2, y0 - 20, 4, 15);
+    // Reflet vertical soyeux
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    ctx.fillRect(cx - 6, y0 - 20, 2.5, 15);
+    // Ruban bordeaux autour du tube
+    ctx.fillStyle = '#5a1220';
+    ctx.fillRect(cx - 6, y0 - 9, 12, 3.2);
+    ctx.fillStyle = '#8e1e32';
+    ctx.fillRect(cx - 6, y0 - 8.5, 12, 1.6);
+    // Boucle dorée sur le côté
+    ctx.fillStyle = '#c9a227';
+    ctx.fillRect(cx + 3, y0 - 8.8, 1.8, 2.2);
+    ctx.fillStyle = '#e6c86a';
+    ctx.fillRect(cx + 3, y0 - 8.8, 1.8, 0.7);
   } else if (hat === 'couronne') {
     voxel(ctx, x0 - 2, y0 - 5, S + 4, 4, '#e6c23c');
     for (let i = 0; i < 3; i++) voxel(ctx, cx - 8 + i * 6, y0 - 10, 4, 6, '#f2c14e');

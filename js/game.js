@@ -1578,6 +1578,11 @@ export class Game {
   }
 
   updateParticles(dt) {
+    // Si l'utilisateur a coupé les particules, on vide tout de suite pour libérer CPU/GPU
+    if (!this._particlesEnabled()) {
+      if (this.particles.length > 0) this.particles.length = 0;
+      return;
+    }
     const particles = this.particles;
     if (particles.length === 0) return;
     const gravity = 260 * dt;

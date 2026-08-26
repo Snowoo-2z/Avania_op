@@ -2875,15 +2875,17 @@ html.low-power .craft-output.ready {
   pointer-events: auto;
 }
 .dialog-frame {
-  padding: 14px 18px 12px;
+  padding: 16px 20px 14px;
   border: 2px solid #1e2022;
-  border-radius: 8px;
-  background: linear-gradient(180deg, #707579, #4b4f53 55%, #383b3f);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #7a8288 0%, #5a6066 22%, #4a4f54 55%, #3a3e42 100%);
   box-shadow:
-    0 24px 60px rgba(0, 0, 0, 0.7),
-    0 0 0 1px #a1a5a8,
-    0 0 0 4px #36393d,
-    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+    0 28px 70px rgba(0, 0, 0, 0.75),
+    0 0 0 1px #c9a227,
+    0 0 0 2px #a1a5a8,
+    0 0 0 5px #36393d,
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    inset 0 -2px 0 rgba(0,0,0,0.2);
 }
 .dialog-in .dialog-frame { animation: dialogIn 0.24s ease-out; }
 @keyframes dialogIn {
@@ -2898,13 +2900,18 @@ html.low-power .craft-output.ready {
   border-bottom: 1px solid rgba(0, 0, 0, 0.28);
 }
 .dialog-portrait {
-  width: 56px;
-  height: 66px;
-  border: 2px solid #25282a;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #57606a, #33383d);
+  width: 72px;
+  height: 84px;
+  border: 2px solid #c9a227;
+  border-radius: 6px;
+  background: radial-gradient(120% 120% at 30% 20%, #6b7a8a 0%, #3d4552 45%, #2a2f3a 100%);
   image-rendering: pixelated;
   flex: none;
+  box-shadow:
+    0 0 0 1px #1e2022,
+    0 0 0 3px #36393d,
+    0 4px 12px rgba(0,0,0,0.45),
+    inset 0 1px 0 rgba(255,255,255,0.25);
 }
 .dialog-who { display: flex; flex-direction: column; gap: 2px; }
 .dialog-eyebrow {
