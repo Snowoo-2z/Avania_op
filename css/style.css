@@ -2981,17 +2981,19 @@ html.low-power .craft-output.ready {
 }
 .mc-frame {
   position: relative;
-  width: min(620px, 100%);
-  padding: 14px 16px 12px;
+  width: min(640px, 100%);
+  padding: 16px 18px 14px;
   border: 2px solid #1e2022;
-  border-radius: 8px;
-  background: linear-gradient(180deg, #6d7276, #484c50 55%, #35383c);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #787e84 0%, #5a6066 24%, #4a4f54 58%, #3a3e42 100%);
   box-shadow:
-    0 26px 70px rgba(0, 0, 0, 0.72),
-    0 0 0 1px #a1a5a8,
-    0 0 0 4px #36393d,
-    inset 0 1px 0 rgba(255, 255, 255, 0.32);
-  animation: mcIn 0.18s ease-out;
+    0 30px 80px rgba(0, 0, 0, 0.78),
+    0 0 0 1px #d4af37,
+    0 0 0 2px #a1a5a8,
+    0 0 0 5px #36393d,
+    inset 0 1px 0 rgba(255, 255, 255, 0.36),
+    inset 0 -2px 0 rgba(0,0,0,0.22);
+  animation: mcIn 0.22s ease-out;
 }
 @keyframes mcIn {
   from { opacity: 0; transform: translateY(16px); }
@@ -3005,13 +3007,18 @@ html.low-power .craft-output.ready {
   border-bottom: 1px solid rgba(0, 0, 0, 0.28);
 }
 .mc-portrait {
-  width: 50px;
-  height: 60px;
+  width: 64px;
+  height: 76px;
   flex: none;
-  border: 2px solid #25282a;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #57606a, #33383d);
+  border: 2px solid #c9a227;
+  border-radius: 8px;
+  background: radial-gradient(120% 120% at 30% 20%, #6b7a8a 0%, #4a5566 45%, #2a2f3a 100%);
   image-rendering: pixelated;
+  box-shadow:
+    0 0 0 1px #1e2022,
+    0 0 0 3px #36393d,
+    0 4px 14px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.22);
 }
 .mc-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .mc-who strong {
@@ -3058,23 +3065,26 @@ html.low-power .craft-output.ready {
 }
 .mc-msg {
   max-width: 88%;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 13.5px;
-  line-height: 1.5;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.55;
   color: #f1f2f2;
-  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.42);
   word-break: break-word;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.08);
 }
 .mc-msg--merchant {
   align-self: flex-start;
-  border: 1px solid #2b2e31;
-  background: linear-gradient(180deg, #565b60, #41454a);
+  border: 1px solid #3a3a2a;
+  background: linear-gradient(180deg, #5a5e64, #44484e);
+  border-left: 3px solid #c9a44a;
 }
 .mc-msg--player {
   align-self: flex-end;
   border: 1px solid #2c4634;
-  background: linear-gradient(180deg, #2f5738, #22402a);
+  background: linear-gradient(180deg, #335a3c, #25432c);
+  border-right: 3px solid #7ccf6a;
 }
 .mc-msg--typing {
   color: #b9bcc0;
@@ -3084,18 +3094,21 @@ html.low-power .craft-output.ready {
 }
 @keyframes mcTyping { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
 
-/* Proposition d'achat */
+/* Proposition d'achat — version luxe */
 .mc-offer {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-  padding: 10px 12px;
-  border: 2px solid #6b5320;
-  border-radius: 6px;
-  background: linear-gradient(180deg, #4a3c1c, #2e2611);
-  box-shadow: inset 0 1px 0 rgba(255, 224, 150, 0.24);
-  animation: mcOfferIn 0.2s ease-out;
+  gap: 14px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 2px solid #8a6d1b;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #4e3f1e 0%, #3a2f16 40%, #2e2611 100%);
+  box-shadow:
+    0 6px 18px rgba(0,0,0,0.32),
+    inset 0 1px 0 rgba(255, 224, 150, 0.28),
+    inset 0 -1px 0 rgba(0,0,0,0.25);
+  animation: mcOfferIn 0.24s ease-out;
 }
 @keyframes mcOfferIn {
   from { opacity: 0; transform: translateY(-6px); }

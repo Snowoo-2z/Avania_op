@@ -109,7 +109,7 @@ export class ChatPanel {
   }
 
   // ------------------------------------------------------------
-  //  Portrait : le vrai sprite du marchand, rendu une fois.
+  //  Portrait : le vrai sprite du marchand, rendu avec fond élégant
   // ------------------------------------------------------------
   paintPortrait(merchant) {
     const canvas = this.el.portrait;
@@ -117,12 +117,33 @@ export class ChatPanel {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    merchant.draw(ctx, canvas.width / 2, canvas.height - 4, {
+    const W = canvas.width, H = canvas.height;
+    // Fond radial assorti au marchand
+    const isMask = merchant.kind === 'merchantMask';
+    const bg = ctx.createRadialGradient(W * 0.5, H * 0.35, 2, W * 0.5, H * 0.5, H * 0.9);
+    if (isMask) {
+      bg.addColorStop(0, '#6b5a3a');
+      bg.addColorStop(0.4, '#4a3d28');
+      bg.addColorStop(1, '#2e2618');
+    } else {
+      bg.addColorStop(0, '#5a5a62');
+      bg.addColorStop(0.4, '#3d4148');
+      bg.addColorStop(1, '#2a2e36');
+    }
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    // Halo
+    const halo = ctx.createRadialGradient(W * 0.5, H * 0.6, 2, W * 0.5, H * 0.6, 32);
+    halo.addColorStop(0, isMask ? 'rgba(201,164,74,0.22)' : 'rgba(154,163,171,0.18)');
+    halo.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, W, H);
+    // Sprite plus grand
+    merchant.draw(ctx, W / 2, H - 2, {
       facing: 'right',
       walkPhase: 0,
-      scale: 1.05,
-      shadow: false,
+      scale: 1.55,
+      shadow: true,
     });
   }
 

@@ -494,14 +494,29 @@ function drawFacialHair(ctx, kind, color, x0, y0, S, facing) {
     ctx.fillRect(x0 + 9 + ox, y0 + 15, 5, 0.8);
     ctx.fillRect(x0 + 16 + ox, y0 + 15, 5, 0.8);
   } else if (kind === 'bouc') {
-    ctx.fillRect(x0 + 10 + ox, y0 + 14, 4, 2);
-    ctx.fillRect(x0 + 16 + ox, y0 + 14, 4, 2);
-    ctx.fillRect(x0 + 12 + ox, y0 + 18, 6, 3);
+    // Bouc d'artisan soigné, avec barbiche pointue et reflets
+    ctx.fillRect(x0 + 10 + ox, y0 + 13.8, 4.5, 2.4);
+    ctx.fillRect(x0 + 15.5 + ox, y0 + 13.8, 4.5, 2.4);
+    ctx.fillRect(x0 + 12 + ox, y0 + 17.5, 6.5, 3.8);
+    // Pointe fine
+    ctx.fillRect(x0 + 13.5 + ox, y0 + 20.8, 3.5, 1.2);
+    ctx.fillStyle = shade(color, 0.7);
+    ctx.fillRect(x0 + 10 + ox, y0 + 15.5, 4.5, 0.7);
+    ctx.fillRect(x0 + 15.5 + ox, y0 + 15.5, 4.5, 0.7);
+    ctx.fillRect(x0 + 12 + ox, y0 + 20, 6.5, 0.8);
   } else if (kind === 'barbe') {
-    ctx.fillRect(x0 + 7 + ox, y0 + 12, 3, 8);
-    ctx.fillRect(x0 + 20 + ox, y0 + 12, 3, 8);
-    ctx.fillRect(x0 + 9 + ox, y0 + 17, 12, 2);
-    ctx.fillRect(x0 + 11 + ox, y0 + 19, 8, 2);
+    // Barbe de forgeron fournie, tressée, avec reflets gris
+    ctx.fillRect(x0 + 6 + ox, y0 + 11, 4, 10);
+    ctx.fillRect(x0 + 20 + ox, y0 + 11, 4, 10);
+    ctx.fillRect(x0 + 8 + ox, y0 + 17, 14, 3);
+    ctx.fillRect(x0 + 10 + ox, y0 + 20, 10, 3.5);
+    // Mèches grisonnantes
+    ctx.fillStyle = shade(color, 1.25);
+    ctx.fillRect(x0 + 9 + ox, y0 + 18, 2, 3);
+    ctx.fillRect(x0 + 19 + ox, y0 + 18, 2, 3);
+    // Ombre sous barbe
+    ctx.fillStyle = shade(color, 0.6);
+    ctx.fillRect(x0 + 10 + ox, y0 + 22.5, 10, 1);
   }
 }
 
@@ -583,10 +598,31 @@ function drawHat(ctx, app, c, x0, y0, S, facing) {
     ctx.fillStyle = '#c94f3f';
     ctx.fillRect(cx - 6, y0 - 8, 12, 2);
   } else if (hat === 'casque') {
-    voxel(ctx, x0 - 2, y0 - 8, S + 4, 7, '#f2c14e');
-    voxel(ctx, cx - 5, y0 - 11, 10, 3, '#f2c14e');
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillRect(cx - 6, y0 - 10, 12, 2);
+    // Casque de forgeron / chantier amélioré : acier brossé, rivets, jugulaire cuir, lampe frontale
+    // Base casque
+    voxel(ctx, x0 - 3, y0 - 9, S + 6, 8, '#d8c040');
+    // Calotte supérieure bombée
+    voxel(ctx, cx - 6, y0 - 13, 12, 5, '#e6d25a');
+    // Reflet acier
+    ctx.fillStyle = 'rgba(255,255,255,0.32)';
+    ctx.fillRect(cx - 6, y0 - 13, 12, 1.8);
+    ctx.fillRect(x0 - 3, y0 - 9, 2, 8);
+    // Bande cuir autour
+    ctx.fillStyle = '#4a3218';
+    ctx.fillRect(x0 - 3, y0 - 3, S + 6, 1.8);
+    ctx.fillStyle = '#6b4a2a';
+    ctx.fillRect(x0 - 3, y0 - 3, S + 6, 0.6);
+    // Rivets latéraux
+    ctx.fillStyle = '#a08a3a';
+    ctx.beginPath(); ctx.arc(x0 - 1, y0 - 5, 0.7, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x0 + S + 1, y0 - 5, 0.7, 0, Math.PI * 2); ctx.fill();
+    // Petite lampe frontale pour le mineur
+    ctx.fillStyle = '#2a2a2e';
+    ctx.fillRect(cx - 2, y0 - 6, 4, 2.5);
+    ctx.fillStyle = '#e8eef2';
+    ctx.fillRect(cx - 1.5, y0 - 5.5, 3, 1.5);
+    ctx.fillStyle = '#a8d8e8';
+    ctx.fillRect(cx - 1, y0 - 5.2, 2, 0.8);
   } else if (hat === 'melon') {
     // Melon plus raffiné : bord brillant, calotte bombée, ruban satin
     voxel(ctx, x0 - 3, y0 - 6, S + 6, 5, '#1e1e24');

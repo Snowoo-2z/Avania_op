@@ -111,15 +111,17 @@ export function makeNpcRenderer({ appearance, paint, detail = 2 }) {
 }
 
 // Étiquette de nom au-dessus du PNJ (rendue une fois, mise en cache).
+// Version améliorée : plus grande, bord doré pour marchands, ombre portée
 const nameTagCache = new Map();
 export function getNpcNameTag(label, sub) {
   const key = `${label}|${sub || ''}`;
   const cached = nameTagCache.get(key);
   if (cached) return cached;
 
+  const isMerchant = /marchand/i.test(sub || '') || /Gaspard|Aldric/.test(label);
   const px = 2; // rendu 2× : texte net au zoom du jeu
-  const fontMain = `bold ${9 * px}px system-ui, sans-serif`;
-  const fontSub = `bold ${7 * px}px system-ui, sans-serif`;
+  const fontMain = `bold ${10 * px}px system-ui, sans-serif`;
+  const fontSub = `bold ${7.5 * px}px system-ui, sans-serif`;
   const measure = makeCanvas(4, 4).getContext('2d');
   measure.font = fontMain;
   let w = measure.measureText(label).width;
@@ -127,29 +129,56 @@ export function getNpcNameTag(label, sub) {
     measure.font = fontSub;
     w = Math.max(w, measure.measureText(sub).width);
   }
-  const wPx = Math.ceil(w + 12 * px);
-  const hPx = (sub ? 20 : 13) * px;
+  const wPx = Math.ceil(w + 18 * px);
+  const hPx = (sub ? 26 : 16) * px;
 
   const c = makeCanvas(wPx, hPx);
   const ctx = c.getContext('2d');
   ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = 'rgba(18,22,18,0.78)';
+  // Fond avec dégradé
+  const grad = ctx.createLinearGradient(0, 0, 0, hPx);
+  if (isMerchant) {
+    grad.addColorStop(0, 'rgba(42,38,28,0.92)');
+    grad.addColorStop(1, 'rgba(28,24,16,0.92)');
+  } else {
+    grad.addColorStop(0, 'rgba(24,28,24,0.88)');
+    grad.addColorStop(1, 'rgba(16,20,18,0.88)');
+  }
+  ctx.fillStyle = grad;
   if (ctx.roundRect) {
     ctx.beginPath();
-    ctx.roundRect(0, 0, wPx, hPx, 6 * px);
+    ctx.roundRect(0, 0, wPx, hPx, 7 * px);
     ctx.fill();
   } else {
     ctx.fillRect(0, 0, wPx, hPx);
   }
+  // Bord doré pour marchands, blanc pour autres
+  ctx.strokeStyle = isMerchant ? 'rgba(212,175,55,0.65)' : 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = isMerchant ? 1.2 * px : 0.8 * px;
+  if (ctx.roundRect) {
+    ctx.beginPath();
+    ctx.roundRect(0.5 * px, 0.5 * px, wPx - px, hPx - px, 6 * px);
+    ctx.stroke();
+  }
+  // Liseré intérieur clair
+  ctx.fillStyle = isMerchant ? 'rgba(212,175,55,0.12)' : 'rgba(255,255,255,0.06)';
+  ctx.fillRect(1 * px, 1 * px, wPx - 2 * px, 1.2 * px);
+
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = fontMain;
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText(label, wPx / 2, sub ? 8 * px : hPx / 2);
+  ctx.fillStyle = isMerchant ? '#ffe8a0' : '#ffffff';
+  // Ombre texte
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillText(label, wPx / 2 + 0.6 * px, (sub ? 9 * px : hPx / 2) + 0.6 * px);
+  ctx.fillStyle = isMerchant ? '#ffe8a0' : '#ffffff';
+  ctx.fillText(label, wPx / 2, sub ? 9 * px : hPx / 2);
   if (sub) {
     ctx.font = fontSub;
-    ctx.fillStyle = '#f2c14e';
-    ctx.fillText(sub, wPx / 2, 16.5 * px);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillText(sub, wPx / 2 + 0.5 * px, 19 * px + 0.5 * px);
+    ctx.fillStyle = isMerchant ? '#c9a44a' : '#d0d0d0';
+    ctx.fillText(sub, wPx / 2, 19 * px);
   }
 
   const tag = { canvas: c, w: wPx / px, h: hPx / px };
@@ -158,16 +187,40 @@ export function getNpcNameTag(label, sub) {
 }
 
 // Nuage « … » au-dessus de la tête : signale un PNJ avec qui parler.
+// Version améliorée : bulle avec fond, bord, et points animés dorés
 export function drawSpeechHint(ctx, x, y, scale = 1, time = 0) {
-  const pulse = 0.5 + Math.sin(time * 4) * 0.5;
+  const pulse = 0.5 + Math.sin(time * 3.5) * 0.5;
   ctx.save();
-  ctx.translate(x, y - 40 * scale);
+  ctx.translate(x, y - 44 * scale);
   ctx.scale(scale, scale);
-  ctx.fillStyle = `rgba(255,255,255,${0.7 + pulse * 0.3})`;
+  // Petite bulle fond
+  ctx.fillStyle = 'rgba(28,24,16,0.85)';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(-12, -10, 24, 14, 6);
+  else ctx.fillRect(-12, -10, 24, 14);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(212,175,55,0.45)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  // Queue bulle
+  ctx.fillStyle = 'rgba(28,24,16,0.85)';
+  ctx.beginPath();
+  ctx.moveTo(-2, 4); ctx.lineTo(0, 8); ctx.lineTo(2, 4);
+  ctx.closePath(); ctx.fill();
+  // Points animés
   for (let i = 0; i < 3; i++) {
-    const r = 1.6 + (2 - i) * 0.5;
+    const off = Math.sin(time * 4 + i * 1.1) * 1.2;
+    const r = 1.8;
+    const px = -6 + i * 6;
+    const py = -3 + off * 0.5;
+    ctx.fillStyle = `rgba(255,232,160,${0.6 + pulse * 0.4})`;
     ctx.beginPath();
-    ctx.arc(-4 + i * 4, -i * 0.6, r, 0, Math.PI * 2);
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fill();
+    // Éclat
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath();
+    ctx.arc(px - 0.5, py - 0.5, 0.5, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();
