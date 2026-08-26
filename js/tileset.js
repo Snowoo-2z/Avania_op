@@ -494,6 +494,22 @@ function ironBlockTexture(ctx, top, dark) {
   ctx.fillRect(8, 20, 3, 3);
 }
 
+function diamondBlockTexture(ctx, top, dark) {
+  // Reflets bleutés cristallins
+  ctx.strokeStyle = withAlpha('#ffffff', 0.6);
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(6, 8); ctx.lineTo(20, 5);
+  ctx.moveTo(8, 16); ctx.lineTo(22, 13);
+  ctx.stroke();
+  ctx.fillStyle = withAlpha('#5ce1e6', 0.5);
+  ctx.fillRect(10, 10, 3, 3);
+  ctx.fillRect(18, 18, 4, 4);
+  ctx.fillStyle = withAlpha('#ffffff', 0.7);
+  ctx.fillRect(11, 11, 1, 1);
+  ctx.fillRect(19, 19, 1, 1);
+}
+
 // --- Four : bloc de cobblestone avec une bouche sombre, façon Minecraft ---
 // Le four Minecraft a une face supérieure en cobblestone, une face avant
 // avec une ouverture sombre entourée de pavés de pierre, et des rivets/
@@ -1105,6 +1121,7 @@ const DRAWERS = {
   sandBlock: (c) => drawBlockTile(c, BLOCK_DEFS.sandBlock.color, sandBlockTexture),
   dirtBlock: (c) => drawBlockTile(c, BLOCK_DEFS.dirtBlock.color, dirtBlockTexture),
   ironBlock: (c) => drawBlockTile(c, BLOCK_DEFS.ironBlock.color, ironBlockTexture),
+  diamondBlock: (c) => drawBlockTile(c, BLOCK_DEFS.diamondBlock.color, diamondBlockTexture),
   furnace:   (c) => drawBlockTile(c, BLOCK_DEFS.furnace.color, furnaceTexture),
   woolBlock: (c) => drawBlockTile(c, BLOCK_DEFS.woolBlock.color, woolBlockTexture),
   door:      (c) => drawDoorClosed(c),
@@ -1342,6 +1359,38 @@ function drawIronOreObjectRaw(ctx, x, y, shadow = true) {
   ctx.moveTo(x - 6, y - 15); ctx.lineTo(x - 1, y - 11); ctx.stroke();
 }
 
+// --- Minerai de diamant : rocher avec cristaux bleutés ---
+function drawDiamondOreObjectRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 1, 14, 5);
+  voxel(ctx, x - 12, y - 18, 24, 19, '#7a8a9a');
+  voxel(ctx, x - 10, y - 24, 20, 18, '#8d9aae');
+  voxel(ctx, x - 7, y - 27, 14, 5, '#a5b5c8');
+  const DIAM = '#5ce1e6', DIAM_HI = '#b8f3f6', DIAM_OUT = '#1a5a5e';
+  const gems = [
+    [x - 6, y - 18, 5, 5],
+    [x + 3, y - 22, 4, 4],
+    [x - 2, y - 14, 3, 3],
+  ];
+  for (const [gx, gy, gw, gh] of gems) {
+    ctx.fillStyle = DIAM_OUT;
+    ctx.fillRect(gx - 1, gy - 1, gw + 2, gh + 2);
+    ctx.fillStyle = DIAM;
+    ctx.beginPath();
+    ctx.moveTo(gx + gw/2, gy);
+    ctx.lineTo(gx + gw, gy + gh/2);
+    ctx.lineTo(gx + gw/2, gy + gh);
+    ctx.lineTo(gx, gy + gh/2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = DIAM_HI;
+    ctx.fillRect(gx + 1, gy + 1, 1, 1);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(gx + 1, gy + 1, 1, 1);
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fillRect(x - 7, y - 27, 14, 2);
+}
+
 // ------------------------------------------------------------
 //  Les ressources de la grotte : pierre et fer, mais avec un look
 //  bien à elles (roche froide, arêtes vives, veines lumineuses).
@@ -1416,6 +1465,77 @@ function drawCaveIronObjectRaw(ctx, x, y, shadow = true) {
   ctx.fillRect(x - 2, y - 19, 3, 1);
 
   ctx.fillStyle = 'rgba(150,175,225,0.28)';
+  ctx.fillRect(x - 6, y - 30, 13, 2);
+}
+
+// Filon de diamant : roche sombre avec cristaux bleutés brillants
+// Très rare, doit être immédiatement reconnaissable.
+function drawCaveDiamondObjectRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 1, 15, 5);
+  voxel(ctx, x - 14, y - 17, 28, 18, '#3a3f4c');
+  voxel(ctx, x - 11, y - 25, 22, 18, '#4a4e5e');
+  voxel(ctx, x - 6, y - 30, 13, 7, '#5a5f72');
+
+  // Cristaux de diamant : losanges bleutés avec éclats
+  const DIAM = '#5ce1e6';
+  const DIAM_HI = '#b8f3f6';
+  const DIAM_OUT = '#1a5a5e';
+  const DIAM_SH = '#2a8a90';
+  const diamonds = [
+    [x - 8, y - 20, 6, 6],
+    [x + 2, y - 24, 5, 5],
+    [x - 2, y - 12, 4, 4],
+  ];
+  for (const [dx, dy, dw, dh] of diamonds) {
+    // contour
+    ctx.fillStyle = DIAM_OUT;
+    ctx.fillRect(dx - 1, dy - 1, dw + 2, dh + 2);
+    // cristal en losange (2 triangles)
+    ctx.fillStyle = DIAM;
+    ctx.beginPath();
+    ctx.moveTo(dx + dw/2, dy);
+    ctx.lineTo(dx + dw, dy + dh/2);
+    ctx.lineTo(dx + dw/2, dy + dh);
+    ctx.lineTo(dx, dy + dh/2);
+    ctx.closePath();
+    ctx.fill();
+    // éclat haut
+    ctx.fillStyle = DIAM_HI;
+    ctx.beginPath();
+    ctx.moveTo(dx + dw/2, dy);
+    ctx.lineTo(dx + dw*0.7, dy + dh*0.3);
+    ctx.lineTo(dx + dw/2, dy + dh*0.4);
+    ctx.lineTo(dx + dw*0.3, dy + dh*0.3);
+    ctx.closePath();
+    ctx.fill();
+    // reflet blanc
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(dx + 1, dy + 1, 1, 1);
+  }
+  // Gros cristal central plus brillant
+  const cx = x - 2, cy = y - 20;
+  ctx.fillStyle = DIAM_OUT;
+  ctx.fillRect(cx - 5, cy - 5, 11, 11);
+  ctx.fillStyle = DIAM;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - 4);
+  ctx.lineTo(cx + 4, cy);
+  ctx.lineTo(cx, cy + 4);
+  ctx.lineTo(cx - 4, cy);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = DIAM_HI;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - 4);
+  ctx.lineTo(cx + 2, cy - 1);
+  ctx.lineTo(cx, cy);
+  ctx.lineTo(cx - 2, cy - 1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(cx, cy - 2, 1, 1);
+
+  ctx.fillStyle = 'rgba(92,225,230,0.35)';
   ctx.fillRect(x - 6, y - 30, 13, 2);
 }
 
@@ -1610,10 +1730,12 @@ function buildObjectSprites() {
   objectCache.tree = objectCache['tree:small'];
   objectCache.rock = makeObjectSprite(40, 40, 20, 32, drawRockObjectRaw);
   objectCache.ironOre = makeObjectSprite(40, 40, 20, 32, drawIronOreObjectRaw);
+  objectCache.diamondOre = makeObjectSprite(40, 40, 20, 32, drawDiamondOreObjectRaw);
   // Ressources de la grotte (même gabarit que leurs équivalents de surface :
   // les fissures de minage déjà pré-rendues continuent de s'appliquer).
   objectCache.caveStone = makeObjectSprite(40, 44, 20, 34, drawCaveStoneObjectRaw);
   objectCache.caveIron = makeObjectSprite(40, 44, 20, 34, drawCaveIronObjectRaw);
+  objectCache.caveDiamond = makeObjectSprite(40, 44, 20, 34, drawCaveDiamondObjectRaw);
   // L'entrée de la grotte déborde largement de sa tuile (point de repère).
   objectCache.caveMouth = makeObjectSprite(76, 88, 38, 80, drawCaveMouthObjectRaw);
   objectCache.caveLadderDown = makeObjectSprite(44, 48, 22, 38, drawCaveLadderDownRaw);

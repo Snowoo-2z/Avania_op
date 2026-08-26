@@ -57,10 +57,22 @@ export const BLOCK_DEFS = {
     drop: 'rawIron', dropN: 1, color: '#a08d80', requiredTool: 'pickaxe', minTier: 'stone', breakTime: 3.0,
   },
 
+  // --- minerai de diamant (très rare, uniquement en grotte, pioche en fer minimum) ---
+  diamondOre: {
+    id: 'diamondOre', label: 'Minerai de diamant', kind: 'object', solid: true, breakable: true,
+    drop: 'diamond', dropN: 1, color: '#5ce1e6', requiredTool: 'pickaxe', minTier: 'iron', breakTime: 4.5,
+  },
+
   // --- bloc de fer (compacte 9 lingots, posable) ---
   ironBlock: {
     id: 'ironBlock', label: 'Bloc de fer', kind: 'block', solid: true, breakable: true,
     drop: 'ironBlock', color: '#d8dde2', requiredTool: 'pickaxe', breakTime: 1.4,
+  },
+
+  // --- bloc de diamant (compacte 9 diamants, posable) ---
+  diamondBlock: {
+    id: 'diamondBlock', label: 'Bloc de diamant', kind: 'block', solid: true, breakable: true,
+    drop: 'diamondBlock', color: '#5ce1e6', requiredTool: 'pickaxe', minTier: 'iron', breakTime: 2.2,
   },
 
   // --- porte (s'ouvre / se ferme au clic droit) ---
@@ -89,8 +101,7 @@ export const BLOCK_DEFS = {
 
   // ------------------------------------------------------------
   //  La grotte : ses ressources et ses points de passage.
-  //  Rien d'autre que de la pierre et du fer pour l'instant, mais
-  //  avec un look bien à eux (voir js/tileset.js).
+  //  Pierre, fer et maintenant diamant (très rare, profond).
   // ------------------------------------------------------------
   caveStone: {
     id: 'caveStone', label: 'Pierre de grotte', kind: 'object', solid: true, breakable: true,
@@ -99,6 +110,10 @@ export const BLOCK_DEFS = {
   caveIron: {
     id: 'caveIron', label: 'Filon de fer', kind: 'object', solid: true, breakable: true,
     drop: 'rawIron', dropN: 1, color: '#7a6a62', requiredTool: 'pickaxe', minTier: 'stone', breakTime: 3.2,
+  },
+  caveDiamond: {
+    id: 'caveDiamond', label: 'Filon de diamant', kind: 'object', solid: true, breakable: true,
+    drop: 'diamond', dropN: 1, color: '#5ce1e6', requiredTool: 'pickaxe', minTier: 'iron', breakTime: 5.0,
   },
   // L'entrée de la grotte, à la surface : un arche sombre. On y entre
   // avec la touche d'interaction — elle ne se casse pas.
@@ -137,6 +152,9 @@ export const ITEM_DEFS = {
   rawIron: { id: 'rawIron', label: 'Fer brut', color: '#b0875f', type: 'resource', maxStack: 64 },
   ironIngot: { id: 'ironIngot', label: 'Lingot de fer', color: '#dfe4e8', type: 'material', maxStack: 64 },
   ironBlock: { id: 'ironBlock', label: 'Bloc de fer', color: '#d8dde2', type: 'material', maxStack: 64, place: 'ironBlock' },
+  // Diamant — uniquement en grotte, beaucoup plus rare que le fer
+  diamond: { id: 'diamond', label: 'Diamant', color: '#5ce1e6', type: 'resource', maxStack: 64, flavor: 'Précieux et rare, trouvé dans les profondeurs.' },
+  diamondBlock: { id: 'diamondBlock', label: 'Bloc de diamant', color: '#5ce1e6', type: 'material', maxStack: 64, place: 'diamondBlock' },
   door: { id: 'door', label: 'Porte en bois', color: '#c89a5e', type: 'material', maxStack: 64, place: 'door' },
   furnace: { id: 'furnace', label: 'Four', color: '#5d5d62', type: 'material', maxStack: 64, place: 'furnace' },
   chest: { id: 'chest', label: 'Coffre', color: '#8a5a2e', type: 'material', maxStack: 64, place: 'chest' },
@@ -196,6 +214,23 @@ export const ITEM_DEFS = {
   iron_sword: {
     id: 'iron_sword', label: 'Épée en fer', color: '#d8dde2', icon: 'sword', type: 'tool', maxStack: 1,
     toolType: 'sword', tier: 'iron', durability: 250, efficiency: 1,
+  },
+
+  diamond_pickaxe: {
+    id: 'diamond_pickaxe', label: 'Pioche en diamant', color: '#5ce1e6', icon: 'pickaxe', type: 'tool', maxStack: 1,
+    toolType: 'pickaxe', tier: 'diamond', durability: 1561, efficiency: 8,
+  },
+  diamond_axe: {
+    id: 'diamond_axe', label: 'Hache en diamant', color: '#5ce1e6', icon: 'axe', type: 'tool', maxStack: 1,
+    toolType: 'axe', tier: 'diamond', durability: 1561, efficiency: 8,
+  },
+  diamond_shovel: {
+    id: 'diamond_shovel', label: 'Pelle en diamant', color: '#5ce1e6', icon: 'shovel', type: 'tool', maxStack: 1,
+    toolType: 'shovel', tier: 'diamond', durability: 1561, efficiency: 8,
+  },
+  diamond_sword: {
+    id: 'diamond_sword', label: 'Épée en diamant', color: '#5ce1e6', icon: 'sword', type: 'tool', maxStack: 1,
+    toolType: 'sword', tier: 'diamond', durability: 1561, efficiency: 1.2,
   },
 
   // ------------------------------------------------------------
@@ -329,8 +364,9 @@ export function getClothingSlot(itemId) {
 }
 
 // Ordre des niveaux d'outils. Un bloc avec `minTier` exige un outil d'au
-// moins ce niveau (ex. le minerai de fer demande une pioche en pierre+).
-export const TOOL_TIERS = ['wood', 'stone', 'iron'];
+// moins ce niveau (ex. le minerai de fer demande une pioche en pierre+,
+// le diamant demande fer+).
+export const TOOL_TIERS = ['wood', 'stone', 'iron', 'diamond'];
 
 export function toolTierIndex(def) {
   return def && def.tier ? TOOL_TIERS.indexOf(def.tier) : 0;
@@ -423,6 +459,30 @@ export const RECIPES = [
   {
     id: 'ironBlock', label: 'Bloc de fer', out: 'ironBlock', outN: 1,
     inputs: { ironIngot: 9 }, pattern: [['ironIngot', 'ironIngot', 'ironIngot'], ['ironIngot', 'ironIngot', 'ironIngot'], ['ironIngot', 'ironIngot', 'ironIngot']], category: 'construction',
+  },
+  {
+    id: 'diamondBlock', label: 'Bloc de diamant', out: 'diamondBlock', outN: 1,
+    inputs: { diamond: 9 }, pattern: [['diamond', 'diamond', 'diamond'], ['diamond', 'diamond', 'diamond'], ['diamond', 'diamond', 'diamond']], category: 'construction',
+  },
+  {
+    id: 'diamond', label: 'Diamant (décompactage)', out: 'diamond', outN: 9,
+    inputs: { diamondBlock: 1 }, pattern: [['diamondBlock']], category: 'matériaux',
+  },
+  {
+    id: 'diamond_pickaxe', label: 'Pioche en diamant', out: 'diamond_pickaxe', outN: 1,
+    inputs: { diamond: 3, stick: 2 }, pattern: [['diamond', 'diamond', 'diamond'], [null, 'stick', null], [null, 'stick', null]], category: 'outils',
+  },
+  {
+    id: 'diamond_axe', label: 'Hache en diamant', out: 'diamond_axe', outN: 1,
+    inputs: { diamond: 3, stick: 2 }, pattern: [['diamond', 'diamond', null], ['diamond', 'stick', null], [null, 'stick', null]], category: 'outils',
+  },
+  {
+    id: 'diamond_shovel', label: 'Pelle en diamant', out: 'diamond_shovel', outN: 1,
+    inputs: { diamond: 1, stick: 2 }, pattern: [['diamond'], ['stick'], ['stick']], category: 'outils',
+  },
+  {
+    id: 'diamond_sword', label: 'Épée en diamant', out: 'diamond_sword', outN: 1,
+    inputs: { diamond: 2, stick: 1 }, pattern: [['diamond'], ['diamond'], ['stick']], category: 'outils',
   },
   {
     id: 'door', label: 'Porte en bois', out: 'door', outN: 3,

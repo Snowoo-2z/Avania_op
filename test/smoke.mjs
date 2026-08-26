@@ -274,10 +274,13 @@ assert(wdoor.placeBlock(0, 0, 'door') === false, 'on ne pose pas une porte sur l
 console.log('▶ Le fer');
 const wiron = new World(20260821);
 const ironIdx = wiron.blocks.indexOf('ironOre');
-assert(ironIdx >= 0, 'du minerai de fer existe dans le monde');
+assert(ironIdx >= 0, 'du minerai de fer existe dans le monde (0.1% surface)');
 const iox = ironIdx % 128, ioy = Math.floor(ironIdx / 128);
 assert(wiron.breakBlock(iox, ioy) === 'rawIron', 'casser du minerai donne du fer brut');
 assert(BLOCK_DEFS.ironOre.minTier === 'stone', 'le fer exige une pioche en pierre ou mieux');
+assert(!wiron.blocks.some(b => b === 'diamondOre' || b === 'caveDiamond'), 'pas de diamant en surface');
+const surfaceIronCount = wiron.blocks.filter(b => b === 'ironOre').length;
+assert(surfaceIronCount >= 5 && surfaceIronCount <= 40, `fer surface rare 0.1% → ${surfaceIronCount} filons (attendu 5-40)`);
 
 const ironInv = new Inventory();
 ironInv.add('rawIron', 3);
@@ -294,13 +297,31 @@ ironInv.add('stick', 2);
 assert(ironInv.craft(ironPick) === true, 'pioche en fer fabriquée');
 assert(ITEM_DEFS.iron_pickaxe.durability === 250, 'la pioche en fer est bien plus durable');
 
+console.log('▶ Le diamant');
+assert(BLOCK_DEFS.caveDiamond && BLOCK_DEFS.caveDiamond.drop === 'diamond', 'filon de diamant en grotte');
+assert(BLOCK_DEFS.caveDiamond.minTier === 'iron', 'le diamant exige une pioche en fer ou mieux');
+assert(ITEM_DEFS.diamond && ITEM_DEFS.diamondBlock, 'diamant et bloc de diamant existent');
+assert(ITEM_DEFS.diamond_pickaxe && ITEM_DEFS.diamond_pickaxe.tier === 'diamond', 'pioche en diamant existe');
+assert(ITEM_DEFS.diamond_pickaxe.durability === 1561, 'la pioche en diamant est très durable');
+const diamondInv = new Inventory();
+diamondInv.add('diamond', 9);
+const dBlockRecipe = RECIPES.find(r => r.id === 'diamondBlock');
+assert(dBlockRecipe && diamondInv.craft(dBlockRecipe), '9 diamants → 1 bloc de diamant');
+assert(diamondInv.count('diamondBlock') === 1, 'bloc de diamant fabriqué');
+const dPickRecipe = RECIPES.find(r => r.id === 'diamond_pickaxe');
+diamondInv.add('diamond', 3);
+diamondInv.add('stick', 2);
+assert(diamondInv.craft(dPickRecipe), 'pioche en diamant craftable');
+
 console.log('▶ Niveaux d\'outils');
 const { TOOL_TIERS, toolTierIndex, blockMinTierIndex } = await import('../js/blocks.js');
-assert(TOOL_TIERS.join(',') === 'wood,stone,iron', '3 niveaux d\'outils');
+assert(TOOL_TIERS.join(',') === 'wood,stone,iron,diamond', '4 niveaux d\'outils (bois, pierre, fer, diamant)');
 assert(toolTierIndex(ITEM_DEFS.wooden_pickaxe) === 0, 'bois = niveau 0');
 assert(toolTierIndex(ITEM_DEFS.stone_pickaxe) === 1, 'pierre = niveau 1');
 assert(toolTierIndex(ITEM_DEFS.iron_pickaxe) === 2, 'fer = niveau 2');
+assert(toolTierIndex(ITEM_DEFS.diamond_pickaxe) === 3, 'diamant = niveau 3');
 assert(blockMinTierIndex('ironOre') === 1, 'le fer demande la pierre');
+assert(blockMinTierIndex('caveDiamond') === 2, 'le diamant demande le fer');
 assert(blockMinTierIndex('rock') === 0, 'la roche ne demande rien de plus');
 
 console.log('▶ Porte craftable');
@@ -578,10 +599,10 @@ for (const depth of [1, 2, 3, 5, CAVE.maxDepth]) {
   const distDown = Math.abs(cave.ladderDown.ty - cave.spawn.y / TILE)
     + Math.abs(cave.ladderDown.tx - cave.spawn.x / TILE);
   assert(distDown > 12, `prof. ${depth} : le puits descendant est loin de l'arrivée (${distDown} cases)`);
-  // Pierre et fer uniquement, comme demandé.
+  // Pierre, fer et diamant uniquement
   const kinds = new Set(cave.blocks.filter(Boolean));
-  const allowed = new Set(['caveStone', 'caveIron', 'caveLadderDown', 'caveLadderUp']);
-  assert([...kinds].every((k) => allowed.has(k)), `prof. ${depth} : uniquement pierre, fer et puits`);
+  const allowed = new Set(['caveStone', 'caveIron', 'caveDiamond', 'caveLadderDown', 'caveLadderUp']);
+  assert([...kinds].every((k) => allowed.has(k)), `prof. ${depth} : uniquement pierre, fer, diamant et puits`);
   assert(kinds.has('caveStone') && kinds.has('caveIron'), `prof. ${depth} : de la pierre ET du fer`);
   // Déterminisme : deux joueurs descendent dans la même grotte.
   const twin = new World(20260821, { kind: 'cave', depth });
@@ -592,6 +613,10 @@ for (const depth of [1, 2, 3, 5, CAVE.maxDepth]) {
 // Plus on descend, plus c'est riche (la récompense du risque).
 const ironAt = (d) => new World(20260821, { kind: 'cave', depth: d }).blocks.filter((b) => b === 'caveIron').length;
 assert(ironAt(CAVE.maxDepth) > ironAt(1), 'le fer est plus abondant au fond qu\'à l\'entrée');
+const diamondAt = (d) => new World(20260821, { kind: "cave", depth: d }).blocks.filter((b) => b === "caveDiamond").length;
+assert(diamondAt(1) === 0, 'pas de diamant au niveau 1 (trop haut)');
+assert(diamondAt(CAVE.maxDepth) > 0, 'du diamant au fond de la grotte');
+assert(diamondAt(CAVE.maxDepth) < ironAt(CAVE.maxDepth), 'le diamant est plus rare que le fer');
 assert(new World(20260821, { kind: 'cave', depth: 1 }).merchantSpots.length === 2,
   'les deux marchands ont leur emplacement au niveau 1');
 assert(new World(20260821, { kind: 'cave', depth: 3 }).merchantSpots.length === 0,

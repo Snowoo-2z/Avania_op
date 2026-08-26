@@ -88,14 +88,14 @@ export class World {
     }
 
     // 3) ressources naturelles éparpillées (arbres + rochers + minerai de fer)
+    // Fer à 0.1% comme demandé (beaucoup plus rare en surface), diamant uniquement en grotte
     for (let ty = 3; ty < H - 3; ty++) {
       for (let tx = 3; tx < W - 3; tx++) {
         const r = this.rng();
         if (r < 0.030) this.setBlock(tx, ty, 'tree');
         else if (r < 0.050) this.setBlock(tx, ty, 'rock');
-        // Minerai de fer volontairement RARE (~0,22 % des cases) :
-        // chaque filon compte, le fer reste une ressource précieuse.
-        else if (r < 0.0522) this.setBlock(tx, ty, 'ironOre');
+        // Minerai de fer 0.1% des cases en surface
+        else if (r < 0.051) this.setBlock(tx, ty, 'ironOre');
       }
     }
 

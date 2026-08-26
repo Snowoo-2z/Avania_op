@@ -33,6 +33,17 @@ export const CAVE = {
   // c'est riche — c'est la récompense du risque).
   stoneDensity: (depth) => 0.030 + Math.min(depth, 6) * 0.006,
   ironDensity: (depth) => 0.010 + Math.min(depth, 6) * 0.006,
+  // Diamant : uniquement en profondeur, beaucoup plus rare que le fer (~10x)
+  // 0 aux niveaux 1-2, puis 0.08% à 0.45% max
+  diamondDensity: (depth) => {
+    if (depth <= 2) return 0;
+    if (depth === 3) return 0.0008;
+    if (depth === 4) return 0.0015;
+    if (depth === 5) return 0.0025;
+    if (depth === 6) return 0.0035;
+    if (depth === 7) return 0.0040;
+    return 0.0045; // profondeur 8
+  },
 };
 
 // ------------------------------------------------------------
@@ -305,9 +316,10 @@ export function generateCaveLevel(world) {
     }
   }
 
-  // --- 6) les ressources : pierre et fer, rien d'autre ---
+  // --- 6) les ressources : pierre, fer et diamant (rare, profond) ---
   const stoneP = CAVE.stoneDensity(depth);
   const ironP = CAVE.ironDensity(depth);
+  const diamondP = CAVE.diamondDensity(depth);
   for (let y = M; y < h - M; y++) {
     for (let x = M; x < w - M; x++) {
       const i = y * w + x;
@@ -315,8 +327,9 @@ export function generateCaveLevel(world) {
       // Jamais juste devant l'arrivée ni sur les puits.
       if (Math.abs(x - entranceTx) <= 3 && Math.abs(y - arriveY) <= 3) continue;
       const r = rng();
-      if (r < ironP) blocks[i] = 'caveIron';
-      else if (r < ironP + stoneP) blocks[i] = 'caveStone';
+      if (r < diamondP) blocks[i] = 'caveDiamond';
+      else if (r < diamondP + ironP) blocks[i] = 'caveIron';
+      else if (r < diamondP + ironP + stoneP) blocks[i] = 'caveStone';
     }
   }
 

@@ -19,11 +19,12 @@ let ready = false;
 
 // Palettes d'outils : base + reflet + ombre + fil / métal.
 const TOOL_COLORS = {
-  wood:  { base: '#c48642', light: '#e8b46a', dark: '#7a4a22', mid: '#a86a32', edge: '#f0d090' },
-  stone: { base: '#a4a4ac', light: '#d8d8de', dark: '#5a5a64', mid: '#888890', edge: '#f0f0f4' },
-  iron:  { base: '#c6ccd2', light: '#eef2f6', dark: '#676f78', mid: '#96a0a9', edge: '#ffffff' },
-  stick: { base: '#c89a5e', light: '#e8c888', dark: '#6e4426', mid: '#a87a42', edge: '#f2d8a0' },
-  wrap:  { base: '#6a3a1e', light: '#8a5a32', dark: '#3a1e10', mid: '#5a2e16', edge: '#a87848' },
+  wood:    { base: '#c48642', light: '#e8b46a', dark: '#7a4a22', mid: '#a86a32', edge: '#f0d090' },
+  stone:   { base: '#a4a4ac', light: '#d8d8de', dark: '#5a5a64', mid: '#888890', edge: '#f0f0f4' },
+  iron:    { base: '#c6ccd2', light: '#eef2f6', dark: '#676f78', mid: '#96a0a9', edge: '#ffffff' },
+  diamond: { base: '#5ce1e6', light: '#b8f3f6', dark: '#2a7a7e', mid: '#3ab4b9', edge: '#e0ffff' },
+  stick:   { base: '#c89a5e', light: '#e8c888', dark: '#6e4426', mid: '#a87a42', edge: '#f2d8a0' },
+  wrap:    { base: '#6a3a1e', light: '#8a5a32', dark: '#3a1e10', mid: '#5a2e16', edge: '#a87848' },
 };
 
 function rgb(hex) {
@@ -241,6 +242,53 @@ function drawIronIngot(ctx) {
   ctx.fillRect(-2, 2, 5, 3);
   ctx.fillStyle = withAlpha('#000000', 0.2);
   ctx.fillRect(-11, 4, 22, 1);
+  ctx.restore();
+}
+
+// --- Diamant : losange brillant façon Minecraft ---
+function drawDiamond(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.rotate(-0.1);
+  // ombre portée du diamant
+  ctx.fillStyle = withAlpha('#1a5a5e', 0.25);
+  ctx.beginPath();
+  ctx.moveTo(0, 9);
+  ctx.lineTo(7, 0);
+  ctx.lineTo(0, -9);
+  ctx.lineTo(-7, 0);
+  ctx.closePath();
+  ctx.fill();
+  // corps principal
+  ctx.fillStyle = '#5ce1e6';
+  ctx.beginPath();
+  ctx.moveTo(0, -8);
+  ctx.lineTo(6, -1);
+  ctx.lineTo(0, 8);
+  ctx.lineTo(-6, -1);
+  ctx.closePath();
+  ctx.fill();
+  // facette haute gauche claire
+  ctx.fillStyle = '#b8f3f6';
+  ctx.beginPath();
+  ctx.moveTo(0, -8);
+  ctx.lineTo(2, -2);
+  ctx.lineTo(0, 0);
+  ctx.lineTo(-3, -3);
+  ctx.closePath();
+  ctx.fill();
+  // facette haute droite
+  ctx.fillStyle = '#8be8ec';
+  ctx.beginPath();
+  ctx.moveTo(0, -8);
+  ctx.lineTo(3, -3);
+  ctx.lineTo(2, -2);
+  ctx.closePath();
+  ctx.fill();
+  // éclat blanc
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(-2, -5, 1, 1);
+  ctx.fillRect(-1, -3, 1, 1);
   ctx.restore();
 }
 
@@ -468,26 +516,31 @@ function drawArmorIcon(ctx, p) {
 }
 
 const TOOL_DRAWERS = {
-  chest:          (ctx) => drawChestIcon(ctx),
-  wooden_pickaxe: (ctx) => drawPickaxe(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
-  stone_pickaxe:  (ctx) => drawPickaxe(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
-  iron_pickaxe:   (ctx) => drawPickaxe(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
-  wooden_axe:     (ctx) => drawAxe(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
-  stone_axe:      (ctx) => drawAxe(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
-  iron_axe:       (ctx) => drawAxe(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
-  wooden_shovel:  (ctx) => drawShovel(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
-  stone_shovel:   (ctx) => drawShovel(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
-  iron_shovel:    (ctx) => drawShovel(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
-  wooden_sword:   (ctx) => drawSword(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
-  stone_sword:    (ctx) => drawSword(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
-  iron_sword:     (ctx) => drawSword(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
-  stick:          (ctx) => drawStick(ctx, TOOL_COLORS.stick),
-  rawIron:        (ctx) => drawRawIron(ctx),
-  ironIngot:      (ctx) => drawIronIngot(ctx),
-  door:           (ctx) => drawDoorIcon(ctx),
-  wool:           (ctx) => drawWool(ctx),
-  rawBeef:        (ctx) => drawRawBeef(ctx),
-  cookedBeef:     (ctx) => drawCookedBeef(ctx),
+  chest:           (ctx) => drawChestIcon(ctx),
+  wooden_pickaxe:  (ctx) => drawPickaxe(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
+  stone_pickaxe:   (ctx) => drawPickaxe(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
+  iron_pickaxe:    (ctx) => drawPickaxe(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
+  diamond_pickaxe: (ctx) => drawPickaxe(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
+  wooden_axe:      (ctx) => drawAxe(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
+  stone_axe:       (ctx) => drawAxe(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
+  iron_axe:        (ctx) => drawAxe(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
+  diamond_axe:     (ctx) => drawAxe(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
+  wooden_shovel:   (ctx) => drawShovel(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
+  stone_shovel:    (ctx) => drawShovel(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
+  iron_shovel:     (ctx) => drawShovel(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
+  diamond_shovel:  (ctx) => drawShovel(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
+  wooden_sword:    (ctx) => drawSword(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
+  stone_sword:     (ctx) => drawSword(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
+  iron_sword:      (ctx) => drawSword(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
+  diamond_sword:   (ctx) => drawSword(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
+  stick:           (ctx) => drawStick(ctx, TOOL_COLORS.stick),
+  rawIron:         (ctx) => drawRawIron(ctx),
+  ironIngot:       (ctx) => drawIronIngot(ctx),
+  diamond:         (ctx) => drawDiamond(ctx),
+  door:            (ctx) => drawDoorIcon(ctx),
+  wool:            (ctx) => drawWool(ctx),
+  rawBeef:         (ctx) => drawRawBeef(ctx),
+  cookedBeef:      (ctx) => drawCookedBeef(ctx),
   // Équipement de la grotte : plus le palier est haut, plus le matériau
   // est noble (toile → acier bleui → laiton ; cuir → acier → acier poli).
   mask_cloth:       (ctx) => drawMaskIcon(ctx, { base: '#cfc7b4', light: '#efe9da', dark: '#8e8878', trim: '#7a5a34', lens: '#bfe3ea', cartridge: null }),
@@ -757,6 +810,56 @@ function paintIronBlock(ctx) {
   });
 }
 
+function paintDiamondBlock(ctx) {
+  clipFace(ctx, isoTop, () => {
+    ctx.strokeStyle = withAlpha('#ffffff', 0.7);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(5, 7); ctx.lineTo(15, 4); ctx.lineTo(26, 8);
+    ctx.moveTo(7, 12); ctx.lineTo(18, 9);
+    ctx.stroke();
+    ctx.fillStyle = withAlpha('#5ce1e6', 0.55);
+    ctx.fillRect(10, 9, 3, 3);
+    ctx.fillRect(18, 12, 3, 3);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(11, 10, 1, 1);
+  });
+  clipFace(ctx, isoLeft, () => {
+    ctx.fillStyle = withAlpha('#5ce1e6', 0.3);
+    ctx.fillRect(6, 18, 4, 4);
+  });
+  clipFace(ctx, isoRight, () => {
+    ctx.fillStyle = withAlpha('#5ce1e6', 0.2);
+    ctx.fillRect(20, 20, 4, 4);
+  });
+}
+
+function paintDiamondOre(ctx) {
+  const DIAM = '#5ce1e6', DIAM_HI = '#b8f3f6', DIAM_OUT = '#1a5a5e';
+  const gem = (x, y, s) => {
+    ctx.fillStyle = DIAM_OUT; ctx.fillRect(x - 1, y - 1, s + 2, s + 2);
+    ctx.fillStyle = DIAM;
+    ctx.beginPath();
+    ctx.moveTo(x + s/2, y);
+    ctx.lineTo(x + s, y + s/2);
+    ctx.lineTo(x + s/2, y + s);
+    ctx.lineTo(x, y + s/2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = DIAM_HI; ctx.fillRect(x + 1, y + 1, 1, 1);
+  };
+  clipFace(ctx, isoTop, () => {
+    gem(7, 6, 4);
+    gem(16, 9, 4);
+  });
+  clipFace(ctx, isoLeft, () => {
+    gem(5, 16, 3);
+  });
+  clipFace(ctx, isoRight, () => {
+    gem(19, 17, 4);
+  });
+}
+
 function paintIronOre(ctx) {
   // Pépites beige-rosé à facettes, accordées au rocher du monde.
   const NUG = '#d8ae8a', NUG_HI = '#eec9a2', NUG_OUT = '#7a5232';
@@ -832,7 +935,9 @@ const BLOCK_PAINTERS = {
   sandBlock: paintSand,
   dirtBlock: paintDirt,
   ironBlock: paintIronBlock,
+  diamondBlock: paintDiamondBlock,
   ironOre: paintIronOre,
+  diamondOre: paintDiamondOre,
   furnace: paintFurnace,
   woolBlock: paintWoolBlock,
 };
