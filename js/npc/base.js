@@ -70,20 +70,29 @@ export function makeNpcRenderer({ appearance, paint, detail = 2 }) {
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
 
-    drawCharacter(ctx, appearance, NPC_ANCHOR_X, NPC_ANCHOR_Y, {
-      facing,
-      walkPhase: 0,
-      scale: 1,
-      shadow: false,
-      detail,
-    });
+    try {
+      drawCharacter(ctx, appearance, NPC_ANCHOR_X, NPC_ANCHOR_Y, {
+        facing,
+        walkPhase: 0,
+        scale: 1,
+        shadow: false,
+        detail,
+      });
+    } catch (err) {
+      console.error('AVANIA: drawCharacter', appearance?.name, err);
+    }
 
     if (paint) {
-      ctx.save();
-      ctx.translate(NPC_ANCHOR_X, NPC_ANCHOR_Y);
-      if (facing === 'left') ctx.scale(-1, 1);
-      paint(ctx, facing);
-      ctx.restore();
+      try {
+        ctx.save();
+        ctx.translate(NPC_ANCHOR_X, NPC_ANCHOR_Y);
+        if (facing === 'left') ctx.scale(-1, 1);
+        paint(ctx, facing);
+        ctx.restore();
+      } catch (err) {
+        console.error('AVANIA: paint marchand', appearance?.name, err);
+        try { ctx.restore(); } catch {}
+      }
     }
 
     cache.set(facing, canvas);

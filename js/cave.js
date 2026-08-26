@@ -75,23 +75,54 @@ export function buildCaveEntrance(world) {
   world.setBlock(tx, ty, 'caveMouth');
 
   // Le replat devant l'entrée (terre battue) + deux rochers décoratifs.
-  for (let y = ty + 1; y <= ty + 2; y++) {
-    for (let x = tx - 3; x <= tx + 3; x++) {
-      if (world.inBounds(x, y)) world.floor[world.idx(x, y)] = 'dirt';
+  // On élargit un peu le replat pour que les deux marchands aient
+  // toujours un parvis dégagé, même avec les arbres à proximité.
+  for (let y = ty + 1; y <= ty + 3; y++) {
+    for (let x = tx - 4; x <= tx + 4; x++) {
+      if (world.inBounds(x, y)) {
+        const i = world.idx(x, y);
+        world.blocks[i] = null;
+        world.blocks2[i] = null;
+        world.floor[i] = 'dirt';
+      }
     }
   }
+  // Rochers décoratifs un peu plus haut, hors du passage marchand.
   world.setBlock(tx - 4, ty - 1, 'rock');
   world.setBlock(tx + 4, ty - 1, 'rock');
-  world.setBlock(tx - 5, ty + 1, 'tree');
-  world.setBlock(tx + 5, ty + 1, 'tree');
+  // Arbres un peu plus écartés (tx±6 au lieu de ±5) pour ne pas bloquer
+  // l'accès à Aldric/Gaspard. Bug reporté : Aldric impossible à parler
+  // car l'arbre bloquait l'approche.
+  world.setBlock(tx - 6, ty + 1, 'tree');
+  world.setBlock(tx + 6, ty + 1, 'tree');
 
   // Les deux marchands tiennent boutique sur le parvis, de part et
   // d'autre de l'arche, tournés vers le joueur. Ils sont là avant même
   // qu'on entre : c'est devant la grotte qu'on s'équipe.
-  world.merchantSpots = [
-    { x: (tx - 3) * TILE + TILE / 2, y: (ty + 2) * TILE + TILE / 2, facing: 'right' },
-    { x: (tx + 3) * TILE + TILE / 2, y: (ty + 2) * TILE + TILE / 2, facing: 'left' },
+  // On s'assure que leurs cases et les 8 autour sont dégagées.
+  const surfaceSpots = [
+    { tx: tx - 3, ty: ty + 2, facing: 'right' },
+    { tx: tx + 3, ty: ty + 2, facing: 'left' },
   ];
+  for (const s of surfaceSpots) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = s.tx + dx;
+        const y = s.ty + dy;
+        if (!world.inBounds(x, y)) continue;
+        const i = world.idx(x, y);
+        // On garde dirt pour le parvis, mais surtout pas de bloc.
+        if (world.floor[i] !== 'dirt') world.floor[i] = 'dirt';
+        world.blocks[i] = null;
+        world.blocks2[i] = null;
+      }
+    }
+  }
+  world.merchantSpots = surfaceSpots.map(s => ({
+    x: s.tx * TILE + TILE / 2,
+    y: s.ty * TILE + TILE / 2,
+    facing: s.facing,
+  }));
 
   return {
     tx,
@@ -318,11 +349,52 @@ export function generateCaveLevel(world) {
 
   // Emplacements des marchands (niveau 1 uniquement) : de part et
   // d'autre de l'arrivée, face au joueur.
+  // On s'assure que leurs cases sont TOUJOURS dégagées : pas de pierre,
+  // pas de fer, pas de mur. Sinon le joueur ne peut pas s'en approcher
+  // et l'interaction devient impossible (bug reporté pour Aldric).
   if (depth === 1) {
-    world.merchantSpots = [
-      { x: (entranceTx - 6) * TILE + TILE / 2, y: (arriveY + 4) * TILE + TILE / 2, facing: 'right' },
-      { x: (entranceTx + 6) * TILE + TILE / 2, y: (arriveY + 4) * TILE + TILE / 2, facing: 'left' },
+    const spots = [
+      { tx: entranceTx - 6, ty: arriveY + 4, facing: 'right' },
+      { tx: entranceTx + 6, ty: arriveY + 4, facing: 'left' },
     ];
+    for (const s of spots) {
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const x = s.tx + dx;
+          const y = s.ty + dy;
+          if (x < 0 || y < 0 || x >= w || y >= h) continue;
+          const j = y * w + x;
+          // On force l'ouverture et on retire tout bloc.
+          open[j] = 1;
+          reach[j] = 1;
+          floor[j] = 'caveFloor';
+          blocks[j] = null;
+        }
+      }
+    }
+    // On relance un petit BFS local pour garantir la connectivité
+    // des deux alcôves marchandes avec l'arrivée (au cas où).
+    for (const s of spots) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const x = s.tx + dx;
+          const y = s.ty + dy;
+          if (x < 0 || y < 0 || x >= w || y >= h) continue;
+          const j = y * w + x;
+          if (!reach[j]) {
+            reach[j] = 1;
+            floor[j] = 'caveFloor';
+            blocks[j] = null;
+          }
+        }
+      }
+    }
+
+    world.merchantSpots = spots.map(s => ({
+      x: s.tx * TILE + TILE / 2,
+      y: s.ty * TILE + TILE / 2,
+      facing: s.facing,
+    }));
   } else {
     world.merchantSpots = [];
   }

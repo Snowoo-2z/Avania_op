@@ -317,7 +317,15 @@ async function boot() {
 
   function makeMerchantNpc(id, spot) {
     const def = MERCHANTS[id];
-    return {
+    const state = merchantStates[id];
+    // Si le cooldown est expiré, on le nettoie pour éviter un blocage
+    // fantôme (bug reporté : Aldric impossible à parler alors qu'on
+    // ne lui a jamais parlé — cooldown resté coincé).
+    if (state.cooldownUntil && game.time >= state.cooldownUntil) {
+      state.cooldownUntil = 0;
+      state.patienceLeft = def.patience;
+    }
+    const npc = {
       kind: def.kind,
       name: def.name,
       title: def.title,
@@ -328,12 +336,17 @@ async function boot() {
       moving: false,
       scale: 1,
       talkable: true,
+      visible: true,
       showHint: true,
       time: 0,
       sortY: spot.y,
-      state: merchantStates[id],
+      state,
       draw: id === 'gaspard' ? drawMaskMerchant : drawArmorMerchant,
     };
+    // On duplique le cooldown sur le NPC lui-même pour que
+    // game.js handleInteract puisse le lire (compatibilité).
+    npc.cooldownUntil = state.cooldownUntil || 0;
+    return npc;
   }
 
   // Les marchands attendent à l'entrée de la grotte : sur le parvis, de
@@ -346,8 +359,23 @@ async function boot() {
       if (npc.kind === 'merchantMask' || npc.kind === 'merchantArmor') game.removeNpc(npc);
     }
     const spots = (world && world.merchantSpots) || [];
+    // On ajoute TOUJOURS les deux marchands si les spots existent,
+    // même si l'un est légèrement bloqué — l'interaction à 80px
+    // permet de parler depuis une case adjacente.
     if (spots[0]) game.addNpc(makeMerchantNpc('gaspard', spots[0]));
     if (spots[1]) game.addNpc(makeMerchantNpc('aldric', spots[1]));
+    // Filet de sécurité : si pour une raison quelconque les spots
+    // sont vides (monde corrompu), on recrée les positions par défaut
+    // de la surface pour ne jamais perdre les marchands.
+    if (!spots.length && world && world.id === 'surface' && world.caveEntrance) {
+      const ce = world.caveEntrance;
+      const fallback = [
+        { x: (ce.tx - 3) * TILE + TILE / 2, y: (ce.ty + 2) * TILE + TILE / 2, facing: 'right' },
+        { x: (ce.tx + 3) * TILE + TILE / 2, y: (ce.ty + 2) * TILE + TILE / 2, facing: 'left' },
+      ];
+      game.addNpc(makeMerchantNpc('gaspard', fallback[0]));
+      game.addNpc(makeMerchantNpc('aldric', fallback[1]));
+    }
   }
 
   // --- Comptoir de négociation ---
@@ -392,6 +420,7 @@ async function boot() {
       // Il met le joueur dehors : plus de discussion possible pendant
       // le temps de refroidissement du marchand.
       npc.state.cooldownUntil = game.time + (MERCHANTS[npc.state.id].cooldown || 45);
+      npc.cooldownUntil = npc.state.cooldownUntil;
       npc.state.patienceLeft = 0;
       game.notify(`${npc.name} ne veut plus vous parler.`);
     }
@@ -400,12 +429,21 @@ async function boot() {
 
   function openMerchantChat(npc) {
     const state = npc.state;
+    // Nettoyage si cooldown expiré
+    if (state.cooldownUntil && game.time >= state.cooldownUntil) {
+      state.cooldownUntil = 0;
+      npc.cooldownUntil = 0;
+      state.patienceLeft = MERCHANTS[state.id].patience;
+    }
     const cooldownLeft = state.cooldownUntil ? state.cooldownUntil - game.time : 0;
     if (cooldownLeft > 0) {
       game.notify(`${npc.name} vous ignore encore ${Math.ceil(cooldownLeft)} s.`);
       return;
     }
     if (state.patienceLeft <= 0) resetNegotiation(state);
+    // On s'assure que le NPC est bien talkable/visible au moment d'ouvrir
+    npc.talkable = true;
+    npc.visible = true;
     merchantChat.open(npc);
     merchantChat.updateStatus();
     if (!merchantChat.el.log.children.length) {

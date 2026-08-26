@@ -65,7 +65,10 @@ const PICKUP_DELAY = 0.6;
 // Distance (au carré) à laquelle on peut interpeller un PNJ avec la
 // touche d'interaction. Un peu plus large que le minage : parler à
 // quelqu'un ne demande pas la même précision que casser un bloc.
-const INTERACT_NPC_SQ = 54 * 54;
+// Augmenté à 80px (au lieu de 54) pour que les deux marchands
+// (Gaspard & Aldric) soient toujours parlables, même avec leur
+// cape/armure imposante qui élargit visuellement le sprite.
+const INTERACT_NPC_SQ = 80 * 80;
 
 // Couleurs des particules de casse, par ressource. Des carrés pixelisés
 // de la même palette que la ressource, pour un débris cohérent.
@@ -809,8 +812,14 @@ export class Game {
     this.actionCooldown = 0.3;
 
     if (target.action === 'talk' && target.npc) {
-      if (target.npc.cooldownUntil && this.time < target.npc.cooldownUntil) {
-        const left = Math.ceil(target.npc.cooldownUntil - this.time);
+      // Les marchands stockent leur cooldown dans state.cooldownUntil,
+      // les autres PNJ (gentleman) directement sur npc.cooldownUntil.
+      // On vérifie les deux pour ne jamais bloquer définitivement.
+      const cd = target.npc.cooldownUntil
+        || (target.npc.state && target.npc.state.cooldownUntil)
+        || 0;
+      if (cd && this.time < cd) {
+        const left = Math.ceil(cd - this.time);
         this.notify(`${target.npc.name} ne veut plus te voir (${left} s).`);
         return;
       }
