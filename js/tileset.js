@@ -495,19 +495,40 @@ function ironBlockTexture(ctx, top, dark) {
 }
 
 function diamondBlockTexture(ctx, top, dark) {
-  // Reflets bleutés cristallins
-  ctx.strokeStyle = withAlpha('#ffffff', 0.6);
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.moveTo(6, 8); ctx.lineTo(20, 5);
-  ctx.moveTo(8, 16); ctx.lineTo(22, 13);
-  ctx.stroke();
-  ctx.fillStyle = withAlpha('#5ce1e6', 0.5);
-  ctx.fillRect(10, 10, 3, 3);
-  ctx.fillRect(18, 18, 4, 4);
-  ctx.fillStyle = withAlpha('#ffffff', 0.7);
-  ctx.fillRect(11, 11, 1, 1);
-  ctx.fillRect(19, 19, 1, 1);
+  // Vrai bloc de diamant Minecraft : 16x16 texture pixel art cyan
+  const S = 32;
+  // Fond cyan principal
+  ctx.fillStyle = '#5CE1E6';
+  ctx.fillRect(0,0,S,S);
+  // Bordure sombre Minecraft
+  ctx.fillStyle = '#2A6F70';
+  ctx.fillRect(0,0,S,2);
+  ctx.fillRect(0,0,2,S);
+  ctx.fillRect(0,S-2,S,2);
+  ctx.fillRect(S-2,0,2,S);
+  // Facettes internes façon Minecraft diamond block (4 quadrants)
+  // Lignes sombres qui forment un diamant
+  ctx.fillStyle = '#3AA9AD';
+  ctx.fillRect(2,2,S-4,1);
+  ctx.fillRect(2,2,1,S-4);
+  ctx.fillRect(2,15,S-4,1);
+  ctx.fillRect(15,2,1,S-4);
+  // Highlights clairs haut-gauche
+  ctx.fillStyle = '#8CF4F7';
+  ctx.fillRect(3,3,10,2);
+  ctx.fillRect(3,3,2,10);
+  ctx.fillStyle = '#C7F9FB';
+  ctx.fillRect(4,4,4,1);
+  ctx.fillRect(4,4,1,4);
+  // Éclats blancs Minecraft
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(5,5,1,1);
+  ctx.fillRect(6,6,1,1);
+  ctx.fillRect(20,8,1,1);
+  ctx.fillRect(22,20,1,1);
+  // Ombre bas-droite
+  ctx.fillStyle = 'rgba(42,111,112,0.35)';
+  ctx.fillRect(16,16,14,14);
 }
 
 // --- Four : bloc de cobblestone avec une bouche sombre, façon Minecraft ---
@@ -1359,35 +1380,41 @@ function drawIronOreObjectRaw(ctx, x, y, shadow = true) {
   ctx.moveTo(x - 6, y - 15); ctx.lineTo(x - 1, y - 11); ctx.stroke();
 }
 
-// --- Minerai de diamant : rocher avec cristaux bleutés ---
+// --- Minerai de diamant : vrai minerai Minecraft (stone + diamants cyan) ---
 function drawDiamondOreObjectRaw(ctx, x, y, shadow = true) {
   if (shadow) softShadow(ctx, x, y + 1, 14, 5);
-  voxel(ctx, x - 12, y - 18, 24, 19, '#7a8a9a');
-  voxel(ctx, x - 10, y - 24, 20, 18, '#8d9aae');
-  voxel(ctx, x - 7, y - 27, 14, 5, '#a5b5c8');
-  const DIAM = '#5ce1e6', DIAM_HI = '#b8f3f6', DIAM_OUT = '#1a5a5e';
-  const gems = [
-    [x - 6, y - 18, 5, 5],
-    [x + 3, y - 22, 4, 4],
-    [x - 2, y - 14, 3, 3],
-  ];
-  for (const [gx, gy, gw, gh] of gems) {
-    ctx.fillStyle = DIAM_OUT;
-    ctx.fillRect(gx - 1, gy - 1, gw + 2, gh + 2);
-    ctx.fillStyle = DIAM;
-    ctx.beginPath();
-    ctx.moveTo(gx + gw/2, gy);
-    ctx.lineTo(gx + gw, gy + gh/2);
-    ctx.lineTo(gx + gw/2, gy + gh);
-    ctx.lineTo(gx, gy + gh/2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = DIAM_HI;
-    ctx.fillRect(gx + 1, gy + 1, 1, 1);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(gx + 1, gy + 1, 1, 1);
-  }
-  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  // Roche type stone Minecraft (gris avec nuances)
+  voxel(ctx, x - 12, y - 18, 24, 19, '#82807a');
+  voxel(ctx, x - 10, y - 24, 20, 18, '#8A8A8A');
+  voxel(ctx, x - 7, y - 27, 14, 5, '#9A9A9A');
+  // Taches de diamant façon Minecraft diamond ore (pixel art)
+  const drawGem = (gx, gy, size) => {
+    // Contour sombre
+    ctx.fillStyle = '#1E3A3A';
+    ctx.fillRect(gx - 1, gy - 1, size + 2, size + 2);
+    // Corps diamant Minecraft
+    ctx.fillStyle = '#5CE1E6';
+    ctx.fillRect(gx, gy, size, size);
+    // Facettes
+    ctx.fillStyle = '#3AA9AD';
+    ctx.fillRect(gx, gy, size, 1);
+    ctx.fillRect(gx, gy, 1, size);
+    ctx.fillStyle = '#8CF4F7';
+    ctx.fillRect(gx, gy, Math.ceil(size/2), 1);
+    ctx.fillRect(gx, gy, 1, Math.ceil(size/2));
+    ctx.fillStyle = '#C7F9FB';
+    ctx.fillRect(gx, gy, 2, 1);
+    // Éclat blanc Minecraft
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(gx, gy, 1, 1);
+    if (size > 3) ctx.fillRect(gx+1, gy+1, 1, 1);
+  };
+  drawGem(x - 8, y - 20, 5);
+  drawGem(x + 2, y - 22, 5);
+  drawGem(x - 2, y - 12, 4);
+  drawGem(x + 6, y - 10, 3);
+  // Reflet pierre
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
   ctx.fillRect(x - 7, y - 27, 14, 2);
 }
 
@@ -1468,74 +1495,67 @@ function drawCaveIronObjectRaw(ctx, x, y, shadow = true) {
   ctx.fillRect(x - 6, y - 30, 13, 2);
 }
 
-// Filon de diamant : roche sombre avec cristaux bleutés brillants
-// Très rare, doit être immédiatement reconnaissable.
+// Filon de diamant : vrai deepslate diamond ore Minecraft (très rare, profond)
+// Roche sombre ardoise + cristaux diamant cyan ultra brillants
 function drawCaveDiamondObjectRaw(ctx, x, y, shadow = true) {
   if (shadow) softShadow(ctx, x, y + 1, 15, 5);
-  voxel(ctx, x - 14, y - 17, 28, 18, '#3a3f4c');
-  voxel(ctx, x - 11, y - 25, 22, 18, '#4a4e5e');
-  voxel(ctx, x - 6, y - 30, 13, 7, '#5a5f72');
+  // Deepslate Minecraft (gris très sombre, presque noir)
+  voxel(ctx, x - 14, y - 17, 28, 18, '#2D2D33');
+  voxel(ctx, x - 11, y - 25, 22, 18, '#3A3A42');
+  voxel(ctx, x - 6, y - 30, 13, 7, '#4A4A52');
+  // Texture deepslate : fines lignes sombres
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(x - 12, y - 22, 24, 1);
+  ctx.fillRect(x - 10, y - 18, 20, 1);
 
-  // Cristaux de diamant : losanges bleutés avec éclats
-  const DIAM = '#5ce1e6';
-  const DIAM_HI = '#b8f3f6';
-  const DIAM_OUT = '#1a5a5e';
-  const DIAM_SH = '#2a8a90';
-  const diamonds = [
-    [x - 8, y - 20, 6, 6],
-    [x + 2, y - 24, 5, 5],
-    [x - 2, y - 12, 4, 4],
-  ];
-  for (const [dx, dy, dw, dh] of diamonds) {
-    // contour
-    ctx.fillStyle = DIAM_OUT;
-    ctx.fillRect(dx - 1, dy - 1, dw + 2, dh + 2);
-    // cristal en losange (2 triangles)
-    ctx.fillStyle = DIAM;
-    ctx.beginPath();
-    ctx.moveTo(dx + dw/2, dy);
-    ctx.lineTo(dx + dw, dy + dh/2);
-    ctx.lineTo(dx + dw/2, dy + dh);
-    ctx.lineTo(dx, dy + dh/2);
-    ctx.closePath();
-    ctx.fill();
-    // éclat haut
-    ctx.fillStyle = DIAM_HI;
-    ctx.beginPath();
-    ctx.moveTo(dx + dw/2, dy);
-    ctx.lineTo(dx + dw*0.7, dy + dh*0.3);
-    ctx.lineTo(dx + dw/2, dy + dh*0.4);
-    ctx.lineTo(dx + dw*0.3, dy + dh*0.3);
-    ctx.closePath();
-    ctx.fill();
-    // reflet blanc
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(dx + 1, dy + 1, 1, 1);
-  }
-  // Gros cristal central plus brillant
-  const cx = x - 2, cy = y - 20;
-  ctx.fillStyle = DIAM_OUT;
-  ctx.fillRect(cx - 5, cy - 5, 11, 11);
-  ctx.fillStyle = DIAM;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy - 4);
-  ctx.lineTo(cx + 4, cy);
-  ctx.lineTo(cx, cy + 4);
-  ctx.lineTo(cx - 4, cy);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = DIAM_HI;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy - 4);
-  ctx.lineTo(cx + 2, cy - 1);
-  ctx.lineTo(cx, cy);
-  ctx.lineTo(cx - 2, cy - 1);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(cx, cy - 2, 1, 1);
+  // Diamants Minecraft deepslate ore : gros cristaux cyan avec contour noir
+  const drawMCdiamond = (dx, dy, size, bright) => {
+    const s = size;
+    // Contour noir épais façon Minecraft ore
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(dx - 1, dy - 1, s + 2, s + 2);
+    ctx.fillStyle = '#1E3A3A';
+    ctx.fillRect(dx - 1, dy - 1, s + 2, s + 2);
+    // Corps principal cyan Minecraft
+    ctx.fillStyle = bright ? '#5CE1E6' : '#4ACFD4';
+    ctx.fillRect(dx, dy, s, s);
+    // Facettes Minecraft diamond ore
+    ctx.fillStyle = '#3AA9AD';
+    ctx.fillRect(dx, dy, s, 1);
+    ctx.fillRect(dx, dy, 1, s);
+    ctx.fillStyle = '#2A6F70';
+    ctx.fillRect(dx, dy + s - 1, s, 1);
+    ctx.fillRect(dx + s - 1, dy, 1, s);
+    // Highlight clair haut-gauche (signature Minecraft)
+    ctx.fillStyle = '#8CF4F7';
+    ctx.fillRect(dx, dy, Math.max(2, Math.floor(s*0.6)), 1);
+    ctx.fillRect(dx, dy, 1, Math.max(2, Math.floor(s*0.6)));
+    ctx.fillStyle = '#C7F9FB';
+    ctx.fillRect(dx, dy, 2, 1);
+    // Éclats blancs brillants (très Minecraft)
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(dx, dy, 1, 1);
+    if (s >= 4) {
+      ctx.fillRect(dx + 1, dy + 1, 1, 1);
+      if (bright) ctx.fillRect(dx + 2, dy + 1, 1, 1);
+    }
+  };
 
-  ctx.fillStyle = 'rgba(92,225,230,0.35)';
+  // Clusters façon Minecraft diamond ore (2-3 gros + petits)
+  drawMCdiamond(x - 9, y - 22, 6, true);   // gros cristal principal
+  drawMCdiamond(x + 3, y - 24, 5, true);   // second gros
+  drawMCdiamond(x - 3, y - 12, 4, false);  // petit
+  drawMCdiamond(x + 7, y - 14, 3, false);  // très petit
+  drawMCdiamond(x - 11, y - 10, 3, false);
+
+  // Lueur bleutée autour (effet rare)
+  ctx.fillStyle = 'rgba(92,225,230,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(x, y - 18, 18, 10, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Reflet deepslate haut
+  ctx.fillStyle = 'rgba(120,130,140,0.18)';
   ctx.fillRect(x - 6, y - 30, 13, 2);
 }
 

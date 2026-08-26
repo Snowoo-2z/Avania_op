@@ -107,6 +107,12 @@ function drawPickaxe(ctx, head, handle) {
     voxel(ctx, 5, 12, 6, 4, head);   // dent gauche, étage 2 (rentrée)
     voxel(ctx, 20, 7, 8, 5, head);   // dent droite
     voxel(ctx, 21, 12, 6, 4, head);
+    // Effet diamant Minecraft : éclats blancs supplémentaires
+    if (head.base === TOOL_COLORS.diamond.base) {
+      px(ctx, 6, 3, 2, 1, '#FFFFFF');
+      px(ctx, 22, 3, 2, 1, '#FFFFFF');
+      px(ctx, 12, 4, 2, 1, '#C7F9FB');
+    }
     // Ombres intérieures qui creusent l'arche
     px(ctx, 11, 9, 1, 7, head.dark);
     px(ctx, 20, 9, 1, 7, head.dark);
@@ -137,6 +143,10 @@ function drawAxe(ctx, head, handle) {
     // Rivet au-dessus du manche
     px(ctx, 15, 6, 4, 2, head.dark);
     px(ctx, 16, 6, 2, 1, head.light);
+    if (head.base === TOOL_COLORS.diamond.base) {
+      px(ctx, 5, 7, 2, 1, '#FFFFFF');
+      px(ctx, 10, 4, 3, 1, '#C7F9FB');
+    }
   });
 }
 
@@ -147,6 +157,10 @@ function drawShovel(ctx, head, handle) {
     voxel(ctx, 13, 16, 6, 3, head);
     // Pelle évasée (bêche) avec un bord légèrement arrondi
     voxel(ctx, 7, 18, 18, 8, head);
+    if (head.base === TOOL_COLORS.diamond.base) {
+      px(ctx, 9, 19, 2, 1, '#FFFFFF');
+      px(ctx, 15, 20, 3, 1, '#C7F9FB');
+    }
     voxel(ctx, 9, 26, 14, 4, head);
     voxel(ctx, 11, 30, 10, 2, head.dark);
     // Creux de la pelle (l'intérieur)
@@ -170,6 +184,10 @@ function drawSword(ctx, blade, handle) {
     // Arête centrale brillante
     px(ctx, 14, 1, 1, 18, blade.edge);
     px(ctx, 17, 2, 1, 17, blade.dark);
+    if (blade.base === TOOL_COLORS.diamond.base) {
+      px(ctx, 14, 2, 1, 4, '#FFFFFF');
+      px(ctx, 15, 8, 1, 3, '#C7F9FB');
+    }
     // Garde
     voxel(ctx, 8, 20, 16, 3, handle);
     px(ctx, 8, 20, 16, 1, handle.light);
@@ -245,50 +263,49 @@ function drawIronIngot(ctx) {
   ctx.restore();
 }
 
-// --- Diamant : losange brillant façon Minecraft ---
+// --- Diamant : vrai sprite Minecraft 16x16 pixel art ---
 function drawDiamond(ctx) {
+  // Palette exacte Minecraft diamant (extrait du sprite officiel)
+  const C = {
+    out: '#1E3A3A',      // contour très sombre
+    dark: '#2A6F70',     // ombre cyan foncé
+    midDark: '#3AA9AD',  // cyan moyen foncé
+    mid: '#5CE1E6',      // cyan principal Minecraft
+    light: '#8CF4F7',    // cyan clair
+    veryLight: '#C7F9FB',// presque blanc cyan
+    white: '#FFFFFF',    // éclat
+  };
+  // Sprite 16x16 Minecraft diamant, chaque pixel = 2x2 dans notre canvas 32x32
+  // 0=transparent, 1=out, 2=dark, 3=midDark, 4=mid, 5=light, 6=veryLight, 7=white
+  const map = [
+    [0,0,0,0,0,1,1,0,0,1,1,0,0,0,0,0],
+    [0,0,0,0,1,4,4,1,1,4,4,1,0,0,0,0],
+    [0,0,0,1,4,5,5,4,4,5,5,4,1,0,0,0],
+    [0,0,1,4,5,6,6,5,5,6,6,5,4,1,0,0],
+    [0,1,4,5,6,6,7,6,6,7,6,6,5,4,1,0],
+    [1,4,5,6,6,7,7,6,6,7,7,6,6,5,4,1],
+    [1,4,5,6,7,7,7,5,5,7,7,7,6,5,4,1],
+    [1,3,4,5,6,5,5,4,4,5,5,6,5,4,3,1],
+    [1,3,4,5,4,4,4,3,3,4,4,4,5,4,3,1],
+    [1,3,4,4,3,3,3,2,2,3,3,3,4,4,3,1],
+    [0,1,3,4,3,2,2,2,2,2,2,3,4,3,1,0],
+    [0,0,1,3,4,3,2,2,2,2,3,4,3,1,0,0],
+    [0,0,0,1,3,4,3,2,2,3,4,3,1,0,0,0],
+    [0,0,0,0,1,3,3,1,1,3,3,1,0,0,0,0],
+    [0,0,0,0,0,1,1,0,0,1,1,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  ];
+  const colors = {1:C.out,2:C.dark,3:C.midDark,4:C.mid,5:C.light,6:C.veryLight,7:C.white};
   ctx.save();
-  ctx.translate(SIZE / 2, SIZE / 2);
-  ctx.rotate(-0.1);
-  // ombre portée du diamant
-  ctx.fillStyle = withAlpha('#1a5a5e', 0.25);
-  ctx.beginPath();
-  ctx.moveTo(0, 9);
-  ctx.lineTo(7, 0);
-  ctx.lineTo(0, -9);
-  ctx.lineTo(-7, 0);
-  ctx.closePath();
-  ctx.fill();
-  // corps principal
-  ctx.fillStyle = '#5ce1e6';
-  ctx.beginPath();
-  ctx.moveTo(0, -8);
-  ctx.lineTo(6, -1);
-  ctx.lineTo(0, 8);
-  ctx.lineTo(-6, -1);
-  ctx.closePath();
-  ctx.fill();
-  // facette haute gauche claire
-  ctx.fillStyle = '#b8f3f6';
-  ctx.beginPath();
-  ctx.moveTo(0, -8);
-  ctx.lineTo(2, -2);
-  ctx.lineTo(0, 0);
-  ctx.lineTo(-3, -3);
-  ctx.closePath();
-  ctx.fill();
-  // facette haute droite
-  ctx.fillStyle = '#8be8ec';
-  ctx.beginPath();
-  ctx.moveTo(0, -8);
-  ctx.lineTo(3, -3);
-  ctx.lineTo(2, -2);
-  ctx.closePath();
-  ctx.fill();
-  // éclat blanc
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(-2, -5, 1, 1);
-  ctx.fillRect(-1, -3, 1, 1);
+  ctx.translate(0,0);
+  for (let y=0;y<16;y++) {
+    for (let x=0;x<16;x++) {
+      const v=map[y][x];
+      if (!v) continue;
+      ctx.fillStyle=colors[v];
+      ctx.fillRect(x*2, y*2, 2, 2);
+    }
+  }
   ctx.restore();
 }
 
@@ -811,52 +828,86 @@ function paintIronBlock(ctx) {
 }
 
 function paintDiamondBlock(ctx) {
+  // Vrai bloc de diamant Minecraft : cyan avec facettes et bordures sombres
+  const base = '#5CE1E6';
+  const dark = '#2A6F70';
+  const midDark = '#3AA9AD';
+  const light = '#8CF4F7';
+  const vLight = '#C7F9FB';
   clipFace(ctx, isoTop, () => {
-    ctx.strokeStyle = withAlpha('#ffffff', 0.7);
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(5, 7); ctx.lineTo(15, 4); ctx.lineTo(26, 8);
-    ctx.moveTo(7, 12); ctx.lineTo(18, 9);
-    ctx.stroke();
-    ctx.fillStyle = withAlpha('#5ce1e6', 0.55);
-    ctx.fillRect(10, 9, 3, 3);
-    ctx.fillRect(18, 12, 3, 3);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(11, 10, 1, 1);
+    // Fond cyan
+    // Bordure sombre façon Minecraft diamond block
+    ctx.fillStyle = dark;
+    ctx.fillRect(3, 4, 26, 1);
+    ctx.fillRect(3, 15, 26, 1);
+    // Facettes internes
+    ctx.fillStyle = base;
+    ctx.fillRect(4, 5, 24, 10);
+    ctx.fillStyle = midDark;
+    ctx.fillRect(4, 5, 24, 1);
+    ctx.fillRect(4, 5, 1, 10);
+    ctx.fillStyle = light;
+    ctx.fillRect(5, 6, 10, 2);
+    ctx.fillRect(5, 6, 2, 6);
+    ctx.fillStyle = vLight;
+    ctx.fillRect(6, 7, 2, 1);
+    // Petits éclats blancs
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(7, 8, 1, 1);
+    ctx.fillRect(20, 10, 1, 1);
   });
   clipFace(ctx, isoLeft, () => {
-    ctx.fillStyle = withAlpha('#5ce1e6', 0.3);
-    ctx.fillRect(6, 18, 4, 4);
+    ctx.fillStyle = midDark;
+    ctx.fillRect(2, 11, 14, 12);
+    ctx.fillStyle = dark;
+    ctx.fillRect(2, 11, 14, 1);
+    ctx.fillRect(2, 22, 14, 1);
+    ctx.fillStyle = light;
+    ctx.fillRect(3, 12, 5, 2);
   });
   clipFace(ctx, isoRight, () => {
-    ctx.fillStyle = withAlpha('#5ce1e6', 0.2);
-    ctx.fillRect(20, 20, 4, 4);
+    ctx.fillStyle = '#3A8A8D';
+    ctx.fillRect(16, 11, 14, 12);
+    ctx.fillStyle = dark;
+    ctx.fillRect(16, 11, 14, 1);
+    ctx.fillRect(16, 22, 14, 1);
+    ctx.fillStyle = withAlpha(light, 0.4);
+    ctx.fillRect(22, 14, 4, 2);
   });
 }
 
 function paintDiamondOre(ctx) {
-  const DIAM = '#5ce1e6', DIAM_HI = '#b8f3f6', DIAM_OUT = '#1a5a5e';
-  const gem = (x, y, s) => {
-    ctx.fillStyle = DIAM_OUT; ctx.fillRect(x - 1, y - 1, s + 2, s + 2);
-    ctx.fillStyle = DIAM;
-    ctx.beginPath();
-    ctx.moveTo(x + s/2, y);
-    ctx.lineTo(x + s, y + s/2);
-    ctx.lineTo(x + s/2, y + s);
-    ctx.lineTo(x, y + s/2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = DIAM_HI; ctx.fillRect(x + 1, y + 1, 1, 1);
+  // Minerai de diamant Minecraft : pierre avec taches diamant cyan
+  const stoneDark = '#6A6A6A';
+  const diamOut = '#1E3A3A';
+  const diamMid = '#5CE1E6';
+  const diamLight = '#8CF4F7';
+  const diamWhite = '#FFFFFF';
+  const gem = (x, y) => {
+    // Tache 4x4 façon Minecraft diamond ore
+    ctx.fillStyle = diamOut;
+    ctx.fillRect(x-1, y-1, 6, 6);
+    ctx.fillStyle = diamMid;
+    ctx.fillRect(x, y, 4, 4);
+    ctx.fillStyle = diamLight;
+    ctx.fillRect(x, y, 2, 2);
+    ctx.fillRect(x+1, y+2, 2, 1);
+    ctx.fillStyle = diamWhite;
+    ctx.fillRect(x, y, 1, 1);
   };
   clipFace(ctx, isoTop, () => {
-    gem(7, 6, 4);
-    gem(16, 9, 4);
+    // Base pierre déjà dessinée, on ajoute juste les diamants
+    gem(7, 6);
+    gem(16, 9);
+    gem(11, 12);
   });
   clipFace(ctx, isoLeft, () => {
-    gem(5, 16, 3);
+    gem(5, 16);
+    gem(10, 21);
   });
   clipFace(ctx, isoRight, () => {
-    gem(19, 17, 4);
+    gem(19, 17);
+    gem(21, 21);
   });
 }
 
