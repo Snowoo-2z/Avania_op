@@ -38,6 +38,7 @@ export const KEY_ACTIONS = [
   { id: 'hotbar9', label: 'Emplacement 9', trigger: 'key:9', group: 'Barre rapide' },
 
   // Interface
+  { id: 'interact', label: 'Interagir / Parler', trigger: 'key:f', group: 'Interface' },
   { id: 'inventory', label: 'Inventaire', trigger: 'key:e', group: 'Interface' },
   { id: 'craft', label: 'Établi (fabrication)', trigger: 'key:c', group: 'Interface' },
   { id: 'sort', label: "Trier l'inventaire", trigger: 'key:r', group: 'Interface' },

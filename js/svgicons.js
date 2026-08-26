@@ -53,6 +53,18 @@ export const ICONS = {
 
   close: wrap('<rect x="3.5" y="10.9" width="17" height="2.2" rx="1.1" transform="rotate(45 12 12)"/><rect x="3.5" y="10.9" width="17" height="2.2" rx="1.1" transform="rotate(-45 12 12)"/>'),
 
+  // Pièce de monnaie : disque plein + couronne intérieure + encoche.
+  coin: wrap('<circle cx="12" cy="12" r="9.2"/><circle cx="12" cy="12" r="6.4" fill="rgba(0,0,0,.28)"/><path d="M12 7.6l1.5 3 3.3.5-2.4 2.3.6 3.3-3-1.6-3 1.6.6-3.3L7.2 11l3.3-.5z" fill="rgba(255,255,255,.55)"/>'),
+
+  // Entrée de grotte : arche pleine ouvrant sur le noir.
+  cave: wrap('M2 21V13c0-5 4.5-9 10-9s10 4 10 9v8h-4v-8c0-3-2.7-5-6-5s-6 2-6 5v8z'),
+
+  // Masque respiratoire.
+  mask: wrap('M4 9c0-1.1.9-2 2-2h12c1.1 0 2 .9 2 2v4.5c0 3.6-2.9 6.5-6.5 6.5h-3C6.9 20 4 17.1 4 13.5z"/><circle cx="9" cy="12" r="2" fill="rgba(0,0,0,.4)"/><circle cx="15" cy="12" r="2" fill="rgba(0,0,0,.4)"/>'),
+
+  // Armure / plastron.
+  armor: wrap('M12 2l7 3v6.2c0 4.6-3 8.6-7 10.8-4-2.2-7-6.2-7-10.8V5z" /><path d="M12 5.6l3.6 1.5v4.1c0 2.6-1.5 5-3.6 6.4-2.1-1.4-3.6-3.8-3.6-6.4V7.1z" fill="rgba(0,0,0,.28)'),
+
   chevronUp: wrap('M12 5l9 9-1.4 1.4L12 7.8 4.4 15.4 3 14z'),
   chevronDown: wrap('M12 19l-9-9 1.4-1.4L12 16.2l7.6-7.6L21 10z'),
   chevronLeft: wrap('M5 12l9-9 1.4 1.4L7.8 12l7.6 7.6L14 21z'),

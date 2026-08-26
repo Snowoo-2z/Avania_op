@@ -980,7 +980,118 @@ function dirtBlockTexture(ctx, top, dark) {
   }
 }
 
+// ------------------------------------------------------------
+//  La grotte — textures
+//  Une palette froide et sombre, volontairement distincte de la
+//  surface : on doit SENTIR qu'on est passé sous la roche.
+// ------------------------------------------------------------
+
+// Sol de galerie : gravier et cailloux, avec de rares éclats brillants.
+function caveFloorTexture(ctx, rng) {
+  ctx.fillStyle = '#453f4d';
+  ctx.fillRect(0, 0, S, S);
+  // Plages plus claires / plus sombres pour casser l'uniformité.
+  for (let i = 0; i < 16; i++) {
+    const x = Math.floor(rng() * (S - 8));
+    const y = Math.floor(rng() * (S - 8));
+    ctx.fillStyle = rng() < 0.5 ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.09)';
+    ctx.fillRect(x, y, 4 + Math.floor(rng() * 6), 3 + Math.floor(rng() * 5));
+  }
+  // Cailloux
+  for (let i = 0; i < 11; i++) {
+    const x = Math.floor(rng() * (S - 4));
+    const y = Math.floor(rng() * (S - 3));
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(x, y + 2, 4, 2);
+    ctx.fillStyle = '#5b5464';
+    ctx.fillRect(x, y, 4, 3);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(x, y, 4, 1);
+  }
+  // Éclats de quartz (rares) : donnent vie au sol sans coûter un pixel.
+  for (let i = 0; i < 3; i++) {
+    if (rng() > 0.55) continue;
+    const x = Math.floor(rng() * (S - 2));
+    const y = Math.floor(rng() * (S - 2));
+    ctx.fillStyle = 'rgba(180,205,235,0.32)';
+    ctx.fillRect(x, y, 2, 2);
+  }
+  // Joint de dalle discret sur les bords (raccord entre tuiles).
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  ctx.fillRect(0, S - 1, S, 1);
+  ctx.fillRect(S - 1, 0, 1, S);
+}
+
+// Paroi rocheuse massive : la roche qui enserre les galeries.
+// Rendue comme un SOL solide (voir caveWall) : des milliers de cases
+// gratuites, pas des milliers de cubes 2.5D.
+function caveWallTexture(ctx, rng) {
+  ctx.fillStyle = '#2b2730';
+  ctx.fillRect(0, 0, S, S);
+  // Facettes de roche : gros blocs irréguliers, éclairés d'en haut.
+  for (let i = 0; i < 7; i++) {
+    const w = 8 + Math.floor(rng() * 12);
+    const h = 6 + Math.floor(rng() * 10);
+    const x = Math.floor(rng() * (S - w));
+    const y = Math.floor(rng() * (S - h));
+    ctx.fillStyle = '#342f3b';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(x, y, w, 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.fillRect(x, y + h - 2, w, 2);
+    ctx.fillRect(x + w - 1, y, 1, h);
+  }
+  // Fissures verticales sombres.
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 3; i++) {
+    const x = Math.floor(rng() * S) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x, Math.floor(rng() * 8));
+    ctx.lineTo(x + (rng() - 0.5) * 6, S - Math.floor(rng() * 8));
+    ctx.stroke();
+  }
+}
+
+// Falaise de surface : la roche qui affleure et abrite l'entrée.
+function rockFaceTexture(ctx, rng) {
+  ctx.fillStyle = '#6a6a72';
+  ctx.fillRect(0, 0, S, S);
+  // Strates horizontales (roche sédimentaire).
+  for (let i = 0; i < 5; i++) {
+    const y = Math.floor(rng() * S);
+    ctx.fillStyle = rng() < 0.5 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.14)';
+    ctx.fillRect(0, y, S, 2 + Math.floor(rng() * 3));
+  }
+  // Blocs saillants.
+  for (let i = 0; i < 6; i++) {
+    const w = 6 + Math.floor(rng() * 9);
+    const h = 5 + Math.floor(rng() * 8);
+    const x = Math.floor(rng() * (S - w));
+    const y = Math.floor(rng() * (S - h));
+    ctx.fillStyle = '#7d7d85';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    ctx.fillRect(x, y, w, 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.24)';
+    ctx.fillRect(x, y + h - 2, w, 2);
+  }
+  ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i < 2; i++) {
+    const x = Math.floor(rng() * S) + 0.5;
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x + (rng() - 0.5) * 8, S);
+  }
+  ctx.stroke();
+}
+
 const DRAWERS = {
+  caveFloor: (c, r) => caveFloorTexture(c, r),
+  caveWall:  (c, r) => caveWallTexture(c, r),
+  rockFace:  (c, r) => rockFaceTexture(c, r),
   grass:     (c, r) => drawGrass(c, r, BLOCK_DEFS.grass.color),
   grassDark: (c, r) => drawGrass(c, r, BLOCK_DEFS.grassDark.color),
   flowers:   (c, r) => drawFlowers(c, r),
@@ -1231,6 +1342,226 @@ function drawIronOreObjectRaw(ctx, x, y, shadow = true) {
   ctx.moveTo(x - 6, y - 15); ctx.lineTo(x - 1, y - 11); ctx.stroke();
 }
 
+// ------------------------------------------------------------
+//  Les ressources de la grotte : pierre et fer, mais avec un look
+//  bien à elles (roche froide, arêtes vives, veines lumineuses).
+//  On doit reconnaître au premier coup d'œil qu'on est sous terre.
+// ------------------------------------------------------------
+
+// Pierre de grotte : amas de roches anguleuses, gris froid violacé,
+// avec un léger liseré bleuté sur les arêtes hautes.
+function drawCaveStoneObjectRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 1, 15, 5);
+  // Blocs empilés, de plus en plus clairs vers le haut.
+  voxel(ctx, x - 14, y - 16, 28, 17, '#4e485a');
+  voxel(ctx, x - 11, y - 24, 22, 18, '#5f586e');
+  voxel(ctx, x - 6, y - 30, 13, 8, '#736b82');
+  // Arêtes froides : un liseré bleuté sur le dessus, façon cristal.
+  ctx.fillStyle = 'rgba(150,175,225,0.35)';
+  ctx.fillRect(x - 6, y - 30, 13, 2);
+  ctx.fillRect(x - 11, y - 24, 3, 2);
+  ctx.fillRect(x + 6, y - 24, 5, 2);
+  // Pointe cristalline plantée dans la roche.
+  ctx.fillStyle = '#8fa3d8';
+  ctx.beginPath();
+  ctx.moveTo(x + 1, y - 30);
+  ctx.lineTo(x + 5, y - 30);
+  ctx.lineTo(x + 3, y - 37);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillRect(x + 2, y - 35, 1, 5);
+  // Fissures sombres.
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x - 10, y - 10); ctx.lineTo(x - 3, y - 15); ctx.lineTo(x - 6, y - 6);
+  ctx.moveTo(x + 5, y - 20); ctx.lineTo(x + 10, y - 13);
+  ctx.stroke();
+}
+
+// Filon de fer : roche sombre traversée de veines de fer brillantes.
+// Beaucoup plus lisible que le minerai de surface — sous terre, c'est
+// LA ressource qui compte.
+function drawCaveIronObjectRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 1, 15, 5);
+  voxel(ctx, x - 14, y - 17, 28, 18, '#443f4c');
+  voxel(ctx, x - 11, y - 25, 22, 18, '#544e5e');
+  voxel(ctx, x - 6, y - 30, 13, 7, '#665f72');
+
+  // Veines de fer : filaments épais aux contours sombres.
+  const VEIN = '#d9a06a';
+  const VEIN_HI = '#f6d3a4';
+  const VEIN_OUT = '#5d3a20';
+  const veins = [
+    [x - 11, y - 19, 12, 4], [x + 1, y - 24, 10, 4], [x - 7, y - 27, 8, 3],
+    [x - 3, y - 12, 11, 4], [x + 6, y - 16, 6, 3],
+  ];
+  for (const [vx, vy, vw, vh] of veins) {
+    ctx.fillStyle = VEIN_OUT;
+    ctx.fillRect(vx - 1, vy - 1, vw + 2, vh + 2);
+    ctx.fillStyle = VEIN;
+    ctx.fillRect(vx, vy, vw, vh);
+    ctx.fillStyle = VEIN_HI;
+    ctx.fillRect(vx, vy, vw, 1);
+  }
+  // Pépite centrale taillée, bien visible.
+  ctx.fillStyle = VEIN_OUT;
+  ctx.fillRect(x - 4, y - 21, 9, 8);
+  ctx.fillStyle = VEIN;
+  ctx.fillRect(x - 3, y - 20, 7, 6);
+  ctx.fillStyle = VEIN_HI;
+  ctx.fillRect(x - 3, y - 20, 7, 2);
+  ctx.fillStyle = '#fff2dd';
+  ctx.fillRect(x - 2, y - 19, 3, 1);
+
+  ctx.fillStyle = 'rgba(150,175,225,0.28)';
+  ctx.fillRect(x - 6, y - 30, 13, 2);
+}
+
+// Entrée de la grotte (surface) : arche de roche sombre ouvrant sur
+// le noir. Le sprite déborde largement de sa tuile pour qu'on la voie
+// de loin — c'est un point de repère du monde.
+function drawCaveMouthObjectRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 2, 30, 8);
+
+  // Masse rocheuse en arrière-plan.
+  voxel(ctx, x - 30, y - 52, 60, 54, '#5c5c64');
+  voxel(ctx, x - 26, y - 62, 52, 46, '#6a6a72');
+  voxel(ctx, x - 18, y - 70, 36, 14, '#7d7d85');
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillRect(x - 18, y - 70, 36, 3);
+
+  // Ouverture : arche pleine de noir, dégradée vers le bas.
+  const mouthW = 30;
+  const mouthH = 38;
+  const mx = x - mouthW / 2;
+  const my = y - mouthH;
+  ctx.fillStyle = '#08070c';
+  ctx.beginPath();
+  ctx.moveTo(mx, y);
+  ctx.lineTo(mx, my + 12);
+  ctx.quadraticCurveTo(x, my - 6, mx + mouthW, my + 12);
+  ctx.lineTo(mx + mouthW, y);
+  ctx.closePath();
+  ctx.fill();
+  // Profondeur : un second voile encore plus noir au fond de l'arche.
+  ctx.fillStyle = '#000000';
+  ctx.beginPath();
+  ctx.moveTo(mx + 6, y);
+  ctx.lineTo(mx + 6, my + 16);
+  ctx.quadraticCurveTo(x, my + 4, mx + mouthW - 6, my + 16);
+  ctx.lineTo(mx + mouthW - 6, y);
+  ctx.closePath();
+  ctx.fill();
+
+  // Lèvre de roche autour de l'ouverture (cadre clair en haut).
+  ctx.strokeStyle = '#84848c';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(mx, my + 12);
+  ctx.quadraticCurveTo(x, my - 6, mx + mouthW, my + 12);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(mx + 1, my + 15);
+  ctx.quadraticCurveTo(x, my - 2, mx + mouthW - 1, my + 15);
+  ctx.stroke();
+
+  // Quelques pierres au pied de l'arche.
+  voxel(ctx, x - 24, y - 9, 9, 9, '#6a6a72');
+  voxel(ctx, x + 16, y - 7, 8, 7, '#5c5c64');
+  voxel(ctx, x - 3, y - 5, 7, 5, '#51515a');
+}
+
+// Puits descendant : trou noir d'où part une échelle de corde.
+function drawCaveLadderDownRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 2, 18, 6);
+  // Margelle de pierre.
+  voxel(ctx, x - 17, y - 12, 34, 13, '#4b4553');
+  ctx.fillStyle = '#5d566a';
+  ctx.fillRect(x - 17, y - 12, 34, 3);
+  // Le trou.
+  ctx.fillStyle = '#0a0910';
+  ctx.beginPath();
+  ctx.ellipse(x, y - 8, 12, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#000000';
+  ctx.beginPath();
+  ctx.ellipse(x, y - 7.5, 9, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Échelle de corde qui disparaît dans le noir.
+  ctx.strokeStyle = '#a3825a';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(x - 5, y - 13); ctx.lineTo(x - 5, y - 3);
+  ctx.moveTo(x + 5, y - 13); ctx.lineTo(x + 5, y - 3);
+  ctx.stroke();
+  ctx.strokeStyle = '#c2a075';
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i < 3; i++) {
+    const ry = y - 12 + i * 3.4;
+    ctx.beginPath();
+    ctx.moveTo(x - 5, ry);
+    ctx.lineTo(x + 5, ry);
+    ctx.stroke();
+  }
+  // Flèche vers le bas (lisibilité immédiate de l'action).
+  ctx.fillStyle = '#f2c14e';
+  ctx.beginPath();
+  ctx.moveTo(x, y - 26);
+  ctx.lineTo(x + 5, y - 32);
+  ctx.lineTo(x - 5, y - 32);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// Puits remontant : la lumière du jour tombe dans la grotte.
+function drawCaveLadderUpRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 2, 18, 6);
+  voxel(ctx, x - 17, y - 12, 34, 13, '#4b4553');
+  ctx.fillStyle = '#5d566a';
+  ctx.fillRect(x - 17, y - 12, 34, 3);
+  // Puits éclairé : dégradé du bleu pâle vers le sombre.
+  ctx.fillStyle = '#22303f';
+  ctx.beginPath();
+  ctx.ellipse(x, y - 8, 12, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#9fc4dd';
+  ctx.beginPath();
+  ctx.ellipse(x, y - 9, 7.5, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#dceef8';
+  ctx.beginPath();
+  ctx.ellipse(x, y - 9.5, 4, 2.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Échelle.
+  ctx.strokeStyle = '#a3825a';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(x - 5, y - 14); ctx.lineTo(x - 5, y - 2);
+  ctx.moveTo(x + 5, y - 14); ctx.lineTo(x + 5, y - 2);
+  ctx.stroke();
+  ctx.strokeStyle = '#c2a075';
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i < 4; i++) {
+    const ry = y - 13 + i * 3.4;
+    ctx.beginPath();
+    ctx.moveTo(x - 5, ry);
+    ctx.lineTo(x + 5, ry);
+    ctx.stroke();
+  }
+  // Flèche vers le haut.
+  ctx.fillStyle = '#9fd0ff';
+  ctx.beginPath();
+  ctx.moveTo(x, y - 34);
+  ctx.lineTo(x + 5, y - 28);
+  ctx.lineTo(x - 5, y - 28);
+  ctx.closePath();
+  ctx.fill();
+}
+
 function makeObjectSprite(width, height, anchorX, anchorY, draw) {
   const canvas = makeCanvas(width, height);
   const ctx = canvas.getContext('2d');
@@ -1279,6 +1610,21 @@ function buildObjectSprites() {
   objectCache.tree = objectCache['tree:small'];
   objectCache.rock = makeObjectSprite(40, 40, 20, 32, drawRockObjectRaw);
   objectCache.ironOre = makeObjectSprite(40, 40, 20, 32, drawIronOreObjectRaw);
+  // Ressources de la grotte (même gabarit que leurs équivalents de surface :
+  // les fissures de minage déjà pré-rendues continuent de s'appliquer).
+  objectCache.caveStone = makeObjectSprite(40, 44, 20, 34, drawCaveStoneObjectRaw);
+  objectCache.caveIron = makeObjectSprite(40, 44, 20, 34, drawCaveIronObjectRaw);
+  // L'entrée de la grotte déborde largement de sa tuile (point de repère).
+  objectCache.caveMouth = makeObjectSprite(76, 88, 38, 80, drawCaveMouthObjectRaw);
+  objectCache.caveLadderDown = makeObjectSprite(44, 48, 22, 38, drawCaveLadderDownRaw);
+  objectCache.caveLadderUp = makeObjectSprite(44, 48, 22, 38, drawCaveLadderUpRaw);
+}
+
+// Dessine un objet de la grotte (ou tout objet statique simple) par son id.
+export function drawCaveObject(ctx, kind, x, y) {
+  const sprite = objectCache[kind];
+  if (!sprite) return;
+  ctx.drawImage(sprite.canvas, x - sprite.anchorX, y - sprite.anchorY);
 }
 
 export function getObjectSprite(kind, variant) {

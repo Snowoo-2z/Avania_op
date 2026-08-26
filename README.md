@@ -77,6 +77,39 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   yeux, chapeau (8), lunettes (5), barbe (4), peau, haut, pantalon, nom —
   aperçu live animé (respiration, clignement), look sauvegardé. En jeu, sa taille
   est réduite pour rester proportionnée aux arbres et aux rochers.
+- **💰 L'argent** — à l'arrivée sur l'île, un **monsieur en costume-cravate**
+  aborde le joueur, lui remet sa somme de bienvenue (**150 écus**) et lui
+  explique les règles, puis repart. Pendant toute la scène le joueur ne peut
+  pas bouger ; la somme n'est versée qu'une seule fois, même si la cinématique
+  est rejouée ou passée. La bourse est affichée en haut à droite, avec la
+  profondeur courante et la profondeur autorisée par l'équipement.
+- **⛰️ La grotte** — une arche taillée dans la falaise, à un endroit fixe de
+  la carte. On entre avec `F`. À l'intérieur, **8 niveaux** qui descendent de
+  plus en plus bas, générés de façon déterministe, où l'on ne trouve **que de
+  la pierre et du fer** (le fer devient plus abondant en profondeur). Chaque
+  niveau a son échelle de sortie et son puits de descente, toujours
+  atteignables.
+- **🎭 Masque & protection de minage** — descendre au-delà du niveau 1 exige
+  deux équipements achetés : un **masque** et une **protection de minage**.
+  Chacun existe en **trois paliers** ; plus c'est cher, plus la profondeur
+  atteignable est grande (la profondeur autorisée est le minimum des deux).
+  Sans l'équipement, la descente est refusée avec la raison exacte.
+- **🧔 Deux marchands, et une vraie négociation** — Gaspard vend les masques,
+  Aldric les protections, tous deux devant l'entrée de la grotte. On leur
+  parle avec `F`, puis on **écrit ce qu'on veut en texte libre**. Le marchand
+  répond **toujours dans son rôle** (jamais de markdown, jamais de
+  didascalie, jamais « je suis une IA »). Il raisonne à partir de deux
+  ancres économiques — son **coût de fabrication** (réalisée hors de l'île,
+  il n'en connaît pas le détail) et son **coût de transport** — plus le
+  nombre de jours passés sur l'île, le nombre de joueurs et ses ventes
+  récentes. Il peut faire un geste, mais **jamais sous son prix plancher**.
+  Deux commandes structurent l'échange : `/sell [article] [prix]` affiche une
+  fiche d'offre avec **Acheter** ou **Continuer à discuter**, et `/out` met le
+  joueur dehors s'il insiste trop ou devient insultant — **45 secondes**
+  pendant lesquelles le marchand refuse de lui parler.
+  Le dialogue passe par un modèle si une clé `AVANIA_AI_API_KEY` est
+  configurée (relais `POST /api/merchant`), sinon par un **cerveau de
+  négociation local** qui applique exactement les mêmes règles.
 
 ## 🚀 Lancer le jeu
 
@@ -90,20 +123,75 @@ node server.js        # ou : npm start
 Pour les outils de développement (tests, aperçus, benchmarks) :
 
 ```bash
-npm install           # installe @napi-rs/canvas (dev uniquement)
+npm install           # installe @napi-rs/canvas et jsdom (dev uniquement)
 ```
+
+### Donner une vraie voix aux marchands (Mistral, gratuit)
+
+Sans clé, les marchands tournent sur le **cerveau de négociation local**
+(`js/merchant-brain.js`) : mêmes règles, mêmes commandes, aucun réseau.
+
+Avec une clé **Mistral AI**, leurs répliques sont produites par un modèle. Le
+palier gratuit « Experiment » suffit : pas de carte bancaire, ~1 milliard de
+jetons par mois, et tous les modèles sont accessibles.
+
+1. Créer un compte sur [console.mistral.ai](https://console.mistral.ai)
+   (vérification par SMS), puis une clé dans **API Keys**.
+2. Lancer le serveur avec la clé :
+
+```bash
+MISTRAL_API_KEY=ta_cle npm start
+```
+
+La clé ne quitte **jamais** le serveur : le navigateur parle à
+`POST /api/merchant`, qui relaie vers `https://api.mistral.ai/v1/chat/completions`.
+Le modèle par défaut est `mistral-small-latest`.
+
+Le palier gratuit impose environ **une requête par seconde et par clé**, tous
+modèles confondus. Le relais sérialise donc les appels et espace leurs départs
+de 1,1 s ; si la file dépasse 6 s il répond immédiatement `rate-limited` et le
+jeu bascule sur le cerveau local. Un `429` (quota atteint) déclenche une pause
+de 15 s — le joueur ne voit qu'une réplique locale, jamais une erreur.
+
+Variables d'environnement :
+
+| Variable | Défaut | Rôle |
+| --- | --- | --- |
+| `MISTRAL_API_KEY` | — | la clé Mistral (`AVANIA_AI_API_KEY` est aussi accepté) |
+| `AVANIA_AI_BASE_URL` | `https://api.mistral.ai/v1` | tout fournisseur compatible OpenAI convient |
+| `AVANIA_AI_MODEL` | `mistral-small-latest` | `mistral-large-latest` pour des répliques plus fines |
+| `PORT` | `3000` | port d'écoute |
 
 ## 🧪 Tests, aperçus & benchmark
 
 ```bash
 npm test                              # test de fumée (logique pure, sans navigateur)
+npm run test:browser                  # test d'intégration : le jeu démarre dans un vrai DOM
+npm run test:relay                    # relais marchand contre une API Mistral simulée
+npm run bench                         # benchmark de la boucle de jeu (ms/frame)
 node scripts/render-preview.mjs       # aperçus PNG : monde, personnage, blocs, mobs
 node scripts/preview-mobs.mjs         # planches des mobs (profils, marche, scène en jeu)
 node scripts/preview-items.mjs        # planches des icônes d'objets (toutes + gros plan)
-node scripts/frame-bench.mjs          # benchmark de la boucle de jeu (ms/frame)
 node scripts/frame-bench.mjs --shots /tmp/shots     # + captures PNG par scénario
 node scripts/diff-shots.mjs /tmp/avant /tmp/après   # compare deux dossiers de captures
 ```
+
+`npm run test:browser` démarre réellement `js/main.js` dans un DOM (jsdom)
+avec le vrai `index.html`, puis rejoue une partie complète : cinématique du
+monsieur en costume → argent remis → marche vers la grotte → entrée → descente
+refusée → négociation avec les deux marchands → achats → équipement → descente
+→ remontée. Ce n'est pas un test de rendu (jsdom ne peint rien) : c'est un
+test de **câblage** — ids du DOM, imports, rappels du moteur et règles
+métier, exécutés par le vrai code de production. C'est lui qui a trouvé les
+bugs les plus graves de la v2 (cinématique qui ne se terminait jamais,
+marchands absents, offre `/sell` perdue en route).
+
+`npm run test:relay` fait tourner le **vrai** `server.js` devant un amont
+simulé qui répond exactement comme La Plateforme. Sont vérifiés pour de vrai :
+le point d'entrée appelé, l'en-tête `Bearer`, le modèle demandé, le passage des
+ancres économiques en message système, l'espacement d'au moins une seconde
+entre deux appels (la limite du palier gratuit), le repli propre sur `429`, et
+le refus d'une réponse vide.
 
 Tous les PNG partent dans `preview/` (ignoré par git).
 
@@ -136,7 +224,9 @@ puis construis ta première cabane.
 
 - [ ] **Multijoueur** — serveur WebSocket, positions & actions synchronisées.
 - [x] **Plus de blocs** — planche, brique, sable, verre, terre… (+ craft).
-- [ ] **Économie** — monnaie, banque, achats, salaires, taxes.
+- [x] **Économie (v2)** — monnaie, achats auprès des marchands, négociation.
+- [ ] **Économie (suite)** — banque, salaires, taxes, troc entre joueurs.
+- [x] **La grotte** — 8 niveaux souterrains, pierre & fer, équipement exigé.
 - [ ] **Intérieurs** — entrer dans les bâtiments construits.
 - [x] **Inventaire & objets** — 36 cases, piles, outils durables et fabrication 3×3.
 - [ ] **Coffres** — stockage partagé, vols.
@@ -156,6 +246,8 @@ Avania_op/
 ├── css/
 │   └── style.css       tout le style : HUD Minecraft-like, panneaux, écrans
 ├── server.js           serveur statique de dev (Node pur, port 3000)
+│                       + relais POST /api/merchant vers un modèle si une
+│                         clé AVANIA_AI_API_KEY est définie
 │                       — plus tard : le serveur WebSocket multijoueur se
 │                         branchera ici
 ├── js/                 TOUT le jeu (modules ES natifs, ~9 000 lignes)
@@ -177,6 +269,20 @@ Avania_op/
 │   ├── furnace.js      logique du four (recettes, combustibles, cuisson)
 │   ├── tutorial.js     petit didacticiel illustré (pages E, C, mobs…)
 │   ├── utils.js        helpers : RNG seed, canvas, détection PC modeste
+│   ├── economy.js      ★ monnaie : Wallet, formatage, journal des mouvements
+│   ├── cave.js         ★ la grotte : entrée, génération BFS des niveaux,
+│   │                     profondeur autorisée selon l'équipement
+│   ├── intro.js        ★ cinématique d'arrivée (le monsieur en costume)
+│   ├── merchant.js     ★ catalogue, coûts (production + transport), marchands
+│   ├── merchant-brain.js ★ cerveau de négociation local (règles du rôle)
+│   ├── merchant-ai.js  ★ relais modèle + nettoyage + lecture des commandes
+│   ├── chat.js         ★ comptoir de négociation (panneau de dialogue)
+│   ├── svgicons.js     icônes vectorielles de l'interface
+│   ├── npc/            ★ les PNJ : un fichier par look
+│   │   ├── base.js         nom, ombre, nuage « … »
+│   │   ├── gentleman.js    le monsieur en costume-cravate
+│   │   ├── merchant-look.js Gaspard & Aldric
+│   │   └── index.js        drawNpc : un seul point de dessin
 │   └── mobs/           ★ les animaux — voir section dédiée plus bas
 ├── scripts/            outils hors-ligne (Node + @napi-rs/canvas)
 │   ├── render-preview.mjs
@@ -185,7 +291,8 @@ Avania_op/
 │   ├── frame-bench.mjs
 │   └── diff-shots.mjs
 ├── test/
-│   └── smoke.mjs       test de fumée : logique pure importée en Node
+│   ├── smoke.mjs       test de fumée : logique pure importée en Node
+│   └── browser-boot.mjs ★ test d'intégration : le jeu dans un vrai DOM
 └── preview/            (généré, git-ignoré) PNG de vérification visuelle
 ```
 
@@ -239,6 +346,32 @@ Le moteur tient 60 fps sur des PC modestes :
 - **Mode performance adaptatif** : échantillonnage des frames coûteuses et
   réduction automatique des effets (DPR, ombres) sur les petits appareils.
 - Les constantes vivent dans `config.js` (`PERFORMANCE`, DPR max 1.5…).
+
+### Ce que mesure `npm run bench`
+
+Les chunks de sol sont rasterisés **en pixels monde**, donc leur contenu ne
+dépend pas du zoom. Un cran de zoom vidait pourtant tout le cache et
+reconstruisait les ~16 chunks visibles dans la frame qui suivait : **18 ms de
+travail perdu, au-dessus du budget de 16,67 ms** — un à-coup visible à chaque
+réglage. Ce coût est désormais **nul**. Le bench le mesure explicitement pour
+que l'écart reste vérifiable.
+
+Le scénario « allocations » compte ce que la boucle de jeu alloue : les blocs
+posés sont dessinés via une **réserve réutilisée** (9 → 9 objets, aucune
+allocation nouvelle) au lieu d'un objet neuf par bloc et par frame. Sur un PC
+modeste avec beaucoup d'onglets ouverts, ce n'est pas le coût moyen qui fait
+saccader, ce sont les pauses du ramasse-miettes.
+
+Deux autres gains ne sont pas mesurables ici mais sont réels en navigateur :
+le HUD n'écrit dans le DOM que lorsque la valeur a **vraiment** changé, et le
+`resize` est regroupé au lieu de reconstruire le canvas à chaque pixel.
+
+> Le coût par frame du bench est mesuré en **rastérisation logicielle**
+> (`@napi-rs/canvas`) : un navigateur GPU est nettement plus rapide, mais les
+> écarts **relatifs** entre deux versions restent la référence. Attention :
+> cette bibliothèque native retient ~1 Mo par grand `drawImage` et ne le rend
+> jamais — une croissance de RSS dans un script Node n'est **pas** une fuite
+> du jeu.
 
 ## 🐑 Les mobs (`js/mobs/`) — un sous-dossier par animal
 

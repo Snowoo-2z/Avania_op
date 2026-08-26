@@ -7,17 +7,24 @@
 
 import { TILE, WORLD_W, WORLD_H } from './config.js';
 import { mulberry32 } from './utils.js';
-import { BLOCK_DEFS, ITEM_DEFS, DIGGABLE_FLOOR } from './blocks.js';
+import { BLOCK_DEFS, ITEM_DEFS, DIGGABLE_FLOOR, SOLID_FLOOR } from './blocks.js';
+import { generateCaveLevel, buildCaveEntrance, CAVE } from './cave.js';
 
 const W = WORLD_W;
 const H = WORLD_H;
 
 export class World {
-  constructor(seed = 20260821) {
+  constructor(seed = 20260821, options = {}) {
     this.seed = seed;
     this.rng = mulberry32(seed);
     this.w = W;
     this.h = H;
+    // 'surface' (l'île) ou 'cave' (un niveau souterrain).
+    this.kind = options.kind || 'surface';
+    this.depth = options.depth || 0;
+    // Identifiant stable, utilisé par le jeu pour retrouver l'état
+    // (fours, coffres, objets au sol) d'une dimension.
+    this.id = this.kind === 'cave' ? `cave:${this.depth}` : 'surface';
 
     // Couche "sol" (toujours praticable sauf l'eau) : grass / water
     this.floor = new Array(W * H).fill('grass');
@@ -29,6 +36,8 @@ export class World {
     this.doorOpen = new Uint8Array(W * H);
 
     this.spawn = { x: (W / 2) * TILE + TILE / 2, y: (H / 2) * TILE + TILE / 2 };
+    // Emplacement de l'entrée de la grotte (surface uniquement).
+    this.caveEntrance = null;
     this.generate();
   }
 
@@ -50,6 +59,13 @@ export class World {
   //  Génération : terrain vide + ressources naturelles
   // ------------------------------------------------------------------
   generate() {
+    // Une grotte est un monde à part entière : galeries creusées dans
+    // la roche, pierre et fer uniquement (voir js/cave.js).
+    if (this.kind === 'cave') {
+      generateCaveLevel(this);
+      return;
+    }
+
     // 1) sol : herbe avec variations visuelles (déterministe)
     for (let ty = 0; ty < H; ty++) {
       for (let tx = 0; tx < W; tx++) {
@@ -93,6 +109,11 @@ export class World {
     this.setBlock(cx - 2, cy + 4, 'rock');
     this.setBlock(cx + 2, cy - 4, 'ironOre');
     this.setBlock(cx - 3, cy - 4, 'ironOre');
+
+    // 5) La falaise et l'entrée de la grotte, à un endroit fixe de l'île.
+    //    Placée en dernier : elle écrase toute ressource qui se
+    //    trouverait là, pour que l'accès reste toujours dégagé.
+    this.caveEntrance = buildCaveEntrance(this);
   }
 
   setBlock(tx, ty, id) {
@@ -105,7 +126,10 @@ export class World {
   // ------------------------------------------------------------------
   isSolidTile(tx, ty) {
     if (!this.inBounds(tx, ty)) return true; // hors monde = solide
-    if (this.floor[this.idx(tx, ty)] === 'water') return true;
+    // Sols bloquants : l'eau à la surface, la roche massive sous terre.
+    // La liste est déduite de BLOCK_DEFS (SOLID_FLOOR) : une recherche
+    // dans un Set au lieu d'une chaîne de comparaisons.
+    if (SOLID_FLOOR.has(this.floor[this.idx(tx, ty)])) return true;
     const b = this.blocks[this.idx(tx, ty)];
     if (!b) return false;
     const def = BLOCK_DEFS[b];
@@ -212,7 +236,7 @@ export class World {
 
     const baseBlock = this.blocks[i];
     if (baseBlock === null) {
-      if (this.floor[i] === 'water') return false;
+      if (SOLID_FLOOR.has(this.floor[i])) return false;
       this.blocks[i] = item.place;
       return true;
     } else {

@@ -9,6 +9,7 @@ import {
   DEFAULT_APPEARANCE, NAME_IDEAS,
 } from './config.js';
 import { ITEM_DEFS, RECIPES } from './blocks.js';
+import { formatMoney } from './economy.js';
 import { drawCharacter } from './character.js';
 import { getItemIconURL } from './icons.js';
 import { SMELT_RECIPES } from './furnace.js';
@@ -231,6 +232,92 @@ export class HUD {
   update({ name, playerCount }) {
     this.nameEl.textContent = name;
     this.playersEl.textContent = playerCount;
+  }
+}
+
+// ------------------------------------------------------------
+//  Bourse + état de la grotte (haut droite)
+//
+//  Comme pour le reste du HUD, on n'écrit dans le DOM que lorsque la
+//  valeur a vraiment changé : sinon chaque frame déclencherait un
+//  recalcul de style pour rien.
+// ------------------------------------------------------------
+export class WalletHUD {
+  constructor(root, wallet) {
+    this.root = root;
+    this.el = {
+      amount: root.querySelector('#wallet-amount'),
+      delta: root.querySelector('#wallet-delta'),
+      wallet: root.querySelector('#wallet'),
+      depthChip: root.querySelector('#depth-chip'),
+      depthLabel: root.querySelector('#depth-label'),
+      gearChip: root.querySelector('#gear-chip'),
+      gearDepth: root.querySelector('#gear-depth'),
+      slots: root.querySelectorAll('#gear-chip .gear-slot'),
+    };
+    this.lastAmount = null;
+    this.lastDepth = null;
+    this.lastGear = null;
+    this._bumpTimer = null;
+    this._deltaTimer = null;
+
+    if (wallet) {
+      wallet.subscribe((w, delta) => this.setMoney(w.money, delta));
+      this.setMoney(wallet.money, 0);
+    }
+  }
+
+  show() { this.root.classList.remove('hidden'); }
+  hide() { this.root.classList.add('hidden'); }
+
+  setMoney(amount, delta = 0) {
+    const value = Math.round(amount || 0);
+    if (value !== this.lastAmount) {
+      this.lastAmount = value;
+      if (this.el.amount) {
+        this.el.amount.textContent = formatMoney(value);
+        // Petit « bump » à chaque changement : le joueur voit sa bourse vivre.
+        this.el.amount.classList.remove('bump');
+        void this.el.amount.offsetWidth;
+        this.el.amount.classList.add('bump');
+        clearTimeout(this._bumpTimer);
+        this._bumpTimer = setTimeout(() => this.el.amount.classList.remove('bump'), 180);
+      }
+    }
+    if (delta && this.el.delta) {
+      const gain = delta > 0;
+      this.el.delta.textContent = `${gain ? '+' : '−'}${formatMoney(Math.abs(delta))}`;
+      this.el.delta.className = `wallet-delta ${gain ? 'gain' : 'loss'}`;
+      void this.el.delta.offsetWidth;
+      this.el.delta.classList.add('show');
+      clearTimeout(this._deltaTimer);
+      this._deltaTimer = setTimeout(() => this.el.delta.classList.remove('show'), 1500);
+    }
+  }
+
+  // Surface ou profondeur de grotte.
+  setDepth(world) {
+    const underground = Boolean(world && world.kind === 'cave');
+    const depth = underground ? (world.depth || 1) : 0;
+    if (depth === this.lastDepth) return;
+    this.lastDepth = depth;
+    if (this.el.depthLabel) {
+      this.el.depthLabel.textContent = underground ? `Profondeur ${depth}` : 'Surface';
+    }
+    if (this.el.depthChip) this.el.depthChip.classList.toggle('underground', underground);
+    if (this.el.gearChip) this.el.gearChip.classList.toggle('hidden', !underground);
+  }
+
+  // Équipement porté : les deux emplacements s'allument quand ils sont couverts.
+  setGear(gear) {
+    const key = `${gear.mask || '-'}|${gear.armor || '-'}|${gear.maxDepth || 1}`;
+    if (key === this.lastGear) return;
+    this.lastGear = key;
+    if (this.el.slots[0]) this.el.slots[0].classList.toggle('equipped', Boolean(gear.mask));
+    if (this.el.slots[1]) this.el.slots[1].classList.toggle('equipped', Boolean(gear.armor));
+    if (this.el.gearDepth) {
+      this.el.gearDepth.textContent = `prof. ${gear.maxDepth || 1}`;
+    }
   }
 }
 

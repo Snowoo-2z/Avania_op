@@ -18,6 +18,16 @@ export const BLOCK_DEFS = {
   sand:      { id: 'sand',      label: 'Sable',   kind: 'floor',  solid: false, breakable: false, drop: null,   color: '#e2c88a' },
   water:     { id: 'water',     label: 'Eau',     kind: 'floor',  solid: true,  breakable: false, drop: null,   color: '#4a9fd8' },
 
+  // --- sols de la grotte (dimension souterraine) ---
+  // caveFloor : le sol praticable. caveWall : la roche massive qui
+  // enserre les galeries — c'est un SOL solide (comme l'eau), pas un
+  // bloc posé : des milliers de cases rendues par les chunks de sol,
+  // donc gratuites, au lieu de milliers de cubes 2.5D.
+  caveFloor: { id: 'caveFloor', label: 'Sol de grotte', kind: 'floor', solid: false, breakable: false, drop: null, color: '#4a4550' },
+  caveWall:  { id: 'caveWall',  label: 'Roche',         kind: 'floor', solid: true,  breakable: false, drop: null, color: '#2b2730' },
+  // La falaise qui affleure à la surface et abrite l'entrée de la grotte.
+  rockFace:  { id: 'rockFace',  label: 'Falaise',       kind: 'floor', solid: true,  breakable: false, drop: null, color: '#6a6a72' },
+
   // --- ressources naturelles (objets à casser) ---
   tree: {
     id: 'tree', label: 'Arbre', kind: 'object', solid: true, breakable: true,
@@ -76,7 +86,46 @@ export const BLOCK_DEFS = {
     id: 'woolBlock', label: 'Bloc de laine', kind: 'block', solid: true, breakable: true,
     drop: 'woolBlock', color: '#e8e8e8', requiredTool: null, breakTime: 0.5,
   },
+
+  // ------------------------------------------------------------
+  //  La grotte : ses ressources et ses points de passage.
+  //  Rien d'autre que de la pierre et du fer pour l'instant, mais
+  //  avec un look bien à eux (voir js/tileset.js).
+  // ------------------------------------------------------------
+  caveStone: {
+    id: 'caveStone', label: 'Pierre de grotte', kind: 'object', solid: true, breakable: true,
+    drop: 'stone', dropN: 2, color: '#5f5a68', requiredTool: 'pickaxe', breakTime: 2.0,
+  },
+  caveIron: {
+    id: 'caveIron', label: 'Filon de fer', kind: 'object', solid: true, breakable: true,
+    drop: 'rawIron', dropN: 1, color: '#7a6a62', requiredTool: 'pickaxe', minTier: 'stone', breakTime: 3.2,
+  },
+  // L'entrée de la grotte, à la surface : un arche sombre. On y entre
+  // avec la touche d'interaction — elle ne se casse pas.
+  caveMouth: {
+    id: 'caveMouth', label: 'Entrée de la grotte', kind: 'object', solid: true, breakable: false,
+    drop: null, color: '#141018', requiredTool: null, breakTime: 0,
+  },
+  // Les puits qui relient les niveaux entre eux.
+  caveLadderDown: {
+    id: 'caveLadderDown', label: 'Puits descendant', kind: 'object', solid: true, breakable: false,
+    drop: null, color: '#2a2430', requiredTool: null, breakTime: 0,
+  },
+  caveLadderUp: {
+    id: 'caveLadderUp', label: 'Puits remontant', kind: 'object', solid: true, breakable: false,
+    drop: null, color: '#3a3440', requiredTool: null, breakTime: 0,
+  },
 };
+
+// Sols qui bloquent le passage. Déduit de BLOCK_DEFS une bonne fois :
+// la collision ne fait plus de comparaison de chaînes en cascade.
+export const SOLID_FLOOR = (() => {
+  const set = new Set();
+  for (const def of Object.values(BLOCK_DEFS)) {
+    if (def.kind === 'floor' && def.solid) set.add(def.id);
+  }
+  return set;
+})();
 
 // Les objets que le joueur peut posséder. maxStack reprend le principe
 // Minecraft : les matériaux s'empilent, un outil occupe sa propre case.
@@ -148,7 +197,61 @@ export const ITEM_DEFS = {
     id: 'iron_sword', label: 'Épée en fer', color: '#d8dde2', icon: 'sword', type: 'tool', maxStack: 1,
     toolType: 'sword', tier: 'iron', durability: 250, efficiency: 1,
   },
+
+  // ------------------------------------------------------------
+  //  Équipement de la grotte (vendu par les marchands, jamais crafté)
+  //
+  //  Deux emplacements : le MASQUE (protection respiratoire) et
+  //  l'ARMURE de minage (protection intégrale). Pour descendre à une
+  //  profondeur donnée, il faut que les DEUX couvrent cette
+  //  profondeur : plus on s'enfonce, plus l'air est rare et plus les
+  //  éboulements sont violents.
+  //
+  //  miningBoost : bonus de vitesse de minage (le matériel adapté
+  //  travaille mieux). maxDepth : profondeur maximale atteignable.
+  // ------------------------------------------------------------
+  mask_cloth: {
+    id: 'mask_cloth', label: 'Masque de toile', color: '#cfc7b4', icon: 'mask',
+    type: 'gear', gearSlot: 'mask', maxStack: 1, maxDepth: 2, miningBoost: 1.05,
+    flavor: 'Un tissu épais, deux lanières. Filtre la poussière, pas grand-chose de plus.',
+  },
+  mask_filter: {
+    id: 'mask_filter', label: 'Masque à filtre', color: '#8fa3ad', icon: 'mask',
+    type: 'gear', gearSlot: 'mask', maxStack: 1, maxDepth: 4, miningBoost: 1.12,
+    flavor: 'Cartouche interchangeable. L\'air reste respirable quand la roche chauffe.',
+  },
+  mask_sealed: {
+    id: 'mask_sealed', label: 'Masque scellé', color: '#d8c46a', icon: 'mask',
+    type: 'gear', gearSlot: 'mask', maxStack: 1, maxDepth: 99, miningBoost: 1.2,
+    flavor: 'Joints étanches, réserve d\'air au dos. On descend sans compter.',
+  },
+  armor_leather: {
+    id: 'armor_leather', label: 'Tenue de minage', color: '#8a5a34', icon: 'armor',
+    type: 'gear', gearSlot: 'armor', maxStack: 1, maxDepth: 2, miningBoost: 1.05,
+    flavor: 'Cuir huilé et genouillères. Ça encaisse les éclats.',
+  },
+  armor_reinforced: {
+    id: 'armor_reinforced', label: 'Armure de minage renforcée', color: '#9aa3ab', icon: 'armor',
+    type: 'gear', gearSlot: 'armor', maxStack: 1, maxDepth: 4, miningBoost: 1.12,
+    flavor: 'Plaques d\'acier rivetées sur du cuir durci.',
+  },
+  armor_full: {
+    id: 'armor_full', label: 'Armure de minage intégrale', color: '#d3dade', icon: 'armor',
+    type: 'gear', gearSlot: 'armor', maxStack: 1, maxDepth: 99, miningBoost: 1.22,
+    flavor: 'Protection complète, casque inclus. On traverse un éboulement.',
+  },
 };
+
+// Emplacements d'équipement de la grotte.
+export const GEAR_SLOTS = ['mask', 'armor'];
+
+// L'équipement est-il utilisable ? Un objet « gear » s'équipe en le
+// sélectionnant dans la barre rapide (pas d'interface dédiée : le jeu
+// reste jouable au clavier comme à la souris).
+export function isGear(itemId) {
+  const def = ITEM_DEFS[itemId];
+  return Boolean(def && def.type === 'gear');
+}
 
 // Ordre des niveaux d'outils. Un bloc avec `minTier` exige un outil d'au
 // moins ce niveau (ex. le minerai de fer demande une pioche en pierre+).

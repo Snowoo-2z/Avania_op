@@ -26,9 +26,11 @@ assert(w1.floor.join('') === w2.floor.join(''), 'même seed → même monde');
 assert(w1.blocks.join('|') === w2.blocks.join('|'), 'ressources identiques (déterministe)');
 
 // aucune construction : uniquement des sols naturels (herbe, terre, fleurs, sable, eau)
+// + la falaise qui abrite l'entrée de la grotte (relief naturel, pas une
+// construction de joueur).
 const floorSet = new Set(w1.floor);
-const natural = ['grass', 'grassDark', 'flowers', 'dirt', 'sand', 'water'];
-assert([...floorSet].every((f) => natural.includes(f)), 'sol = variantes naturelles uniquement (aucune construction)');
+const natural = ['grass', 'grassDark', 'flowers', 'dirt', 'sand', 'water', 'rockFace'];
+assert([...floorSet].every((f) => natural.includes(f)), 'sol = variantes naturelles + falaise (aucune construction)');
 
 // le spawn est praticable
 assert(!w1.isSolidAt(w1.spawn.x, w1.spawn.y), 'le spawn est sur une case libre');
@@ -520,6 +522,441 @@ console.log('▶ Couleurs d\'apparence');
 const cols = appearanceColors({ skin: 'ebene', hairColor: 'roux', eyes: 'violet', shirt: 'noir', pants: 'jean' });
 assert(cols.skin === '#5e3b22', 'peau ébène');
 assert(cols.hair === '#a3401f', 'cheveux roux');
+
+// ============================================================
+//  MONNAIE
+// ============================================================
+console.log('▶ Monnaie');
+const { Wallet, formatMoney, CURRENCY } = await import('../js/economy.js');
+assert(formatMoney(0) === '0', 'format : 0');
+assert(formatMoney(1234) === '1\u202F234', 'format : 1234 → 1 234 (espace fine)');
+assert(formatMoney(1234567) === '1\u202F234\u202F567', 'format : 1234567');
+assert(formatMoney(-42) === '−42', 'format : négatif');
+
+const purse = new Wallet({ allowStorage: false });
+assert(purse.money === 0, 'bourse vide au départ');
+assert(CURRENCY.startingGrant > 0, 'une somme de bienvenue est prévue');
+purse.add(CURRENCY.startingGrant, 'test');
+assert(purse.money === CURRENCY.startingGrant, 'la somme de bienvenue est versée');
+assert(purse.canAfford(CURRENCY.startingGrant), 'on peut dépenser exactement sa bourse');
+assert(!purse.canAfford(CURRENCY.startingGrant + 1), 'pas de découvert possible (vérification)');
+assert(purse.spend(40, 'achat') === true, 'dépense acceptée');
+assert(purse.money === CURRENCY.startingGrant - 40, 'le montant est bien débité');
+assert(purse.spend(CURRENCY.startingGrant, 'trop cher') === false, 'dépense refusée si insuffisante');
+assert(purse.money === CURRENCY.startingGrant - 40, 'un refus ne débite rien');
+assert(purse.totalSpent === 40 && purse.totalEarned === CURRENCY.startingGrant, 'totaux suivis');
+assert(purse.history.length === 2, 'les mouvements sont journalisés');
+purse.advanceDay();
+assert(purse.day === 2, 'les jours passés sur l\'île sont comptés');
+
+// ============================================================
+//  LA GROTTE
+// ============================================================
+console.log('▶ Entrée de la grotte (surface)');
+const { CAVE, canDescendTo } = await import('../js/cave.js');
+const surface = new World(20260821);
+const mouth = surface.caveEntrance;
+assert(mouth && surface.inBounds(mouth.tx, mouth.ty), 'une entrée de grotte est placée sur l\'île');
+assert(surface.blockAt(mouth.tx, mouth.ty) === 'caveMouth', 'l\'arche sombre est posée');
+assert(surface.isSolidTile(mouth.tx, mouth.ty), 'l\'arche est solide (on ne la traverse pas)');
+assert(BLOCK_DEFS.caveMouth.breakable === false, 'l\'arche ne se casse pas');
+assert(!surface.isSolidTile(mouth.standTx, mouth.standTy), 'la case devant l\'arche est praticable');
+assert(surface.floorAt(mouth.tx, mouth.ty - 3) === 'rockFace', 'la falaise est bien là');
+assert(surface.isSolidTile(mouth.tx, mouth.ty - 3), 'la falaise bloque le passage');
+
+console.log('▶ Génération des niveaux souterrains');
+for (const depth of [1, 2, 3, 5, CAVE.maxDepth]) {
+  const cave = new World(20260821, { kind: 'cave', depth });
+  const caveFloor = cave.floor.filter((f) => f === 'caveFloor').length;
+  assert(caveFloor > 200, `prof. ${depth} : des galeries sont creusées (${caveFloor} cases)`);
+  assert(!cave.isSolidAt(cave.spawn.x, cave.spawn.y), `prof. ${depth} : l'arrivée est praticable`);
+  assert(cave.blockAt(cave.ladderDown.tx, cave.ladderDown.ty) === 'caveLadderDown',
+    `prof. ${depth} : un puits descendant existe`);
+  assert(cave.blockAt(cave.ladderUp.tx, cave.ladderUp.ty) === 'caveLadderUp',
+    `prof. ${depth} : un puits remontant existe`);
+  // Le puits descendant doit être au FOND, pas à côté de l'arrivée.
+  const distDown = Math.abs(cave.ladderDown.ty - cave.spawn.y / TILE)
+    + Math.abs(cave.ladderDown.tx - cave.spawn.x / TILE);
+  assert(distDown > 12, `prof. ${depth} : le puits descendant est loin de l'arrivée (${distDown} cases)`);
+  // Pierre et fer uniquement, comme demandé.
+  const kinds = new Set(cave.blocks.filter(Boolean));
+  const allowed = new Set(['caveStone', 'caveIron', 'caveLadderDown', 'caveLadderUp']);
+  assert([...kinds].every((k) => allowed.has(k)), `prof. ${depth} : uniquement pierre, fer et puits`);
+  assert(kinds.has('caveStone') && kinds.has('caveIron'), `prof. ${depth} : de la pierre ET du fer`);
+  // Déterminisme : deux joueurs descendent dans la même grotte.
+  const twin = new World(20260821, { kind: 'cave', depth });
+  assert(twin.floor.join('') === cave.floor.join('') && twin.blocks.join('|') === cave.blocks.join('|'),
+    `prof. ${depth} : génération déterministe`);
+}
+
+// Plus on descend, plus c'est riche (la récompense du risque).
+const ironAt = (d) => new World(20260821, { kind: 'cave', depth: d }).blocks.filter((b) => b === 'caveIron').length;
+assert(ironAt(CAVE.maxDepth) > ironAt(1), 'le fer est plus abondant au fond qu\'à l\'entrée');
+assert(new World(20260821, { kind: 'cave', depth: 1 }).merchantSpots.length === 2,
+  'les deux marchands ont leur emplacement au niveau 1');
+assert(new World(20260821, { kind: 'cave', depth: 3 }).merchantSpots.length === 0,
+  'pas de marchand au niveau 3');
+
+console.log('▶ Conditions de descente');
+assert(canDescendTo(1, { mask: null, armor: null }, ITEM_DEFS).ok, 'le niveau 1 est accessible sans équipement');
+const blocked = canDescendTo(2, { mask: null, armor: null }, ITEM_DEFS);
+assert(!blocked.ok, 'sans équipement, on ne descend pas au niveau 2');
+assert(blocked.missing.length === 2, 'les deux manques sont signalés (masque + protection)');
+assert(canDescendTo(2, { mask: 'mask_cloth', armor: 'armor_leather' }, ITEM_DEFS).ok,
+  'masque de toile + tenue de cuir → niveau 2');
+assert(!canDescendTo(3, { mask: 'mask_cloth', armor: 'armor_leather' }, ITEM_DEFS).ok,
+  'mais pas le niveau 3');
+assert(!canDescendTo(3, { mask: 'mask_filter', armor: 'armor_leather' }, ITEM_DEFS).ok,
+  'un bon masque ne suffit pas sans l\'armure assortie');
+assert(canDescendTo(4, { mask: 'mask_filter', armor: 'armor_reinforced' }, ITEM_DEFS).ok,
+  'filtre + renforcée → niveau 4');
+assert(canDescendTo(CAVE.maxDepth, { mask: 'mask_sealed', armor: 'armor_full' }, ITEM_DEFS).ok,
+  'équipement intégral → le fond de la grotte');
+
+// ============================================================
+//  MARCHANDS & NÉGOCIATION
+// ============================================================
+console.log('▶ Marchands : catalogue et coûts');
+const merchantMod = await import('../js/merchant.js');
+const {
+  MERCHANTS, MERCHANT_GOODS, costOf, suggestedPrice, createMerchantState,
+  merchantBriefing, parseMerchantReply, resolveItemId, extractLastNumber,
+} = merchantMod;
+const {
+  accountMessage, merchantReply, isMerchantAvailable,
+} = await import('../js/merchant-brain.js');
+
+assert(Object.keys(MERCHANTS).length === 2, 'deux marchands');
+const gaspard = MERCHANTS.gaspard;
+const aldric = MERCHANTS.aldric;
+assert(gaspard.slot === 'mask' && aldric.slot === 'armor', 'un marchand de masques, un marchand d\'armures');
+for (const id of Object.keys(MERCHANT_GOODS)) {
+  assert(MERCHANT_GOODS[id].production > 0 && MERCHANT_GOODS[id].transport > 0,
+    `${id} : coût de production ET de transport définis`);
+  assert(suggestedPrice(id, gaspard.margin) > costOf(id), `${id} : prix d'appel au-dessus du coût`);
+  assert(ITEM_DEFS[id] && ITEM_DEFS[id].type === 'gear', `${id} : existe comme équipement`);
+}
+assert(ITEM_DEFS.mask_cloth.maxDepth < ITEM_DEFS.mask_sealed.maxDepth,
+  'les paliers de masque donnent des profondeurs croissantes');
+assert(ITEM_DEFS.armor_leather.maxDepth < ITEM_DEFS.armor_full.maxDepth,
+  'les paliers d\'armure donnent des profondeurs croissantes');
+
+const briefing = merchantBriefing(createMerchantState('gaspard', { day: 3, totalPlayers: 1 }), ITEM_DEFS);
+assert(briefing.catalog.length === gaspard.items.length, 'le briefing liste tout le catalogue');
+assert(briefing.catalog.every((c) => c.floor > c.cost), 'le prix plancher est au-dessus du coût');
+assert(briefing.day === 3 && briefing.totalPlayers === 1, 'le briefing porte les stats du jour');
+
+console.log('▶ Commandes du marchand');
+const parsed = parseMerchantReply('Bonjour !\n/sell mask_filter 95\nAu plaisir.');
+assert(parsed.commands.length === 1, 'une commande détectée');
+assert(parsed.commands[0].type === 'sell', 'c\'est un /sell');
+assert(parsed.commands[0].price === 95, 'le prix est extrait');
+assert(!parsed.speech.includes('/sell'), 'la commande ne fuit pas dans la réplique');
+assert(parsed.speech.includes('Bonjour'), 'le texte est conservé');
+const kicked = parseMerchantReply('Dégage.\n/out');
+assert(kicked.commands[0].type === 'out', '/out détecté');
+assert(kicked.speech === 'Dégage.', 'la dernière réplique avant /out est conservée');
+assert(parseMerchantReply('Rien de spécial ici.').commands.length === 0, 'pas de commande parasite');
+assert(parseMerchantReply('/bidule 12').commands.length === 0, 'une commande inconnue est ignorée');
+
+assert(extractLastNumber('je te propose 120 écus') === 120, 'extraction d\'un prix');
+assert(extractLastNumber('100 ou 110 ?') === 110, 'on retient le dernier nombre');
+assert(extractLastNumber('pas de chiffre') === null, 'aucun nombre → null');
+assert(resolveItemId('masque à filtre', gaspard.items, ITEM_DEFS) === 'mask_filter',
+  'résolution fuzzy : « masque à filtre »');
+assert(resolveItemId('mask_sealed', gaspard.items, ITEM_DEFS) === 'mask_sealed', 'résolution par id exact');
+assert(resolveItemId('le scellé', gaspard.items, ITEM_DEFS) === 'mask_sealed', 'résolution partielle');
+assert(resolveItemId('armure', gaspard.items, ITEM_DEFS) === null,
+  'un article hors catalogue ne résout pas chez le marchand de masques');
+
+console.log('▶ Négociation (le marchand tient son rôle)');
+function talk(state, message) {
+  accountMessage(state, message);
+  return merchantReply(state, merchantBriefing(state, ITEM_DEFS), message, ITEM_DEFS);
+}
+function plainText(text) {
+  return text.split('\n').filter((l) => !l.trim().startsWith('/')).join(' ');
+}
+// Aucune trace de markdown ni de didascalie dans une réplique de marchand.
+function assertInCharacter(text, label) {
+  const speech = plainText(text);
+  assert(!/[*_~`#>]/.test(speech), `${label} : aucun markdown`);
+  assert(!/^\s*\(/m.test(speech), `${label} : aucune didascalie`);
+  assert(speech.length > 0, `${label} : il dit quelque chose`);
+}
+
+let m = createMerchantState('gaspard', { day: 2, totalPlayers: 1 });
+m.seed = 9137;
+let r = talk(m, 'Bonjour !');
+assertInCharacter(r.text, 'salutation');
+r = talk(m, 'Tu vends quoi ?');
+assert(r.text.includes('/sell'), 'il propose un article chiffré');
+assertInCharacter(r.text, 'catalogue');
+r = talk(m, 'Comment c\'est fabriqué ?');
+assertInCharacter(r.text, 'question sur la fabrication');
+assert(/hors de l|ailleurs|pas les détails|atelier/i.test(plainText(r.text)),
+  'il avoue ne pas connaître la fabrication (faite hors de l\'île)');
+
+m = createMerchantState('gaspard', { day: 1, totalPlayers: 1 });
+m.seed = 9137;
+talk(m, 'Bonjour');
+r = talk(m, 'Je veux le masque à filtre');
+const firstOffer = parseMerchantReply(r.text).commands[0];
+assert(firstOffer && firstOffer.type === 'sell', 'il annonce le masque à filtre');
+assert(firstOffer.price === suggestedPrice('mask_filter', gaspard.margin), 'au prix d\'appel');
+
+// Marchandage : une offre basse est refusée, jamais sous le plancher.
+const floorPrice = Math.round(costOf('mask_filter') * (1 + gaspard.minMargin));
+let refused = 0;
+let accepted = null;
+for (let i = 0; i < 12 && !accepted; i++) {
+  const rr = talk(m, `Je t'en donne ${Math.max(5, floorPrice - 20 + i * 4)}.`);
+  const cmds = parseMerchantReply(rr.text).commands;
+  const sell = cmds.find((c) => c.type === 'sell');
+  if (sell) assert(sell.price >= floorPrice, `contre-proposition ${sell.price} ≥ plancher ${floorPrice}`);
+  if (cmds.some((c) => c.type === 'out')) break;
+  if (floorPrice - 20 + i * 4 >= (m.currentPrice || 0)) accepted = sell;
+  else refused++;
+}
+assert(refused > 0, 'il refuse au moins une offre trop basse');
+
+// Une offre au-dessus de son prix est acceptée telle quelle.
+m = createMerchantState('gaspard', { day: 1, totalPlayers: 1 });
+m.seed = 9137;
+talk(m, 'Bonjour');
+talk(m, 'Le masque à filtre, il me le faut');
+const his = m.currentPrice;
+r = talk(m, `OK je le prends à ${his + 10}.`);
+const deal = parseMerchantReply(r.text).commands.find((c) => c.type === 'sell');
+assert(deal && deal.price === his + 10, 'une offre au-dessus du prix est acceptée telle quelle');
+assertInCharacter(r.text, 'acceptation');
+
+// Un joueur odieux finit dehors.
+m = createMerchantState('aldric', { day: 1, totalPlayers: 1 });
+m.seed = 4421;
+let outAt = -1;
+for (let i = 0; i < 10; i++) {
+  const rr = talk(m, "T'es qu'un escroc, ton stuff est pourri.");
+  if (parseMerchantReply(rr.text).commands.some((c) => c.type === 'out')) { outAt = i; break; }
+}
+assert(outAt >= 0, 'à force d\'insultes, Aldric met le joueur dehors (/out)');
+assert(outAt <= 5, `et il ne se laisse pas faire longtemps (au message ${outAt + 1})`);
+assert(!isMerchantAvailable(m), 'il n\'est plus disponible ensuite');
+assert(MERCHANTS.aldric.cooldown === 45, 'le refroidissement est bien de 45 secondes');
+
+
+console.log('\n▶ Le monsieur en costume');
+const { IntroSequence, INTRO_LINES, INTRO_SPEECH, GRANT_LINE_INDEX, INTRO_STORAGE_KEY } =
+  await import('../js/intro.js');
+{
+  // La phrase demandée, caractère pour caractère.
+  const expected = 'Bonjour et Bienvenue a Avania Monsieu. '
+    + 'Voici de l\'argents, ici l\'argent sert de monnaie meme si le troc reste possible. '
+    + 'A la fin de cette aventure la personne avec le plus d\'argents gagnera. '
+    + 'Bonne chance';
+  assert(INTRO_SPEECH === expected, 'la réplique est exactement celle demandée');
+  assert(INTRO_LINES.join(' ') === INTRO_SPEECH, 'le découpage en répliques ne modifie aucun caractère');
+  assert(INTRO_LINES.length === 4, `4 temps de parole (${INTRO_LINES.length})`);
+  assert(/Voici de l'argents/.test(INTRO_LINES[GRANT_LINE_INDEX]),
+    'l\'argent est remis sur la réplique qui l\'annonce');
+  assert(GRANT_LINE_INDEX === 1, 'et non sur la salutation');
+  assert(INTRO_STORAGE_KEY === 'avania.intro.v1', 'l\'intro est mémorisée sous sa clé');
+
+  // --- Harnais sans navigateur -------------------------------------------
+  const store = new Map();
+  const savedWindow = globalThis.window;
+  const savedLS = globalThis.localStorage;
+  globalThis.window = { addEventListener() {}, removeEventListener() {} };
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+  };
+  try {
+    const makeGame = () => {
+      const g = {
+        player: { x: 64 * TILE, y: 64 * TILE, facing: 'right' },
+        npcs: [],
+        cutscene: false,
+        cutsceneCalls: [],
+        notes: [],
+        addNpc(n) { g.npcs.push(n); },
+        removeNpc(n) { const i = g.npcs.indexOf(n); if (i >= 0) g.npcs.splice(i, 1); },
+        setCutscene(v) { g.cutscene = v; g.cutsceneCalls.push(v); },
+        notify(t) { g.notes.push(t); },
+      };
+      return g;
+    };
+
+    // 1) Déroulé complet.
+    const game = makeGame();
+    // Bourse avec stockage (bouchonné ci-dessus) : c'est là que vit le
+    // drapeau « somme déjà versée ».
+    const purse = new Wallet();
+    assert(!IntroSequence.alreadySeen(), 'l\'intro n\'a jamais été vue');
+    const intro = new IntroSequence(game, purse);
+    intro.start();
+    assert(game.cutscene === true, 'le joueur est bloqué dès le début de la scène');
+    assert(game.npcs.length === 1, 'le représentant entre en scène');
+    assert(intro.npc.x < game.player.x, 'il arrive de la gauche, hors de portée');
+
+    // Il marche jusqu'au joueur.
+    let guard = 0;
+    while (intro.phase === 'enter' && guard++ < 2000) intro.update(1 / 60);
+    assert(intro.phase === 'talk', 'il s\'arrête pour parler');
+    assert(Math.abs(intro.npc.x - (game.player.x - 44)) < 1, 'à distance de conversation');
+
+    // On lui fait dire toute sa phrase.
+    guard = 0;
+    while (intro.phase === 'talk' && guard++ < 5000) {
+      intro.typed = intro._currentLine().length;   // texte instantané
+      intro.advance();
+    }
+    assert(intro.phase === 'leave', 'puis il s\'en va');
+    assert(game.cutscene === true, 'et le joueur reste bloqué pendant son départ');
+    assert(purse.money === CURRENCY.startingGrant, 'la somme de bienvenue a été remise');
+    assert(game.notes.length === 1, 'le versement est annoncé au joueur');
+
+    guard = 0;
+    while (intro.active && guard++ < 5000) intro.update(1 / 60);
+    assert(!intro.active, 'la scène se termine');
+    assert(game.cutscene === false, 'le joueur retrouve le contrôle une fois le monsieur parti');
+    assert(game.npcs.length === 0, 'le représentant a quitté la carte');
+    assert(game.cutsceneCalls.join(',') === 'true,false', 'aucun état intermédiaire parasite');
+    assert(IntroSequence.alreadySeen(), 'l\'intro ne sera pas rejouée');
+
+    // 2) Rejouer la scène ne redonne pas d'argent.
+    const game2 = makeGame();
+    const replay = new IntroSequence(game2, purse);
+    replay.start();
+    replay.skip();
+    assert(purse.money === CURRENCY.startingGrant, 'la somme n\'est versée qu\'une seule fois');
+    let g2 = 0;
+    while (replay.active && g2++ < 5000) replay.update(1 / 60);
+    assert(game2.cutscene === false, 'un skip libère aussi le joueur');
+
+    // 3) Sauter la scène dès le début ne bloque personne.
+    const game3 = makeGame();
+    const purse3 = new Wallet();
+    const skipped = new IntroSequence(game3, purse3);
+    skipped.start();
+    skipped.skip();
+    assert(purse3.money === CURRENCY.startingGrant, 'l\'argent est quand même remis si on passe la scène');
+    let g3 = 0;
+    while (skipped.active && g3++ < 5000) skipped.update(1 / 60);
+    assert(game3.cutscene === false && game3.npcs.length === 0,
+      'aucun blocage ni PNJ fantôme après un skip');
+  } finally {
+    if (savedWindow === undefined) delete globalThis.window; else globalThis.window = savedWindow;
+    if (savedLS === undefined) delete globalThis.localStorage; else globalThis.localStorage = savedLS;
+  }
+}
+
+
+console.log('\n▶ Non-régressions (bugs trouvés par le test navigateur)');
+{
+  // 1) sanitize() ne doit pas manger les identifiants des commandes.
+  //    « /sell mask_cloth 42 » devenait « /sell maskcloth 42 » : le
+  //    souligné partait avec le markdown, l'offre n'arrivait jamais.
+  const { sanitize, interpretCommands } = await import('../js/merchant-ai.js');
+  const cleaned = sanitize('Tiens, le voilà. **Prends-le.**\n/sell mask_cloth 42');
+  assert(cleaned.includes('/sell mask_cloth 42'),
+    'sanitize préserve la commande /sell intacte');
+  assert(!/[*_#`>~]/.test(cleaned.split('\n')[0]), 'et nettoie bien le markdown de la prose');
+  assert(sanitize('rien à signaler').includes('rien à signaler'), 'la prose ordinaire passe');
+  assert(sanitize('*soupir* bonjour\n/out').endsWith('/out'), '/out survit aussi');
+
+  const st = createMerchantState('gaspard', { day: 1, totalPlayers: 1 });
+  const afterSanitize = interpretCommands({ text: cleaned }, st, ITEM_DEFS);
+  assert(afterSanitize.offer && afterSanitize.offer.item === 'mask_cloth',
+    'une réponse nettoyée produit toujours une offre exploitable');
+  assert(afterSanitize.offer.price === 42, 'au bon prix');
+
+  // 2) Le vocabulaire du joueur, pas seulement les libellés du marchand.
+  //    « ta meilleure protection » ne correspondait à rien chez Aldric
+  //    (« Tenue / Armure de minage ») : il ne proposait jamais rien.
+  const { itemMatchScore } = await import('../js/merchant.js');
+  const armors = MERCHANTS.aldric.items;
+  const bestArmor = (t) => armors
+    .map((id) => [id, itemMatchScore(t, id, ITEM_DEFS)])
+    .sort((a, b) => b[1] - a[1])[0];
+  assert(bestArmor('il me faut ta meilleure protection')[0] === 'armor_full',
+    '« ta meilleure protection » → l\'armure intégrale');
+  assert(bestArmor('une protection entiere de minage')[0] === 'armor_full',
+    '« protection entière de minage » → l\'armure intégrale');
+  assert(bestArmor('une tenue de cuir')[0] === 'armor_leather',
+    '« tenue de cuir » → la tenue de cuir');
+  const masks = MERCHANTS.gaspard.items;
+  const bestMask = (t) => masks
+    .map((id) => [id, itemMatchScore(t, id, ITEM_DEFS)])
+    .sort((a, b) => b[1] - a[1])[0];
+  assert(bestMask('le masque à filtre')[0] === 'mask_filter',
+    '« masque à filtre » → le masque à filtre (pas le premier du catalogue)');
+  assert(bestMask('ton meilleur masque')[0] === 'mask_sealed',
+    '« ton meilleur masque » → le haut de gamme');
+  assert(bestMask('un masque de toile')[0] === 'mask_cloth',
+    '« masque de toile » → l\'entrée de gamme');
+  assert(itemMatchScore('je vends des patates', 'mask_cloth', ITEM_DEFS) === 0,
+    'un propos hors catalogue ne correspond à rien');
+
+  // 3) Les marchands attendent sur le parvis, pas seulement sous terre.
+  //    world.merchantSpots n'était renseigné que pour la grotte : à la
+  //    surface, personne ne venait jamais.
+  const surface = new World(20260821);
+  assert(Array.isArray(surface.merchantSpots) && surface.merchantSpots.length === 2,
+    'la surface réserve deux emplacements de marchand');
+  const cave1 = new World(20260821, { kind: 'cave', depth: 1 });
+  assert(cave1.merchantSpots.length === 2, 'le hall du niveau 1 aussi');
+  assert(new World(20260821, { kind: 'cave', depth: 4 }).merchantSpots.length === 0,
+    'mais pas les niveaux profonds');
+  const standX = CAVE.entrance.tx * TILE + 16;
+  const standY = (CAVE.entrance.ty + 1) * TILE + 16;
+  for (const spot of surface.merchantSpots) {
+    const d = Math.hypot(spot.x - standX, spot.y - standY);
+    assert(d < 6 * TILE, `un marchand se tient près de l'arche (${Math.round(d / TILE)} tuiles)`);
+    assert(d > TILE, 'mais pas sur le joueur');
+    assert(spot.facing === 'left' || spot.facing === 'right', 'et il regarde vers l\'entrée');
+  }
+}
+
+
+console.log('\n▶ Réplique venue de Mistral (bout en bout côté client)');
+{
+  // Ce que renvoie réellement le relais quand une clé Mistral est
+  // configurée : de la prose parfois markdown, et la commande sur sa
+  // propre ligne. C'est le chemin « cloud » de askMerchant.
+  const { sanitize, interpretCommands } = await import('../js/merchant-ai.js');
+  const mistralReply = '**Bien sûr que je peux te le faire !**\n'
+    + '*Il sourit en essuyant le masque.*\n'
+    + 'Le masque scellé, étanche, réserve d\'air comprise. Fabriqué hors de\n'
+    + 'l\'île, et la traversée me coûte cher — mais pour toi, 263 écus.\n'
+    + '/sell mask_sealed 263';
+  const cleaned = sanitize(mistralReply);
+  assert(!/[*_#`>~]/.test(cleaned.split('\n').slice(0, -1).join('\n')),
+    'le markdown de la prose est retiré');
+  assert(!/Il sourit/.test(cleaned), 'la didascalie *entre astérisques* est retirée');
+  assert(/Bien sûr que je peux te le faire/.test(cleaned),
+    'mais le **gras** d\'insistance garde ses mots');
+  assert(/263 écus/.test(cleaned), 'la réplique reste intacte et lisible');
+  assert(cleaned.includes('/sell mask_sealed 263'), 'la commande survit au nettoyage');
+
+  const st = createMerchantState('gaspard', { day: 4, totalPlayers: 1 });
+  const parsed = interpretCommands({ text: cleaned }, st, ITEM_DEFS);
+  assert(parsed.offer && parsed.offer.item === 'mask_sealed',
+    'l\'offre est reconnue (article)');
+  assert(parsed.offer.price === 263, 'et chiffrée (au-dessus du plancher, donc non écrêtée)');
+  assert(!parsed.speech.includes('/sell'), 'la commande ne s\'affiche pas au joueur');
+  assert(!/\b(IA|intelligence artificielle)\b/i.test(parsed.speech),
+    'rien ne trahit un modèle derrière le marchand');
+  // Le prix ne peut pas passer sous le plancher du marchand, même si le
+  // modèle propose n'importe quoi.
+  const { MERCHANTS, merchantBriefing } = await import('../js/merchant.js');
+  const floor = merchantBriefing(st, ITEM_DEFS).catalog
+    .find((c) => c.id === 'mask_sealed').floor;
+  const absurd = interpretCommands({ text: 'Tiens.\n/sell mask_sealed 3' }, st, ITEM_DEFS);
+  assert(absurd.offer.price >= floor,
+    `un prix absurde du modèle est ramené au plancher (${absurd.offer.price} ≥ ${floor})`);
+  assert(MERCHANTS.gaspard.cooldown === 45, 'le /out garde ses 45 secondes');
+}
 
 console.log(failures === 0 ? '\n✅ Tous les tests passent' : `\n❌ ${failures} échec(s)`);
 process.exit(failures === 0 ? 0 : 1);
