@@ -2019,12 +2019,12 @@ html.low-power .craft-output.ready {
   .craft-grid--small .craft-slot { width: 42px; height: 42px; }
 }
 
-/* Bouton paramètres */
+/* Bouton paramètres — toujours seul en haut-droite, au-dessus de tout */
 .settings-btn {
   position: fixed;
   top: 16px;
   right: 16px;
-  z-index: 10;
+  z-index: 15;
   width: 42px;
   height: 42px;
   border: 2px solid #222426;
@@ -2738,13 +2738,16 @@ html.low-power .craft-output.ready {
    AVANIA — Monnaie, interactions & grotte
    ============================================================ */
 
-/* ---------------- Bourse (haut droite) ---------------- */
+/* ---------------- Bourse (déplacée en haut-gauche sous le HUD) ----------------
+   Avant la bourse était en haut-droite exactement sur le bouton paramètre
+   (right:16 top:16 pour les deux). On la déplace sous le HUD joueur en
+   haut-gauche pour libérer complètement le bouton paramètre en haut-droite. */
 .hud-right {
-  left: auto;
-  right: 16px;
-  top: 16px;
+  left: 16px;
+  right: auto;
+  top: 62px;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 8px;
 }
 .wallet {
@@ -3198,9 +3201,10 @@ html.low-power .craft-output.ready {
 }
 .mc-hint--blocked { color: #ff9c86; }
 
-/* Petits écrans : la bourse ne doit pas écraser le HUD de gauche */
+/* Petits écrans : la bourse reste sous le HUD joueur en haut-gauche,
+   jamais sur le bouton paramètre en haut-droite. */
 @media (max-width: 700px) {
-  .hud-right { top: 12px; right: 12px; }
+  .hud-right { top: 54px; left: 12px; right: auto; }
   .wallet { padding: 7px 13px 7px 11px; }
   .wallet-amount { font-size: 15px; }
   .mc-offer { flex-wrap: wrap; }

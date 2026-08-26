@@ -42,9 +42,29 @@ export function isLowPowerDevice() {
   if (typeof navigator === 'undefined') return false;
   const cores = navigator.hardwareConcurrency || 8;
   const memory = navigator.deviceMemory || 8;
+  // Heuristiques élargies : peu de cores, peu de RAM, prefers-reduced-motion,
+  // ou écran très petit (vieux portable) ou user-agent mobile basse conso
+  const smallScreen = typeof window !== 'undefined' && window.screen
+    && (window.screen.width * window.screen.height) <= 1024 * 768;
   return cores <= PERFORMANCE.LOW_POWER_CORES
     || memory <= PERFORMANCE.LOW_POWER_MEMORY_GB
-    || prefersReducedMotion();
+    || prefersReducedMotion()
+    || smallScreen;
+}
+
+export function isVeryLowPowerDevice() {
+  if (typeof navigator === 'undefined') return false;
+  const cores = navigator.hardwareConcurrency || 8;
+  const memory = navigator.deviceMemory || 8;
+  return cores <= 2
+    || memory <= 2
+    || (cores <= 3 && memory <= 3);
+}
+
+export function getPerformanceTier() {
+  if (isVeryLowPowerDevice()) return 'very-low';
+  if (isLowPowerDevice()) return 'low';
+  return 'high';
 }
 
 // Crée un canvas hors-écran de taille donnée.

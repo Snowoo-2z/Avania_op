@@ -20,12 +20,28 @@ export const PERFORMANCE = {
   // (avant, chaque chunk était dessiné à la volée dans le rendu). C'est un
   // plafond : si rien n'est à construire, le coût est nul (~0 ms).
   CHUNK_PREWARM_BUDGET_MS: 3,
+  CHUNK_PREWARM_BUDGET_MS_LOW: 1.2,
   MAX_DPR: 1.5,
   LOW_POWER_MAX_DPR: 1,
+  // Sur PC très faible on limite à 1 max, mais on préfère 0.9 pour diviser
+  // le nombre de pixels par ~2.7 vs DPR 1.5
+  VERY_LOW_POWER_MAX_DPR: 0.9,
   LOW_POWER_CORES: 4,
   LOW_POWER_MEMORY_GB: 4,
   ADAPTIVE_SAMPLE_FRAMES: 90,
   ADAPTIVE_FRAME_COST_MS: 24,
+  // Plafonds pour éviter l'explosion de draw calls
+  MAX_DROPS: 160,
+  MAX_DROPS_LOW: 48,
+  MAX_PARTICLES: 180,
+  MAX_PARTICLES_LOW: 40,
+  MAX_PARTICLES_VERY_LOW: 16,
+  // Distance de cull pour les mobs/drops (en tuiles) : au-delà on ne met pas à jour chaque frame
+  MOB_CULL_TILES: 36,
+  DROP_CULL_TILES: 30,
+  // Intervalle de rafraîchissement HUD (ms) — throttle pour réduire les reflows
+  HUD_REFRESH_MS: 120,
+  HUD_REFRESH_MS_LOW: 250,
 };
 
 // Vitesse de déplacement du joueur (px / seconde). Le personnage étant

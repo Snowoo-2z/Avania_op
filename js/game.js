@@ -24,12 +24,15 @@ import { drawCharacter } from './character.js';
 import { drawNpc } from './npc/index.js';
 import { getItemSprite } from './icons.js';
 import { drawHeldItem, heldItemIsBehind } from './held.js';
-import { isLowPowerDevice, makeCanvas } from './utils.js';
+import { isLowPowerDevice, isVeryLowPowerDevice, getPerformanceTier, makeCanvas } from './utils.js';
 import { updateFurnace, makeFurnaceEntry } from './furnace.js';
 import { MOB_DEFS, spawnMobs, updateMob, drawMob, mobDrops } from './mobs/index.js';
 import { CAVE, canDescendTo } from './cave.js';
 
 const REACH_SQ = REACH * REACH;
+// Limites effectives selon la config (remplacent les constantes en dur pour adapter au PC)
+const BASE_MAX_DROPS = PERFORMANCE.MAX_DROPS ?? 240;
+const BASE_MAX_PARTICLES = PERFORMANCE.MAX_PARTICLES ?? 240;
 const SORT_BY_Y = (a, b) => {
   const diff = a.sortY - b.sortY;
   if (diff !== 0) return diff;
@@ -52,7 +55,10 @@ const DRAW_NPC = 5;    // personnage non-joueur (représentant, marchands)
 const SWING_SPEED = 9.5;
 // Durée de vie d'un objet au sol (5 min, comme Minecraft).
 const DROP_LIFETIME = 300;
-const MAX_DROPS = 240;
+// Les limites MAX_DROPS / MAX_PARTICLES sont maintenant pilotées par PERFORMANCE
+// et par le tier de performance détecté (voir getEffectiveLimits()).
+const MAX_DROPS_FALLBACK = 240;
+const MAX_PARTICLES_FALLBACK = 240;
 // Délai avant de pouvoir ramasser un objet qu'on vient de lâcher (secondes).
 // Empêche le ramassage instantané quand Q sert aussi à se déplacer (AZERTY).
 const PICKUP_DELAY = 0.6;
@@ -331,12 +337,18 @@ export class Game {
 
     // Mode performance activé d'office sur les petites configs, puis
     // automatiquement si le coût moyen de rendu devient trop haut.
-    this.performanceMode = isLowPowerDevice();
+    // On détecte 3 tiers : high / low / very-low pour adapter finement.
+    this.performanceTier = getPerformanceTier();
+    this.performanceMode = this.performanceTier !== 'high' || isLowPowerDevice();
+    this.veryLowPower = this.performanceTier === 'very-low' || isVeryLowPowerDevice();
     this.frameCostAvg = 0;
     this.frameSamples = 0;
-    if (this.performanceMode && typeof document !== 'undefined') {
-      document.documentElement.classList.add('low-power');
+    if (typeof document !== 'undefined') {
+      if (this.performanceMode) document.documentElement.classList.add('low-power');
+      if (this.veryLowPower) document.documentElement.classList.add('very-low-power');
     }
+    // Compteur pour throttle mobs lointains
+    this._mobUpdateCounter = 0;
 
     // cible visée par la souris
     this.targetTx = -1;
@@ -428,8 +440,25 @@ export class Game {
     requestAnimationFrame(this.onFrame);
   }
 
+  getEffectiveMaxDrops() {
+    if (this.veryLowPower) return PERFORMANCE.MAX_DROPS_LOW ?? PERFORMANCE.MAX_DROPS ?? MAX_DROPS_FALLBACK;
+    if (this.performanceMode) return PERFORMANCE.MAX_DROPS_LOW ?? MAX_DROPS_FALLBACK;
+    return PERFORMANCE.MAX_DROPS ?? BASE_MAX_DROPS;
+  }
+
+  getEffectiveMaxParticles() {
+    if (this.veryLowPower) return PERFORMANCE.MAX_PARTICLES_VERY_LOW ?? PERFORMANCE.MAX_PARTICLES_LOW ?? MAX_PARTICLES_FALLBACK;
+    if (this.performanceMode) return PERFORMANCE.MAX_PARTICLES_LOW ?? MAX_PARTICLES_FALLBACK;
+    return PERFORMANCE.MAX_PARTICLES ?? BASE_MAX_PARTICLES;
+  }
+
+  getEffectivePrewarmBudget() {
+    if (this.performanceMode) return PERFORMANCE.CHUNK_PREWARM_BUDGET_MS_LOW ?? PERFORMANCE.CHUNK_PREWARM_BUDGET_MS;
+    return PERFORMANCE.CHUNK_PREWARM_BUDGET_MS;
+  }
+
   trackPerformance(frameCostMs) {
-    if (this.performanceMode) return;
+    if (this.performanceMode && this.performanceTier !== 'high') return;
     this.frameSamples++;
     this.frameCostAvg = this.frameCostAvg === 0
       ? frameCostMs
@@ -440,9 +469,19 @@ export class Game {
       && this.frameCostAvg > PERFORMANCE.ADAPTIVE_FRAME_COST_MS
     ) {
       this.performanceMode = true;
-      if (typeof document !== 'undefined') document.documentElement.classList.add('low-power');
+      this.performanceTier = 'low';
+      if (this.veryLowPower === undefined) this.veryLowPower = false;
+      // Si le coût reste très haut, on passe en very-low
+      if (this.frameCostAvg > PERFORMANCE.ADAPTIVE_FRAME_COST_MS * 1.6) {
+        this.veryLowPower = true;
+        this.performanceTier = 'very-low';
+      }
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.add('low-power');
+        if (this.veryLowPower) document.documentElement.classList.add('very-low-power');
+      }
       if (typeof window !== 'undefined') window.dispatchEvent(new Event('resize'));
-      console.info('AVANIA: mode performance activé automatiquement.');
+      console.info('AVANIA: mode performance activé automatiquement.', this.performanceTier);
     }
   }
 
@@ -527,7 +566,8 @@ export class Game {
     // Pré-construit par petits lots les chunks qui vont entrer dans la vue :
     // c'est le correctif des saccades au déplacement (plus de rasterisation
     // synchrone de chunk dans la boucle de rendu).
-    this.prewarmFloorChunks(PERFORMANCE.CHUNK_PREWARM_BUDGET_MS);
+    // Budget réduit en low-power pour éviter de bouffer la frame.
+    this.prewarmFloorChunks(this.getEffectivePrewarmBudget());
     this.updateDroppedItems(dt);
     this.updateParticles(dt);
     this.updateHeldItem(dt);
@@ -600,11 +640,41 @@ export class Game {
 
   // ------------------------------------------------------------
   //  Mobs (moutons, vaches) : errance + fuite quand on les frappe.
+  //  Optimisé pour petites configs : les mobs lointains sont mis à jour
+  //  1 frame sur 3, et au-delà de MOB_CULL_TILES on skip complètement
+  //  sauf s'ils fuient.
   // ------------------------------------------------------------
   updateMobs(dt) {
     this.mobAttackCooldown = Math.max(0, this.mobAttackCooldown - dt);
-    for (const mob of this.mobs) {
+    this._mobUpdateCounter = (this._mobUpdateCounter + 1) | 0;
+    const cullSq = (PERFORMANCE.MOB_CULL_TILES * TILE) ** 2;
+    const px = this.player.x;
+    const py = this.player.y;
+    const frame = this._mobUpdateCounter;
+
+    for (let i = 0; i < this.mobs.length; i++) {
+      const mob = this.mobs[i];
       if (!mob.alive) continue;
+      const dx = mob.x - px;
+      const dy = mob.y - py;
+      const distSq = dx * dx + dy * dy;
+      const isFar = distSq > cullSq;
+      const isFleeing = mob.fleeT > 0;
+
+      // En low-power, les mobs très lointains qui ne fuient pas sont ignorés
+      if (isFar && !isFleeing) {
+        if (this.performanceMode) {
+          // Update 1/4 en low-power pour garder un peu de vie
+          if ((i + frame) % 4 !== 0) continue;
+        } else {
+          // Même en high, on throttle les très lointains
+          if ((i + frame) % 3 !== 0) continue;
+        }
+      } else if (isFar) {
+        // Lointain mais en fuite : update 1/2
+        if ((i + frame) % 2 !== 0) continue;
+      }
+
       updateMob(mob, dt, this.world, this.player);
     }
   }
@@ -992,8 +1062,9 @@ export class Game {
 
   spawnHitParticles(x, y) {
     if (!this._particlesEnabled()) return;
-    if (this.particles.length > MAX_PARTICLES) return;
-    const count = this.performanceMode ? 3 : 5;
+    if (this.particles.length >= this.getEffectiveMaxParticles()) return;
+    // Très faible config : presque pas de particules de hit
+    const count = this.veryLowPower ? 1 : this.performanceMode ? 2 : 5;
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = 30 + Math.random() * 40;
@@ -1165,10 +1236,11 @@ export class Game {
   // Petite bouffée de particules quand une porte s'ouvre / se ferme.
   spawnDoorPuff(tx, ty, open) {
     if (!this._particlesEnabled()) return;
-    if (this.particles.length > MAX_PARTICLES) return;
+    if (this.veryLowPower) return; // skip complet en très basse qualité
+    if (this.particles.length >= this.getEffectiveMaxParticles()) return;
     const cx = tx * TILE + TILE / 2;
     const cy = ty * TILE + TILE / 2;
-    const count = this.performanceMode ? 3 : 5;
+    const count = this.performanceMode ? 2 : 5;
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = 18 + Math.random() * 26;
@@ -1319,9 +1391,15 @@ export class Game {
   // Plafonne le nombre d'objets au sol : si le maximum est dépassé, le plus
   // vieux objet disparaît (léger nuage de fumée pour prévenir le joueur).
   limitDrops() {
-    if (this.droppedItems.length <= MAX_DROPS) return;
-    const oldest = this.droppedItems.shift();
-    this.spawnBreakParticles(Math.floor(oldest.x / TILE), Math.floor(oldest.y / TILE), oldest.id);
+    const max = this.getEffectiveMaxDrops();
+    if (this.droppedItems.length <= max) return;
+    // En low-power on supprime plus agressivement : pas de particules
+    while (this.droppedItems.length > max) {
+      const oldest = this.droppedItems.shift();
+      if (!this.performanceMode) {
+        this.spawnBreakParticles(Math.floor(oldest.x / TILE), Math.floor(oldest.y / TILE), oldest.id);
+      }
+    }
   }
 
   updateDroppedItems(dt) {
@@ -1337,6 +1415,9 @@ export class Game {
     const friction = 1 - Math.min(1, dt * 4.2);
     const gravity = 480 * dt;
     const MERGE_SQ = 22 * 22;
+    const maxDrops = this.getEffectiveMaxDrops();
+    // Distance de cull : au-delà on ne fait plus de physique complète
+    const cullSq = (PERFORMANCE.DROP_CULL_TILES * TILE) ** 2;
 
     // Grille spatiale (un seau par tuile) pour la fusion des piles :
     // deux piles qui fusionnent sont à moins de 22 px l'une de l'autre,
@@ -1355,21 +1436,33 @@ export class Game {
       else grid.set(key, [d]);
     }
 
+    // En very-low on évite de reconstruire la grille de fusion chaque frame si trop de drops
+    const skipMerge = this.veryLowPower && items.length > 20;
+
     for (let n = items.length - 1; n >= 0; n--) {
       const d = items[n];
 
-      // léger élan au lâcher, amorti par friction + petit rebond
-      d.x += d.vx * dt;
-      d.y += d.vy * dt;
-      d.vx *= friction;
-      d.vy *= friction;
-      if (d.hop > 0 || d.hopV !== 0) {
-        d.hopV -= gravity;
-        d.hop += d.hopV * dt;
-        if (d.hop < 0) {
-          d.hop = 0;
-          d.hopV *= -0.36;
-          if (Math.abs(d.hopV) < 22) d.hopV = 0;
+      const dx = px - d.x;
+      const dy = py - d.y;
+      const distSq = dx * dx + dy * dy;
+      const isFar = distSq > cullSq;
+
+      // Physique seulement si proche (ou si pas en low-power)
+      // En low-power on skip la physique des drops lointains pour économiser CPU
+      if (!isFar || !this.performanceMode) {
+        // léger élan au lâcher, amorti par friction + petit rebond
+        d.x += d.vx * dt;
+        d.y += d.vy * dt;
+        d.vx *= friction;
+        d.vy *= friction;
+        if (d.hop > 0 || d.hopV !== 0) {
+          d.hopV -= gravity;
+          d.hop += d.hopV * dt;
+          if (d.hop < 0) {
+            d.hop = 0;
+            d.hopV *= -0.36;
+            if (Math.abs(d.hopV) < 22) d.hopV = 0;
+          }
         }
       }
 
@@ -1381,13 +1474,10 @@ export class Game {
         continue;
       }
 
-      const dx = px - d.x;
-      const dy = py - d.y;
-      const distSq = dx * dx + dy * dy;
-
       // Ramassage direct dès qu'on marche dessus.
       // Délai anti-ramassage instantané après un lâcher (Q en AZERTY).
-      if (distSq < PICKUP_SQ && (this.time - d.born) >= PICKUP_DELAY) {
+      // On ne ramasse que si pas trop loin (évite de scanner tous les drops)
+      if (!isFar && distSq < PICKUP_SQ && (this.time - d.born) >= PICKUP_DELAY) {
         const added = this.inventory.add(d.id, d.count);
         if (added >= d.count) {
           d.gone = true;
@@ -1406,7 +1496,7 @@ export class Game {
       // On ne teste que les seaux des 9 tuiles voisines (grille spatiale)
       // et l'on choisit, comme dans la version d'origine, la pile valide
       // la plus récente (ord le plus grand, strictement avant n).
-      if (d.count < 64 && items.length < MAX_DROPS) {
+      if (!skipMerge && !isFar && d.count < 64 && items.length < maxDrops) {
         const ctx0 = ((d.x / TILE) | 0) + 1024;
         const cty0 = ((d.y / TILE) | 0) + 1024;
         let best = null;
@@ -1463,12 +1553,13 @@ export class Game {
   // ------------------------------------------------------------
   spawnBreakParticles(tx, ty, blockId) {
     if (!this._particlesEnabled()) return;
-    if (this.particles.length > MAX_PARTICLES) return;
+    if (this.particles.length >= this.getEffectiveMaxParticles()) return;
     const colors = BREAK_PARTICLE_COLORS[blockId]
       || [BLOCK_DEFS[blockId]?.color || '#cfcfcf'];
     const cx = tx * TILE + TILE / 2;
     const cy = ty * TILE + TILE / 2;
-    const count = this.performanceMode ? 6 : 12;
+    // Nombre drastiquement réduit en low/very-low
+    const count = this.veryLowPower ? 2 : this.performanceMode ? 4 : 12;
 
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
@@ -1619,8 +1710,10 @@ export class Game {
     // Surface de l'eau animée : les tuiles d'eau (indexées par chunk)
     // sont redessinées avec la frame courante par-dessus le chunk figé.
     // Hors des berges il n'y a aucune eau : le surcoût est nul.
-    const waterFrame = Math.floor(this.time * 2.5) % WATER_FRAMES;
-    const waterImg = getWaterFrame(waterFrame);
+    // En low-power on fige l'eau (frame 0) pour éviter 2.5 anim/s + drawImage par tuile d'eau
+    const waterImg = this.performanceMode
+      ? getWaterFrame(0)
+      : getWaterFrame(Math.floor(this.time * 2.5) % WATER_FRAMES);
 
     for (let cy = chunkT; cy <= chunkB; cy++) {
       for (let cx = chunkL; cx <= chunkR; cx++) {
@@ -1904,6 +1997,7 @@ export class Game {
 
   // Objet posé au sol : ombre douce + sprite qui rebondit légèrement.
   // Un petit "pop" d'apparition adoucit le lâcher.
+  // En very-low on supprime ombre + bob sin() pour économiser CPU/GPU
   drawDrop(ctx, drop) {
     const sprite = getItemSprite(drop.id);
     const base = 0.46;
@@ -1911,17 +2005,19 @@ export class Game {
     const pop = Math.min(1, age / 0.16);
     const scale = base * (0.6 + 0.4 * pop);
     const size = 32 * scale;
-    const bob = Math.sin(this.time * 4 + drop.x * 0.13) * 1.4;
+    let bob = 0;
+    if (!this.veryLowPower) bob = Math.sin(this.time * 4 + drop.x * 0.13) * 1.4;
     const hop = drop.hop || 0;
     const y = drop.y - bob - hop;
 
-    const shadow = this.getDropShadow(size * 0.52, size * 0.2);
-    ctx.drawImage(shadow.canvas, drop.x - shadow.w / 2, drop.y + 5 - shadow.h / 2, shadow.w, shadow.h);
+    if (!this.veryLowPower) {
+      const shadow = this.getDropShadow(size * 0.52, size * 0.2);
+      ctx.drawImage(shadow.canvas, drop.x - shadow.w / 2, drop.y + 5 - shadow.h / 2, shadow.w, shadow.h);
+    }
 
     if (sprite) {
       ctx.drawImage(sprite, drop.x - size / 2, y - size / 2, size, size);
     } else {
-      // filet de sécurité si le sprite n'est pas prêt
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(drop.x - size / 2, y - size / 2, size, size);
     }

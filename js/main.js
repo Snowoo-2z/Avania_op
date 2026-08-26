@@ -47,10 +47,14 @@ document.documentElement.classList.toggle('low-power', lowPowerDevice);
 
 function targetDpr() {
   const nativeDpr = window.devicePixelRatio || 1;
-  const forceLowPower = document.documentElement.classList.contains('low-power');
-  const cap = (lowPowerDevice || forceLowPower)
-    ? PERFORMANCE.LOW_POWER_MAX_DPR
-    : PERFORMANCE.MAX_DPR;
+  const isLow = document.documentElement.classList.contains('low-power');
+  // Si on est en very-low (détecté via game ou classe supplémentaire), on cap encore plus bas
+  const isVeryLow = document.documentElement.classList.contains('very-low-power')
+    || (window.__game && window.__game.veryLowPower);
+  let cap;
+  if (isVeryLow) cap = PERFORMANCE.VERY_LOW_POWER_MAX_DPR;
+  else if (lowPowerDevice || isLow) cap = PERFORMANCE.LOW_POWER_MAX_DPR;
+  else cap = PERFORMANCE.MAX_DPR;
   return Math.min(nativeDpr, cap);
 }
 
@@ -571,8 +575,9 @@ async function boot() {
   });
 
   // Le HUD est rafraîchi à 2 Hz, mais on n'écrit dans le DOM que lorsque
-  // la valeur a changé : deux textContent par demi-seconde suffisent à
+  // la valeur a vraiment changé : deux textContent par demi-seconde suffisent à
   // déclencher un recalcul de style pour rien sur les petites configs.
+  // En low-power on passe à ~4 Hz inverse : intervalle plus long pour réduire les reflows.
   let lastHudName = null;
   let lastHudPlayers = null;
   function refreshHUD() {
@@ -587,7 +592,10 @@ async function boot() {
     walletHUD.setDepth(game.world);
   }
   refreshHUD();
-  setInterval(refreshHUD, 500);
+  const hudInterval = (lowPowerDevice || document.documentElement.classList.contains('low-power'))
+    ? PERFORMANCE.HUD_REFRESH_MS_LOW
+    : PERFORMANCE.HUD_REFRESH_MS;
+  setInterval(refreshHUD, hudInterval);
 
   window.__game = game;
 }

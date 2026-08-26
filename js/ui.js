@@ -277,21 +277,33 @@ export class WalletHUD {
       if (this.el.amount) {
         this.el.amount.textContent = formatMoney(value);
         // Petit « bump » à chaque changement : le joueur voit sa bourse vivre.
-        this.el.amount.classList.remove('bump');
-        void this.el.amount.offsetWidth;
-        this.el.amount.classList.add('bump');
-        clearTimeout(this._bumpTimer);
-        this._bumpTimer = setTimeout(() => this.el.amount.classList.remove('bump'), 180);
+        // En low-power on évite le reflow forcé + animation
+        const low = typeof document !== 'undefined' && document.documentElement.classList.contains('low-power');
+        if (!low) {
+          this.el.amount.classList.remove('bump');
+          void this.el.amount.offsetWidth;
+          this.el.amount.classList.add('bump');
+          clearTimeout(this._bumpTimer);
+          this._bumpTimer = setTimeout(() => this.el.amount.classList.remove('bump'), 180);
+        }
       }
     }
     if (delta && this.el.delta) {
       const gain = delta > 0;
       this.el.delta.textContent = `${gain ? '+' : '−'}${formatMoney(Math.abs(delta))}`;
       this.el.delta.className = `wallet-delta ${gain ? 'gain' : 'loss'}`;
-      void this.el.delta.offsetWidth;
-      this.el.delta.classList.add('show');
-      clearTimeout(this._deltaTimer);
-      this._deltaTimer = setTimeout(() => this.el.delta.classList.remove('show'), 1500);
+      const low = typeof document !== 'undefined' && document.documentElement.classList.contains('low-power');
+      if (!low) {
+        void this.el.delta.offsetWidth;
+        this.el.delta.classList.add('show');
+        clearTimeout(this._deltaTimer);
+        this._deltaTimer = setTimeout(() => this.el.delta.classList.remove('show'), 1500);
+      } else {
+        // En low-power on affiche le delta sans animation
+        this.el.delta.classList.add('show');
+        clearTimeout(this._deltaTimer);
+        this._deltaTimer = setTimeout(() => this.el.delta.classList.remove('show'), 800);
+      }
     }
   }
 
