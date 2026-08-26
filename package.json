@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "test": "node test/smoke.mjs"
+    "test": "node test/smoke.mjs",
+    "test:browser": "node test/browser-boot.mjs",
+    "test:relay": "node test/merchant-relay.mjs",
+    "bench": "node scripts/frame-bench.mjs"
   },
   "license": "MIT",
   "engines": {
@@ -13,6 +16,7 @@
   },
   "dependencies": {},
   "devDependencies": {
-    "@napi-rs/canvas": "^1.0.7"
+    "@napi-rs/canvas": "^1.0.7",
+    "jsdom": "^30.0.1"
   }
 }

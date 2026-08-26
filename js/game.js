@@ -16,16 +16,18 @@ import { Inventory } from './inventory.js';
 import {
   buildTileset, getTileCanvas, getDoorCanvas, getFurnaceCanvas, getWaterFrame,
   getChestFrame, CHEST_TOP_PAD,
-  drawTreeObject, drawRockObject, drawIronOreObject,
+  drawTreeObject, drawRockObject, drawIronOreObject, drawCaveObject,
   getObjectSprite, getObjectSpriteInfo, treeVariantAt, treeDropCount,
   treeBreakTime, TREE_VARIANTS, WATER_FRAMES, isExtrudedBlock, drawBlockConnected,
 } from './tileset.js';
 import { drawCharacter } from './character.js';
+import { drawNpc } from './npc/index.js';
 import { getItemSprite } from './icons.js';
 import { drawHeldItem, heldItemIsBehind } from './held.js';
 import { isLowPowerDevice, makeCanvas } from './utils.js';
 import { updateFurnace, makeFurnaceEntry } from './furnace.js';
 import { MOB_DEFS, spawnMobs, updateMob, drawMob, mobDrops } from './mobs/index.js';
+import { CAVE, canDescendTo } from './cave.js';
 
 const REACH_SQ = REACH * REACH;
 const SORT_BY_Y = (a, b) => {
@@ -44,6 +46,7 @@ const DRAW_DROP = 1;   // objet lâché au sol
 const DRAW_MOB = 2;    // animal
 const DRAW_PLAYER = 3; // joueur
 const DRAW_PLACED_BLOCK = 4; // bloc posé (mur, porte, four)
+const DRAW_NPC = 5;    // personnage non-joueur (représentant, marchands)
 // Vitesse du balancement de l'outil pendant le minage (rad/s) : un va-et-
 // vient complet ≈ 0,66 s, comme le geste de la main dans Minecraft.
 const SWING_SPEED = 9.5;
@@ -53,6 +56,10 @@ const MAX_DROPS = 240;
 // Délai avant de pouvoir ramasser un objet qu'on vient de lâcher (secondes).
 // Empêche le ramassage instantané quand Q sert aussi à se déplacer (AZERTY).
 const PICKUP_DELAY = 0.6;
+// Distance (au carré) à laquelle on peut interpeller un PNJ avec la
+// touche d'interaction. Un peu plus large que le minage : parler à
+// quelqu'un ne demande pas la même précision que casser un bloc.
+const INTERACT_NPC_SQ = 54 * 54;
 
 // Couleurs des particules de casse, par ressource. Des carrés pixelisés
 // de la même palette que la ressource, pour un débris cohérent.
@@ -195,6 +202,11 @@ export class Game {
     this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
     this.ctx.imageSmoothingEnabled = false;
     this.world = new World();
+    // L'île reste référencée même quand on est sous terre : c'est là
+    // qu'on remonte. Les niveaux de la grotte sont générés à la demande
+    // puis conservés (la grotte ne change pas entre deux descentes).
+    this.surfaceWorld = this.world;
+    this.caveLevels = new Map();
     this.player = new Player(this.world.spawn.x, this.world.spawn.y, appearance);
     this.input = new Input();
     this.inventory = new Inventory();
@@ -221,7 +233,32 @@ export class Game {
     // Coffres posés : 27 cases de rangement (clé = index de tuile).
     this.chestData = new Map();
     // Rappels branchés par l'UI (ex. ouvrir le panneau du four / du coffre).
-    this.uiCallbacks = { openFurnace: null, openChest: null };
+    this.uiCallbacks = {
+      openFurnace: null,
+      openChest: null,
+      onMoney: null,
+      onEnterCave: null,
+      onExitCave: null,
+      onDescend: null,
+      onTalk: null,
+      onInteractBlocked: null,
+    };
+    // PNJ (représentant de l'île, marchands de la grotte).
+    this.npcs = [];
+    // PNJ le plus proche avec qui interagir (touche F) : { npc | tile, label }
+    this.interactTarget = null;
+    // Une cinématique bloque les entrées (arrivée du représentant).
+    this.cutscene = false;
+    // État conservé par dimension (fours, coffres, objets au sol, mobs) :
+    // descendre dans la grotte ne doit rien faire perdre de ce qui se
+    // trouve à la surface, et inversement.
+    this.dimStates = new Map();
+    // Équipement porté (masque + protection de minage).
+    this.gear = { mask: null, armor: null, maxDepth: 1 };
+    // Le meilleur équipement possédé est équipé automatiquement dès qu'un
+    // objet entre ou sort de l'inventaire : acheter un masque suffit.
+    this.inventory.subscribe(() => this.refreshGear());
+    this.refreshGear();
     // Particules de casse (débris légers, courte durée de vie).
     this.particles = [];
     this.lastTime = performance.now();
@@ -244,6 +281,9 @@ export class Game {
     for (const variant of TREE_VARIANTS) registerObjectCracks(`tree:${variant}`, 'tree', variant);
     registerObjectCracks('rock', 'rock');
     registerObjectCracks('ironOre', 'ironOre');
+    // Ressources de la grotte : mêmes sprites de fissures, à leur taille.
+    registerObjectCracks('caveStone', 'caveStone');
+    registerObjectCracks('caveIron', 'caveIron');
     // Rendu optimisé : le sol est rendu par chunks statiques au lieu
     // d'être redessiné tuile par tuile à chaque frame. Les objets
     // statiques (arbres, rochers) et les tuiles d'eau sont indexés par
@@ -256,11 +296,24 @@ export class Game {
     this.staticObjectMap = new Map();
     this.staticObjectsByChunk = new Map();
     this.waterTilesByChunk = new Map();
+    // Blocs POSÉS par le joueur (murs, portes, fours, coffres), indexés par
+    // chunk exactement comme les ressources naturelles. Avant, le rendu
+    // rescannait toute la fenêtre de tuiles (~640 cases) à chaque frame pour
+    // les retrouver ; dans un village construit ça devenait le poste le plus
+    // cher du rendu. L'index est reconstruit chunk par chunk à chaque pose /
+    // casse (action joueur, jamais par frame).
+    this.placedByChunk = new Map();
     this.rebuildStaticObjects();
     // Pré-construit les chunks de sol de la zone de départ (vue + marge)
     // AVANT la première frame : rien à rasteriser à la volée au démarrage.
     this.prewarmFloorChunks(Infinity);
     this.drawables = [];
+    // Réserve d'enveloppes réutilisables pour les blocs posés : le tri de
+    // profondeur a besoin d'objets {sortY, dy…}, mais en allouer ~200 par
+    // frame dans un village construit saturait le ramasse-miettes. On les
+    // réutilise d'une frame à l'autre (zéro allocation dans la boucle chaude).
+    this.blockDrawables = [];
+    this.blockDrawableCount = 0;
     this.nameTagCache = new Map();
     // Sprites pré-rendus : surbrillance de la cible et ombres ovales
     // des objets au sol (clés numériques, aucune allocation par frame).
@@ -271,6 +324,10 @@ export class Game {
     this.vignetteCanvas = null;
     this.vignetteW = 0;
     this.vignetteH = 0;
+    // Fenêtre de chunks préchauffée au passage précédent (voir
+    // prewarmFloorChunks : évite de revérifier le cache à chaque frame
+    // quand la caméra ne bouge pas).
+    this._prewarmRectKey = undefined;
 
     // Mode performance activé d'office sur les petites configs, puis
     // automatiquement si le coût moyen de rendu devient trop haut.
@@ -299,6 +356,8 @@ export class Game {
     this.lastHeldId = null;
     this.lastHeldSlot = -1;
 
+    // Vecteur nul réutilisé pendant les cinématiques (zéro allocation).
+    this._zeroDir = { x: 0, y: 0 };
     this.running = false;
     this.onFrame = this.onFrame.bind(this);
   }
@@ -361,6 +420,10 @@ export class Game {
     this.update(dt);
     this.render();
     this.trackPerformance(performance.now() - renderStart);
+    // Crochet d'interface, appelé après le rendu de la frame :
+    //  - la cinématique d'arrivée y est pilotée (elle a besoin de dt) ;
+    //  - l'invite d'interaction y suit la cible, donc après le rendu.
+    if (this.uiCallbacks.onFrameEnd) this.uiCallbacks.onFrameEnd(dt);
 
     requestAnimationFrame(this.onFrame);
   }
@@ -432,22 +495,33 @@ export class Game {
         this.camera.zoom = targetZoom;
       }
       // Quand le zoom effectif change notablement, on invalide les caches
-      // dépendant de la résolution : floor chunks + highlight sprites +
-      // nametags. On arrondit pour ne pas invalider à chaque micro-frame.
+      // qui dépendent de la RÉSOLUTION ÉCRAN : surbrillance, étiquettes de
+      // nom et vignette.
+      //
+      // Les chunks de sol, eux, sont rasterisés en PIXELS MONDE puis blittés
+      // dans le repère zoomé : leur contenu ne dépend pas du zoom. Les vider
+      // à chaque cran de zoom forçait la reconstruction synchrone de tous
+      // les chunks visibles (256 drawImage chacun) — un à-coup visible à
+      // chaque réglage. On garde le cache et on préchauffe simplement la
+      // zone élargie par le dézoom.
       const roundedZoom = Math.round(this.camera.zoom * 4);
       if (this._lastRoundedZoom !== undefined && this._lastRoundedZoom !== roundedZoom) {
-        this.floorChunkCache.clear();
         this.highlightCache.clear();
         this.nameTagCache.clear();
         this.vignetteCanvas = null;
-        // Reconstruit immédiatement les chunks visibles pour éviter un
-        // flash noir / trou pendant la transition de zoom.
+        // Un dézoom élargit la surface visible : on préchauffe les chunks
+        // qui entrent dans la vue pour éviter tout trou / construction à
+        // la volée pendant la transition.
         this.prewarmFloorChunks(8);
       }
       this._lastRoundedZoom = roundedZoom;
     }
 
-    const dir = this.input.getDirection();
+    this.updateNpcs(dt);
+
+    // Pendant une cinématique (l'arrivée du représentant), le joueur ne
+    // contrôle plus rien : on ignore simplement ses entrées.
+    const dir = this.cutscene ? this._zeroDir : this.input.getDirection();
     this.player.update(dir, dt, this.world);
     this.camera.follow(this.player.x, this.player.y, dt);
     // Pré-construit par petits lots les chunks qui vont entrer dans la vue :
@@ -460,9 +534,15 @@ export class Game {
     this.updateMobs(dt);
 
     this.updateTarget();
-    this.handleHotbarKeys();
-    this.handleDropKey();
-    this.handleClicks(dt);
+    this.updateInteractTarget();
+    if (!this.cutscene) {
+      this.handleHotbarKeys();
+      this.handleDropKey();
+      if (this.input.pressed('interact')) this.handleInteract();
+      this.handleClicks(dt);
+    } else {
+      this.resetMining();
+    }
     // Jette les edges non consommés (clic sans holder, molette inutilisée…).
     this.input.endFrame();
   }
@@ -527,6 +607,321 @@ export class Game {
       if (!mob.alive) continue;
       updateMob(mob, dt, this.world, this.player);
     }
+  }
+
+  // ------------------------------------------------------------
+  //  PNJ (représentant de l'île, marchands de la grotte)
+  // ------------------------------------------------------------
+  addNpc(npc) {
+    if (!npc) return null;
+    if (npc.dy === undefined) npc.dy = DRAW_NPC;
+    if (npc.visible === undefined) npc.visible = true;
+    if (npc.scale === undefined) npc.scale = 1;
+    if (!this.npcs.includes(npc)) this.npcs.push(npc);
+    return npc;
+  }
+
+  removeNpc(npc) {
+    const i = this.npcs.indexOf(npc);
+    if (i >= 0) this.npcs.splice(i, 1);
+    if (this.interactTarget && this.interactTarget.npc === npc) this.interactTarget = null;
+  }
+
+  updateNpcs(dt) {
+    for (const npc of this.npcs) {
+      npc.time = this.time;
+      if (typeof npc.onUpdate === 'function') npc.onUpdate(npc, dt, this);
+    }
+  }
+
+  // Une cinématique (arrivée du représentant) fige les entrées du joueur.
+  setCutscene(on) {
+    this.cutscene = Boolean(on);
+    if (this.cutscene) {
+      this.input.mouse.leftClicked = false;
+      this.input.mouse.rightClicked = false;
+      this.input.mouse.leftDown = false;
+      this.input.mouse.rightDown = false;
+      this.input.keys.clear();
+      this.resetMining();
+    }
+  }
+
+  // ------------------------------------------------------------
+  //  Équipement de la grotte (masque + protection de minage)
+  //  On équipe automatiquement le MEILLEUR de chaque type possédé :
+  //  acheter un masque suffit, aucune manipulation supplémentaire.
+  // ------------------------------------------------------------
+  refreshGear() {
+    const slots = this.inventory.slots;
+    let mask = null;
+    let armor = null;
+    let maskDepth = 0;
+    let armorDepth = 0;
+    for (let i = 0; i < slots.length; i++) {
+      const stack = slots[i];
+      if (!stack) continue;
+      const def = ITEM_DEFS[stack.id];
+      if (!def || def.type !== 'gear') continue;
+      const depth = def.maxDepth || 1;
+      if (def.gearSlot === 'mask' && depth > maskDepth) { mask = stack.id; maskDepth = depth; }
+      else if (def.gearSlot === 'armor' && depth > armorDepth) { armor = stack.id; armorDepth = depth; }
+    }
+    const changed = mask !== this.gear.mask || armor !== this.gear.armor;
+    this.gear.mask = mask;
+    this.gear.armor = armor;
+    this.gear.maxDepth = Math.min(maskDepth || 1, armorDepth || 1);
+    if (changed && typeof this.uiCallbacks.onGearChange === 'function') {
+      this.uiCallbacks.onGearChange(this.gear);
+    }
+    return this.gear;
+  }
+
+  // Bonus de vitesse de minage apporté par l'équipement. On prend le
+  // meilleur des deux (pas de cumul multiplicatif : ça resterait lisible).
+  gearMiningBoost() {
+    const m = this.gear.mask ? ITEM_DEFS[this.gear.mask]?.miningBoost || 1 : 1;
+    const a = this.gear.armor ? ITEM_DEFS[this.gear.armor]?.miningBoost || 1 : 1;
+    return Math.max(m, a);
+  }
+
+  // ------------------------------------------------------------
+  //  Interaction (touche F) : entrée de grotte, puits, marchands
+  // ------------------------------------------------------------
+  updateInteractTarget() {
+    this.interactTarget = null;
+    if (this.cutscene) return;
+
+    // 1) Un PNJ tout près passe en premier : c'est l'interaction la
+    //    plus probable quand on est debout devant quelqu'un.
+    let bestNpc = null;
+    let bestDist = INTERACT_NPC_SQ;
+    for (const npc of this.npcs) {
+      if (!npc.visible || !npc.talkable) continue;
+      const dx = npc.x - this.player.x;
+      const dy = npc.y - this.player.y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < bestDist) {
+        bestDist = distSq;
+        bestNpc = npc;
+      }
+    }
+    if (bestNpc) {
+      this.interactTarget = {
+        npc: bestNpc,
+        label: `Parler à ${bestNpc.name}`,
+        action: 'talk',
+      };
+      return;
+    }
+
+    // 2) Sinon, un point de passage à portée de main.
+    const tx = this.targetTx;
+    const ty = this.targetTy;
+    if (!this.inReach || !this.world.inBounds(tx, ty)) return;
+    const block = this.world.blockAt(tx, ty);
+    if (block === 'caveMouth') {
+      this.interactTarget = { label: 'Entrer dans la grotte', action: 'enterCave' };
+    } else if (block === 'caveLadderDown') {
+      const next = (this.world.depth || 0) + 1;
+      this.interactTarget = { label: `Descendre — profondeur ${next}`, action: 'descend' };
+    } else if (block === 'caveLadderUp') {
+      const depth = this.world.depth || 0;
+      this.interactTarget = depth <= 1
+        ? { label: 'Sortir de la grotte', action: 'exitCave' }
+        : { label: `Remonter — profondeur ${depth - 1}`, action: 'ascend' };
+    }
+  }
+
+  handleInteract() {
+    const target = this.interactTarget;
+    if (!target || this.actionCooldown > 0) return;
+    this.actionCooldown = 0.3;
+
+    if (target.action === 'talk' && target.npc) {
+      if (target.npc.cooldownUntil && this.time < target.npc.cooldownUntil) {
+        const left = Math.ceil(target.npc.cooldownUntil - this.time);
+        this.notify(`${target.npc.name} ne veut plus te voir (${left} s).`);
+        return;
+      }
+      if (this.uiCallbacks.onTalk) this.uiCallbacks.onTalk(target.npc);
+      return;
+    }
+    if (target.action === 'enterCave') { this.enterCave(); return; }
+    if (target.action === 'exitCave') { this.exitCave(); return; }
+    if (target.action === 'ascend') { this.ascend(); return; }
+    if (target.action === 'descend') { this.descend(); return; }
+  }
+
+  // ------------------------------------------------------------
+  //  Changement de dimension (surface ⇄ grotte)
+  // ------------------------------------------------------------
+
+  // Sauvegarde / restaure ce qui vit dans un monde donné. Sans ça,
+  // descendre dans la grotte viderait les fours et ferait disparaître
+  // les objets posés au sol à la surface.
+  _saveDimState() {
+    const world = this.world;
+    if (!world) return;
+    this.dimStates.set(world.id, {
+      furnaceData: this.furnaceData,
+      chestData: this.chestData,
+      droppedItems: this.droppedItems,
+      mobs: this.mobs,
+    });
+  }
+
+  _restoreDimState(world) {
+    const saved = this.dimStates.get(world.id);
+    if (saved) {
+      this.furnaceData = saved.furnaceData;
+      this.chestData = saved.chestData;
+      this.droppedItems = saved.droppedItems;
+      this.mobs = saved.mobs;
+    } else {
+      this.furnaceData = new Map();
+      this.chestData = new Map();
+      this.droppedItems = [];
+      // Pas d'animaux sous terre.
+      this.mobs = world.kind === 'cave' ? [] : spawnMobs(world);
+      for (const mob of this.mobs) mob.dy = DRAW_MOB;
+    }
+  }
+
+  // Bascule sur un autre monde : on échange le monde, on reconstruit
+  // tous les index (objets statiques, blocs posés, eau), on vide les
+  // caches dépendants de la résolution et on repositionne la caméra.
+  switchWorld(world, spawnX, spawnY) {
+    this._saveDimState();
+    this.world = world;
+    this._restoreDimState(world);
+
+    this.floorChunkCache.clear();
+    this._prewarmRectKey = undefined;
+    this.highlightCache.clear();
+    this.vignetteCanvas = null;
+    this.particles.length = 0;
+    this.resetMining();
+
+    this.rebuildStaticObjects(); // reconstruit aussi l'index des blocs posés
+    this.prewarmFloorChunks(Infinity);
+
+    this.player.x = spawnX;
+    this.player.y = spawnY;
+    this.player.sortY = spawnY;
+    this.camera.snapTo(spawnX, spawnY);
+    this.updateTarget();
+    this.refreshGear();
+  }
+
+  // Niveau souterrain demandé (généré une seule fois, puis réutilisé :
+  // la grotte ne change pas entre deux descentes).
+  getCaveLevel(depth) {
+    let world = this.caveLevels && this.caveLevels.get(depth);
+    if (!world) {
+      if (!this.caveLevels) this.caveLevels = new Map();
+      world = new World(this.world.seed, { kind: 'cave', depth });
+      this.caveLevels.set(depth, world);
+    }
+    return world;
+  }
+
+  enterCave() {
+    const level = this.getCaveLevel(1);
+    // Les marchands attendent dans le hall d'entrée.
+    if (this.uiCallbacks.onEnterCave) this.uiCallbacks.onEnterCave(level);
+    this.switchWorld(level, level.spawn.x, level.spawn.y);
+    this.notify('Tu entres dans la grotte.');
+  }
+
+  exitCave() {
+    const surface = this.surfaceWorld;
+    if (!surface) return;
+    const entrance = surface.caveEntrance;
+    if (this.uiCallbacks.onExitCave) this.uiCallbacks.onExitCave(surface);
+    this.switchWorld(
+      surface,
+      entrance ? entrance.x : surface.spawn.x,
+      entrance ? entrance.y : surface.spawn.y,
+    );
+    this.notify('Te revoilà à l\'air libre.');
+  }
+
+  descend() {
+    const current = this.world.depth || 0;
+    const next = current + 1;
+    if (next > CAVE.maxDepth) {
+      this.notify('Le fond de la grotte est atteint.');
+      return;
+    }
+    // Il faut un masque ET une protection de minage assez profonds.
+    const check = canDescendTo(next, this.gear, ITEM_DEFS);
+    if (!check.ok) {
+      const depth = Math.max(1, Math.min(check.maskDepth || 1, check.armorDepth || 1));
+      this.notify(
+        `Trop dangereux à cette profondeur : il te faut ${check.missing.join(' et ')}`
+        + ` (équipement actuel : profondeur ${depth}).`,
+      );
+      if (this.uiCallbacks.onInteractBlocked) this.uiCallbacks.onInteractBlocked('descend', check);
+      return;
+    }
+    const level = this.getCaveLevel(next);
+    if (this.uiCallbacks.onDescend) this.uiCallbacks.onDescend(level);
+    this.switchWorld(level, level.spawn.x, level.spawn.y);
+    this.notify(`Profondeur ${next}. L'air se fait rare.`);
+  }
+
+  ascend() {
+    const current = this.world.depth || 0;
+    if (current <= 1) { this.exitCave(); return; }
+    const level = this.getCaveLevel(current - 1);
+    // On réapparaît au puits descendant du niveau du dessus : c'est
+    // l'endroit d'où l'on vient, le retour est donc logique.
+    const back = level.ladderDown || level.spawn;
+    const x = back.tx !== undefined ? back.tx * TILE + TILE / 2 : level.spawn.x;
+    const y = back.ty !== undefined ? (back.ty + 1) * TILE + TILE / 2 : level.spawn.y;
+    if (this.uiCallbacks.onDescend) this.uiCallbacks.onDescend(level);
+    this.switchWorld(level, x, y);
+    this.notify(`Profondeur ${current - 1}.`);
+  }
+
+  // Halo chaud autour du joueur dans la grotte (pré-rendu une fois).
+  getCaveGlow() {
+    if (this.caveGlowSprite) return this.caveGlowSprite;
+    const size = 256;
+    const c = makeCanvas(size, size);
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(size / 2, size / 2, 8, size / 2, size / 2, size / 2);
+    grad.addColorStop(0, 'rgba(255,196,120,0.55)');
+    grad.addColorStop(0.35, 'rgba(255,170,90,0.24)');
+    grad.addColorStop(0.7, 'rgba(180,120,70,0.07)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, size, size);
+    this.caveGlowSprite = c;
+    return c;
+  }
+
+  // Obscurité souterraine : un voile sombre sur tout l'écran, puis une
+  // lumière chaude autour du joueur. Deux opérations plein écran au
+  // total — et en mode performance on garde uniquement le voile (un
+  // seul fillRect), ce qui reste parfaitement lisible.
+  drawCaveDarkness(ctx, W, H) {
+    const depth = this.world.depth || 1;
+    // Plus on descend, plus c'est noir.
+    const veil = Math.min(0.62, 0.34 + depth * 0.035);
+    ctx.fillStyle = `rgba(6,5,14,${veil})`;
+    ctx.fillRect(0, 0, W, H);
+    if (this.performanceMode || !this._vignetteOn()) return;
+
+    const zoom = this.camera.zoom;
+    const sx = (this.player.x - this.camera.x) * zoom;
+    const sy = (this.player.y - this.camera.y) * zoom;
+    const r = 200;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(this.getCaveGlow(), sx - r, sy - r, r * 2, r * 2);
+    ctx.restore();
   }
 
   // Trouve un mob sous le curseur (dans la portée d'interaction).
@@ -712,6 +1107,7 @@ export class Game {
   //  Casser (maintenir clic gauche) / Poser (clic droit)
   // ------------------------------------------------------------
   handleClicks(dt) {
+    if (this.cutscene) { this.resetMining(); return; }
     // Minage / attaque : on maintient l'action « miner » (clic gauche par
     // défaut, mais rebindable). Frappe d'abord les animaux sous le curseur
     // (comme dans Minecraft), sinon mine la tuile.
@@ -827,14 +1223,24 @@ export class Game {
       ? (selectedDef.efficiency || 1)
       : selectedDef?.type === 'tool' ? 0.7 : 0.55;
     if (stoneByHand) speed /= 10;
-    this.mining.duration = duration / speed;
+    // L'équipement de la grotte accélère réellement le minage : c'est
+    // la récompense tangible de l'achat chez les marchands.
+    this.mining.duration = duration / (speed * this.gearMiningBoost());
     this.mining.progress += dt / this.mining.duration;
 
     if (this.mining.progress < 1) return;
 
     const i = this.world.idx(this.targetTx, this.targetTy);
     const oldFloor = this.world.floor[i];
+    const oldBlock = this.world.blocks[i];
+    const oldBlock2 = this.world.blocks2 ? this.world.blocks2[i] : null;
     const drop = this.world.breakBlock(this.targetTx, this.targetTy);
+    // Un bloc posé a disparu : on tient l'index de rendu à jour (une seule
+    // liste de chunk à reconstruire, jamais un rescan de toute la fenêtre).
+    if (this.world.blocks[i] !== oldBlock
+      || (this.world.blocks2 && this.world.blocks2[i] !== oldBlock2)) {
+      this.reindexPlacedChunk(this.targetTx, this.targetTy);
+    }
     // Un coffre cassé rejette son contenu au sol (comme dans Minecraft) :
     // rien ne se perd en démolissant sa maison.
     if (existingBlock === 'chest') {
@@ -1126,6 +1532,7 @@ export class Game {
 
     const placed = this.world.placeBlock(this.targetTx, this.targetTy, item);
     if (placed) {
+      this.reindexPlacedChunk(this.targetTx, this.targetTy);
       this.inventory.takeSlot(this.inventory.selectedSlotIndex(), 1);
       this.actionCooldown = 0.16;
     }
@@ -1192,7 +1599,10 @@ export class Game {
 
     ctx.restore();
 
-    // 6) vignette d'ambiance. Cachée en mode performance ou si le joueur
+    // 6) obscurité souterraine (voile + halo autour du joueur)
+    if (this.world.kind === 'cave') this.drawCaveDarkness(ctx, W, H);
+
+    // 7) vignette d'ambiance. Cachée en mode performance ou si le joueur
     // l'a désactivée dans les paramètres. Pré-rendue sinon.
     if (!this.performanceMode && this._vignetteOn()) {
       ctx.drawImage(this.getVignette(W, H), 0, 0, W, H);
@@ -1265,6 +1675,13 @@ export class Game {
     const chunkB = Math.min(Math.ceil(WORLD_H / ct) - 1,
       Math.floor((cam.y + this.viewH / zoom) / chunkPx) + margin);
 
+    // Sortie anticipée : si la fenêtre de chunks visée est exactement la
+    // même qu'au passage précédent (joueur immobile, zoom inchangé) et que
+    // tout était déjà en cache, il n'y a rien à faire. Sans ça, chaque
+    // frame immobile payait ~20 recherches dans la Map pour rien.
+    const rectKey = chunkT * 1048576 + chunkB * 4096 + chunkL * 64 + chunkR;
+    if (maxMs !== Infinity && rectKey === this._prewarmRectKey) return;
+
     const cache = this.floorChunkCache;
     const deadline = performance.now() + maxMs; // Infinity au démarrage
     for (let cy = chunkT; cy <= chunkB; cy++) {
@@ -1272,10 +1689,12 @@ export class Game {
       for (let cx = chunkL; cx <= chunkR; cx++) {
         if (cache.has(rowBase + cx)) continue; // déjà en cache : gratuit
         this.buildFloorChunk(cx, cy);
-        // Budget écoulé ? On remettra le reste à la frame suivante.
+        // Budget écoulé ? On remettra le reste à la frame suivante : on ne
+        // mémorise PAS la fenêtre, sinon le reste ne serait jamais construit.
         if (performance.now() >= deadline) return;
       }
     }
+    this._prewarmRectKey = rectKey;
   }
 
   buildFloorChunk(cx, cy) {
@@ -1289,12 +1708,25 @@ export class Game {
     const cctx = c.getContext('2d');
     cctx.imageSmoothingEnabled = false;
 
+    // Le sol est très cohérent (longues plages d'herbe identique) : on
+    // mémorise la dernière tuile résolue pour éviter 256 recherches dans
+    // le cache du tileset par chunk.
     const floor = this.world.floor;
+    const waterImg = getWaterFrame(0);
+    let lastFloorId = null;
+    let lastImg = null;
     for (let y = 0; y < tilesH; y++) {
       const rowBase = (startTy + y) * WORLD_W + startTx;
       for (let x = 0; x < tilesW; x++) {
         const f = floor[rowBase + x];
-        const img = f === 'water' ? getWaterFrame(0) : getTileCanvas(f);
+        let img;
+        if (f === lastFloorId) {
+          img = lastImg;
+        } else {
+          img = f === 'water' ? waterImg : getTileCanvas(f);
+          lastFloorId = f;
+          lastImg = img;
+        }
         cctx.drawImage(img, x * TILE, y * TILE);
       }
     }
@@ -1544,6 +1976,9 @@ export class Game {
         list.push(drawable);
       }
     }
+    // L'index des blocs posés suit le même cycle de vie : on le reconstruit
+    // avec les objets statiques (génération du monde, changement de grotte).
+    this.rebuildPlacedIndex();
   }
 
   removeStaticObjectAt(tx, ty) {
@@ -1551,6 +1986,98 @@ export class Game {
     if (!drawable) return;
     drawable.active = false;
     this.staticObjectMap.delete(ty * WORLD_W + tx);
+  }
+
+  // ------------------------------------------------------------
+  //  Index spatial des blocs posés (murs, portes, fours, coffres)
+  //  Même principe que les ressources naturelles : une liste par
+  //  chunk, pour que le rendu ne parcoure que ce qui est visible.
+  // ------------------------------------------------------------
+
+  // Un bloc posé est-il à dessiner par drawDepthSorted ?
+  // (Les arbres / rochers / minerais sont des « objects » : ils vivent
+  // dans staticObjects, pas ici.)
+  _isDrawablePlaced(i) {
+    const blocks = this.world.blocks;
+    const blocks2 = this.world.blocks2;
+    const b1 = blocks[i];
+    if (b1) {
+      const kind = BLOCK_DEFS[b1]?.kind;
+      if (kind === 'block' || kind === 'door') return true;
+    }
+    if (blocks2) {
+      const b2 = blocks2[i];
+      if (b2) {
+        const kind2 = BLOCK_DEFS[b2]?.kind;
+        if (kind2 === 'block') return true;
+      }
+    }
+    return false;
+  }
+
+  // Reconstruit la liste d'UN chunk (256 cases : coût d'une pose de bloc,
+  // donc négligeable, et impossible à désynchroniser).
+  reindexPlacedChunk(tx, ty) {
+    const ct = this.chunkTiles;
+    const cx = Math.floor(tx / ct);
+    const cy = Math.floor(ty / ct);
+    const key = cy * 256 + cx;
+    const startTx = cx * ct;
+    const startTy = cy * ct;
+    const endTx = Math.min(WORLD_W, startTx + ct);
+    const endTy = Math.min(WORLD_H, startTy + ct);
+    let list = this.placedByChunk.get(key);
+    if (!list) {
+      list = [];
+      this.placedByChunk.set(key, list);
+    }
+    list.length = 0;
+    for (let y = startTy; y < endTy; y++) {
+      const rowBase = y * WORLD_W;
+      for (let x = startTx; x < endTx; x++) {
+        const i = rowBase + x;
+        if (this._isDrawablePlaced(i)) list.push(i);
+      }
+    }
+    if (list.length === 0) this.placedByChunk.delete(key);
+  }
+
+  // Index complet (appelé à la génération et à tout changement de monde).
+  rebuildPlacedIndex() {
+    this.placedByChunk.clear();
+    const ct = this.chunkTiles;
+    const chunksX = Math.ceil(WORLD_W / ct);
+    const chunksY = Math.ceil(WORLD_H / ct);
+    for (let cy = 0; cy < chunksY; cy++) {
+      for (let cx = 0; cx < chunksX; cx++) {
+        const startTx = cx * ct;
+        const startTy = cy * ct;
+        const endTx = Math.min(WORLD_W, startTx + ct);
+        const endTy = Math.min(WORLD_H, startTy + ct);
+        let list = null;
+        for (let y = startTy; y < endTy; y++) {
+          const rowBase = y * WORLD_W;
+          for (let x = startTx; x < endTx; x++) {
+            const i = rowBase + x;
+            if (!this._isDrawablePlaced(i)) continue;
+            if (!list) list = [];
+            list.push(i);
+          }
+        }
+        if (list) this.placedByChunk.set(cy * 256 + cx, list);
+      }
+    }
+  }
+
+  // Récupère (ou crée) une enveloppe de la réserve pour un bloc posé.
+  _takeBlockDrawable() {
+    const n = this.blockDrawableCount++;
+    let d = this.blockDrawables[n];
+    if (!d) {
+      d = { dy: DRAW_PLACED_BLOCK, tx: 0, ty: 0, block: null, kind: '', layer: 1, sortY: 0 };
+      this.blockDrawables[n] = d;
+    }
+    return d;
   }
 
   drawDepthSorted(ctx, minTx, minTy, maxTx, maxTy) {
@@ -1580,44 +2107,53 @@ export class Game {
       }
     }
 
-    // Blocs posés (murs, portes, fours, etc.) récoltés dans la zone visible.
+    // Blocs posés (murs, portes, fours…) : indexés par chunk, comme les
+    // ressources naturelles. On ne parcourt que les chunks à l'écran au
+    // lieu de rescanner toute la fenêtre de tuiles à chaque frame, et les
+    // enveloppes viennent d'une réserve réutilisée (zéro allocation).
     const blocks = this.world.blocks;
     const blocks2 = this.world.blocks2;
     const doorOpen = this.world.doorOpen;
-    for (let ty = minTy; ty <= maxTy; ty++) {
-      let i = this.world.idx(minTx, ty);
-      for (let tx = minTx; tx <= maxTx; tx++, i++) {
-        // Couche 1 (base)
-        const block = blocks[i];
-        if (block) {
-          const def = BLOCK_DEFS[block];
-          if (def.kind === 'block' || def.kind === 'door') {
-            drawables.push({
-              dy: DRAW_PLACED_BLOCK,
-              tx,
-              ty,
-              block,
-              kind: def.kind,
-              layer: 1,
-              sortY: (ty + 1) * TILE, // trié par le bas de sa tuile
-            });
+    this.blockDrawableCount = 0;
+    for (let cy = chunkT; cy <= chunkB; cy++) {
+      const rowBase = cy * 256;
+      for (let cx = chunkL; cx <= chunkR; cx++) {
+        const list = this.placedByChunk.get(rowBase + cx);
+        if (!list) continue;
+        for (let k = 0; k < list.length; k++) {
+          const i = list[k];
+          const tx = i % WORLD_W;
+          const ty = (i / WORLD_W) | 0;
+          if (tx < minTx || tx > maxTx || ty < minTy || ty > maxTy) continue;
+          const sortY = (ty + 1) * TILE; // trié par le bas de sa tuile
+
+          // Couche 1 (base)
+          const block = blocks[i];
+          if (block) {
+            const def = BLOCK_DEFS[block];
+            if (def.kind === 'block' || def.kind === 'door') {
+              const d = this._takeBlockDrawable();
+              d.tx = tx;
+              d.ty = ty;
+              d.block = block;
+              d.kind = def.kind;
+              d.layer = 1;
+              d.sortY = sortY;
+              drawables.push(d);
+            }
           }
-        }
-        // Couche 2 (empilé)
-        if (blocks2) {
-          const block2 = blocks2[i];
-          if (block2) {
-            const def2 = BLOCK_DEFS[block2];
-            if (def2.kind === 'block') {
-              drawables.push({
-                dy: DRAW_PLACED_BLOCK,
-                tx,
-                ty,
-                block: block2,
-                kind: def2.kind,
-                layer: 2,
-                sortY: (ty + 1) * TILE, // trié par la même colonne et profondeur
-              });
+          // Couche 2 (empilé)
+          if (blocks2) {
+            const block2 = blocks2[i];
+            if (block2 && BLOCK_DEFS[block2].kind === 'block') {
+              const d2 = this._takeBlockDrawable();
+              d2.tx = tx;
+              d2.ty = ty;
+              d2.block = block2;
+              d2.kind = 'block';
+              d2.layer = 2;
+              d2.sortY = sortY;
+              drawables.push(d2);
             }
           }
         }
@@ -1647,6 +2183,16 @@ export class Game {
       drawables.push(p);
     }
 
+    // PNJ : triés en profondeur avec tout le reste, donc un marchand
+    // passe correctement derrière un pilier de la grotte.
+    const npcs = this.npcs;
+    for (let i = 0; i < npcs.length; i++) {
+      const npc = npcs[i];
+      if (!npc.visible) continue;
+      npc.sortY = npc.y;
+      drawables.push(npc);
+    }
+
     drawables.sort(SORT_BY_Y);
     for (let i = 0; i < drawables.length; i++) {
       const d = drawables[i];
@@ -1655,11 +2201,14 @@ export class Game {
         const kind = d.kind;
         if (kind === 'tree') drawTreeObject(ctx, d.x, d.y, d.variant || 'medium');
         else if (kind === 'rock') drawRockObject(ctx, d.x, d.y);
-        else drawIronOreObject(ctx, d.x, d.y);
+        else if (kind === 'ironOre') drawIronOreObject(ctx, d.x, d.y);
+        else drawCaveObject(ctx, kind, d.x, d.y); // pierre / fer / arche / puits
       } else if (dy === DRAW_DROP) {
         this.drawDrop(ctx, d);
       } else if (dy === DRAW_MOB) {
         drawMob(ctx, d);
+      } else if (dy === DRAW_NPC) {
+        drawNpc(ctx, d);
       } else if (dy === DRAW_PLAYER) {
         this.drawPlayer(ctx, d, d === player);
       } else if (dy === DRAW_PLACED_BLOCK) {

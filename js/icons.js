@@ -366,6 +366,107 @@ function drawChestIcon(ctx) {
   ctx.restore();
 }
 
+// ------------------------------------------------------------
+//  Équipement de la grotte : masque respiratoire et armure de minage
+// ------------------------------------------------------------
+
+// Brique voxel « une couleur » : éclaircissement et assombrissement
+// calculés, contrairement à voxel() qui attend une palette complète.
+function gvoxel(ctx, x, y, w, h, color) {
+  if (w <= 0 || h <= 0) return;
+  const hi = Math.max(1, Math.round(h * 0.22));
+  const lo = Math.max(1, Math.round(h * 0.2));
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = shade(color, 1.2);
+  ctx.fillRect(x, y, w, hi);
+  ctx.fillRect(x, y, Math.max(1, Math.round(w * 0.16)), h);
+  ctx.fillStyle = shade(color, 0.7);
+  ctx.fillRect(x, y + h - lo, w, lo);
+  ctx.fillRect(x + w - Math.max(1, Math.round(w * 0.14)), y, Math.max(1, Math.round(w * 0.14)), h);
+}
+
+// Masque : corps arrondi, deux oculaires, lanières. La cartouche de
+// filtre distingue les paliers au premier coup d'œil.
+function drawMaskIcon(ctx, p) {
+  dropShadow(ctx, () => {
+    // Lanières
+    ctx.fillStyle = p.trim;
+    ctx.fillRect(2, 12, 5, 3);
+    ctx.fillRect(25, 12, 5, 3);
+    ctx.fillRect(3, 19, 4, 3);
+    ctx.fillRect(25, 19, 4, 3);
+
+    // Corps du masque
+    gvoxel(ctx, 6, 8, 20, 16, p.base);
+
+    // Oculaires
+    for (const cx of [11, 21]) {
+      ctx.fillStyle = p.dark;
+      ctx.fillRect(cx - 4, 11, 8, 8);
+      ctx.fillStyle = p.lens;
+      ctx.fillRect(cx - 3, 12, 6, 6);
+      ctx.fillStyle = 'rgba(255,255,255,0.65)';
+      ctx.fillRect(cx - 3, 12, 6, 2);
+      ctx.fillRect(cx - 3, 12, 2, 6);
+    }
+
+    // Pont nasal
+    ctx.fillStyle = p.dark;
+    ctx.fillRect(15, 13, 2, 4);
+
+    if (p.cartridge) {
+      // Cartouche de filtre (modèles à filtre et scellé)
+      gvoxel(ctx, 12, 20, 8, 7, p.cartridge);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      for (let i = 0; i < 3; i++) ctx.fillRect(13, 21 + i * 2, 6, 1);
+    } else {
+      // Modèle de toile : simple grille cousue.
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.fillRect(12, 21, 8, 1);
+      ctx.fillRect(12, 23, 8, 1);
+    }
+  });
+}
+
+// Armure de minage : plastron, spallières, ceinturon. Le modèle
+// intégrale ajoute un casque à visière.
+function drawArmorIcon(ctx, p) {
+  dropShadow(ctx, () => {
+    if (p.helmet) {
+      gvoxel(ctx, 11, 1, 10, 7, p.base);
+      ctx.fillStyle = p.dark;
+      ctx.fillRect(13, 4, 6, 3);           // la visière
+      ctx.fillStyle = 'rgba(180,220,255,0.55)';
+      ctx.fillRect(13, 4, 6, 1);
+    }
+
+    // Spallières
+    gvoxel(ctx, 3, 9, 7, 6, p.base);
+    gvoxel(ctx, 22, 9, 7, 6, p.base);
+
+    // Plastron
+    gvoxel(ctx, 8, 8, 16, 15, p.base);
+
+    // Nervure centrale + rivets
+    ctx.fillStyle = p.dark;
+    ctx.fillRect(15, 9, 2, 13);
+    ctx.fillStyle = p.trim;
+    ctx.fillRect(10, 12, 2, 2);
+    ctx.fillRect(20, 12, 2, 2);
+    ctx.fillRect(10, 17, 2, 2);
+    ctx.fillRect(20, 17, 2, 2);
+
+    // Ceinturon
+    ctx.fillStyle = '#4a3218';
+    ctx.fillRect(8, 23, 16, 4);
+    ctx.fillStyle = p.trim;
+    ctx.fillRect(14, 22, 4, 5);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(15, 23, 2, 3);
+  });
+}
+
 const TOOL_DRAWERS = {
   chest:          (ctx) => drawChestIcon(ctx),
   wooden_pickaxe: (ctx) => drawPickaxe(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
@@ -387,6 +488,14 @@ const TOOL_DRAWERS = {
   wool:           (ctx) => drawWool(ctx),
   rawBeef:        (ctx) => drawRawBeef(ctx),
   cookedBeef:     (ctx) => drawCookedBeef(ctx),
+  // Équipement de la grotte : plus le palier est haut, plus le matériau
+  // est noble (toile → acier bleui → laiton ; cuir → acier → acier poli).
+  mask_cloth:       (ctx) => drawMaskIcon(ctx, { base: '#cfc7b4', light: '#efe9da', dark: '#8e8878', trim: '#7a5a34', lens: '#bfe3ea', cartridge: null }),
+  mask_filter:      (ctx) => drawMaskIcon(ctx, { base: '#8fa3ad', light: '#c4d3da', dark: '#54646e', trim: '#3c4a52', lens: '#dff2f6', cartridge: '#5d666e' }),
+  mask_sealed:      (ctx) => drawMaskIcon(ctx, { base: '#d8c46a', light: '#f4e6a8', dark: '#8a7a2e', trim: '#5c4f18', lens: '#eaf6ff', cartridge: '#c9a44a' }),
+  armor_leather:    (ctx) => drawArmorIcon(ctx, { base: '#8a5a34', light: '#b07a48', dark: '#54361c', trim: '#c9a44a', helmet: false }),
+  armor_reinforced: (ctx) => drawArmorIcon(ctx, { base: '#9aa3ab', light: '#d3dade', dark: '#5d666e', trim: '#c9a44a', helmet: false }),
+  armor_full:       (ctx) => drawArmorIcon(ctx, { base: '#d3dade', light: '#f4f7fa', dark: '#7a838c', trim: '#e0c46a', helmet: true }),
 };
 
 export function isHeldTool(id) {

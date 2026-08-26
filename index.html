@@ -9,7 +9,7 @@
     #boot-error { display: none; position: fixed; inset: 16px auto auto 16px; z-index: 999; max-width: min(520px, calc(100% - 32px)); padding: 12px 14px; background: #3a1c16; border: 1px solid #c96a55; border-radius: 10px; font: 700 13px system-ui, sans-serif; }
     #boot-error.visible { display: block; }
   </style>
-  <link rel="stylesheet" href="css/style.css?v=23" />
+  <link rel="stylesheet" href="css/style.css?v=24" />
 </head>
 <body>
   <div id="boot-error" role="alert"></div>
@@ -26,6 +26,85 @@
       <span id="hud-players">1</span>
     </div>
   </div>
+
+  <!-- Bourse (haut droite) : la monnaie d'Avania, toujours visible -->
+  <div id="hud-right" class="hud hud-right hidden">
+    <div id="wallet" class="wallet" title="Votre bourse">
+      <span class="wallet-coin" data-icon="coin"></span>
+      <span id="wallet-amount" class="wallet-amount">0</span>
+      <span class="wallet-label">écus</span>
+      <span id="wallet-delta" class="wallet-delta" aria-hidden="true"></span>
+    </div>
+    <div id="depth-chip" class="depth-chip" title="Profondeur">
+      <span class="depth-icon" data-icon="cave"></span>
+      <span id="depth-label">Surface</span>
+    </div>
+    <div id="gear-chip" class="gear-chip hidden" title="Équipement de la grotte">
+      <span class="gear-slot" data-icon="mask"></span>
+      <span class="gear-slot" data-icon="armor"></span>
+      <span id="gear-depth" class="gear-depth">prof. 1</span>
+    </div>
+  </div>
+
+  <!-- Invite d'interaction (suit la cible dans le monde) -->
+  <div id="interact-prompt" class="interact-prompt hidden">
+    <kbd id="interact-key">F</kbd><span id="interact-label">Interagir</span>
+  </div>
+
+  <!-- Cinématique d'arrivée : le représentant de l'île -->
+  <section id="dialog" class="dialog hidden" aria-live="polite">
+    <div class="dialog-frame">
+      <header class="dialog-head">
+        <canvas id="dialog-portrait" class="dialog-portrait" width="72" height="84"></canvas>
+        <div class="dialog-who">
+          <span class="dialog-eyebrow">AVANIA</span>
+          <strong id="dialog-speaker">M. Lambert</strong>
+        </div>
+        <button id="dialog-skip" class="dialog-skip" type="button">Passer <kbd>Échap</kbd></button>
+      </header>
+      <p id="dialog-text" class="dialog-text"></p>
+      <footer class="dialog-foot">
+        <span id="dialog-hint" class="dialog-hint">Clic ou Espace pour continuer</span>
+        <span class="dialog-arrow">▼</span>
+      </footer>
+    </div>
+  </section>
+
+  <!-- Comptoir de négociation (marchands de la grotte) -->
+  <section id="merchant-chat" class="merchant-chat hidden" aria-label="Négociation">
+    <div class="panel-backdrop"></div>
+    <div class="mc-frame">
+      <header class="mc-head">
+        <canvas id="mc-portrait" class="mc-portrait" width="64" height="76"></canvas>
+        <div class="mc-who">
+          <strong id="mc-name">—</strong>
+          <span id="mc-title">—</span>
+        </div>
+        <div class="mc-head-right">
+          <span id="mc-mood" class="mc-mood">Il vous écoute</span>
+          <button id="mc-close" class="craft-close" type="button" title="Fermer (Échap)"><span class="ic" data-icon="close"></span></button>
+        </div>
+      </header>
+      <div id="mc-log" class="mc-log" aria-live="polite"></div>
+      <div id="mc-offer" class="mc-offer hidden">
+        <span id="mc-offer-icon" class="mc-offer-icon"></span>
+        <div class="mc-offer-text">
+          <strong id="mc-offer-name">—</strong>
+          <span id="mc-offer-desc" class="mc-offer-desc"></span>
+        </div>
+        <div class="mc-offer-actions">
+          <span class="mc-offer-price"><span id="mc-offer-price">0</span> <small>écus</small></span>
+          <button id="mc-offer-buy" class="mc-buy" type="button">Acheter</button>
+          <button id="mc-offer-talk" class="mc-talk" type="button">Continuer à discuter</button>
+        </div>
+      </div>
+      <form id="mc-form" class="mc-form" autocomplete="off">
+        <input id="mc-input" type="text" maxlength="200" placeholder="Dites-lui quelque chose…" />
+        <button id="mc-send" class="mc-send" type="submit">Envoyer</button>
+      </form>
+      <p id="mc-hint" class="mc-hint">Parlez-lui normalement : il répond en marchand, pas en machine.</p>
+    </div>
+  </section>
 
   <!-- Aide des commandes -->
   <div id="controls-hint" class="controls-hint hidden">
@@ -359,6 +438,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/main.js?v=23"></script>
+  <script type="module" src="js/main.js?v=24"></script>
 </body>
 </html>

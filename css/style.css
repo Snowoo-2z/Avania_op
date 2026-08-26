@@ -2733,3 +2733,485 @@ html.low-power .craft-output.ready {
   0%, 15%, 85%, 100% { opacity: 0.7; }
   50%                { opacity: 1;   }
 }
+
+/* ============================================================
+   AVANIA — Monnaie, interactions & grotte
+   ============================================================ */
+
+/* ---------------- Bourse (haut droite) ---------------- */
+.hud-right {
+  left: auto;
+  right: 16px;
+  top: 16px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.wallet {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 18px 9px 14px;
+  border: 1px solid #6b5320;
+  border-radius: 999px;
+  background:
+    linear-gradient(160deg, rgba(58, 44, 16, 0.92), rgba(28, 22, 10, 0.92));
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 224, 150, 0.28),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  font-weight: 900;
+  pointer-events: none;
+}
+.wallet-coin {
+  display: inline-flex;
+  color: #f2c14e;
+  filter: drop-shadow(0 0 6px rgba(242, 193, 78, 0.55));
+  font-size: 19px;
+}
+.wallet-coin .ic-svg { width: 19px; height: 19px; }
+.wallet-amount {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  color: #ffe6a8;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+  transition: transform 0.16s ease;
+}
+.wallet-amount.bump { transform: scale(1.22); }
+.wallet-label {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: #c9a44a;
+}
+/* +N / −N qui flotte au-dessus de la bourse */
+.wallet-delta {
+  position: absolute;
+  right: 14px;
+  top: -6px;
+  font-size: 13px;
+  font-weight: 900;
+  opacity: 0;
+  pointer-events: none;
+}
+.wallet-delta.show { animation: walletDelta 1.5s ease-out forwards; }
+.wallet-delta.gain { color: #8ee06a; text-shadow: 0 1px 0 rgba(0,0,0,.6); }
+.wallet-delta.loss { color: #ff8f7a; text-shadow: 0 1px 0 rgba(0,0,0,.6); }
+@keyframes walletDelta {
+  0%   { opacity: 0; transform: translateY(6px); }
+  18%  { opacity: 1; transform: translateY(0); }
+  75%  { opacity: 1; transform: translateY(-10px); }
+  100% { opacity: 0; transform: translateY(-20px); }
+}
+
+/* Profondeur + équipement */
+.depth-chip,
+.gear-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 13px;
+  border: 1px solid #33323f;
+  border-radius: 999px;
+  background: rgba(20, 19, 28, 0.82);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+  backdrop-filter: blur(6px);
+  font-size: 11.5px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  color: #cfc6e0;
+  pointer-events: none;
+}
+.depth-chip .ic-svg,
+.gear-chip .ic-svg { width: 14px; height: 14px; }
+.depth-chip.underground {
+  border-color: #4a3f6b;
+  color: #d8c8ff;
+  background: linear-gradient(160deg, rgba(38,30,58,0.92), rgba(16,13,26,0.92));
+}
+.gear-chip .gear-slot { display: inline-flex; color: #9aa3ab; }
+.gear-chip .gear-slot.equipped { color: #8ee06a; }
+.gear-chip .gear-depth { color: #f2c14e; }
+
+/* ---------------- Invite d'interaction ---------------- */
+.interact-prompt {
+  position: fixed;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 13px 6px 8px;
+  transform: translate(-50%, -100%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(14, 22, 16, 0.92);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5);
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--text);
+  pointer-events: none;
+  white-space: nowrap;
+  animation: promptPop 0.14s ease-out;
+}
+@keyframes promptPop {
+  from { opacity: 0; transform: translate(-50%, -90%); }
+  to   { opacity: 1; transform: translate(-50%, -100%); }
+}
+
+/* ---------------- Cinématique : le représentant ---------------- */
+.dialog {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  z-index: 24;
+  transform: translateX(-50%);
+  width: min(680px, calc(100vw - 32px));
+  pointer-events: auto;
+}
+.dialog-frame {
+  padding: 14px 18px 12px;
+  border: 2px solid #1e2022;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #707579, #4b4f53 55%, #383b3f);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.7),
+    0 0 0 1px #a1a5a8,
+    0 0 0 4px #36393d,
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+.dialog-in .dialog-frame { animation: dialogIn 0.24s ease-out; }
+@keyframes dialogIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.28);
+}
+.dialog-portrait {
+  width: 56px;
+  height: 66px;
+  border: 2px solid #25282a;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #57606a, #33383d);
+  image-rendering: pixelated;
+  flex: none;
+}
+.dialog-who { display: flex; flex-direction: column; gap: 2px; }
+.dialog-eyebrow {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 1.6px;
+  color: #d7d9da;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.35);
+}
+.dialog-who strong {
+  font-size: 15px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.42);
+}
+.dialog-skip {
+  margin-left: auto;
+  padding: 5px 10px;
+  border: 1px solid #26292c;
+  border-radius: 4px;
+  background: #4c5054;
+  color: #e6e7e8;
+  font: 800 11px var(--font);
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2);
+}
+.dialog-skip:hover { background: #5a5f64; }
+.dialog-text {
+  min-height: 54px;
+  padding: 12px 2px 8px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: #f2f3f3;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.42);
+}
+.dialog-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 800;
+  color: #cfd1d2;
+}
+.dialog-hint { opacity: 0; transition: opacity 0.2s; }
+.dialog-hint.ready { opacity: 1; }
+.dialog-arrow {
+  color: #f2c14e;
+  opacity: 0;
+  animation: dialogArrow 1.1s ease-in-out infinite;
+}
+.dialog-hint.ready + .dialog-arrow { opacity: 1; }
+@keyframes dialogArrow {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(3px); }
+}
+
+/* ---------------- Comptoir de négociation ---------------- */
+.merchant-chat {
+  position: fixed;
+  inset: 0;
+  z-index: 32;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 18px 22px;
+  background: rgba(6, 8, 10, 0.42);
+}
+.mc-frame {
+  position: relative;
+  width: min(620px, 100%);
+  padding: 14px 16px 12px;
+  border: 2px solid #1e2022;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #6d7276, #484c50 55%, #35383c);
+  box-shadow:
+    0 26px 70px rgba(0, 0, 0, 0.72),
+    0 0 0 1px #a1a5a8,
+    0 0 0 4px #36393d,
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  animation: mcIn 0.18s ease-out;
+}
+@keyframes mcIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.mc-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.28);
+}
+.mc-portrait {
+  width: 50px;
+  height: 60px;
+  flex: none;
+  border: 2px solid #25282a;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #57606a, #33383d);
+  image-rendering: pixelated;
+}
+.mc-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mc-who strong {
+  font-size: 15px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.42);
+}
+.mc-who span {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #d3d5d6;
+}
+.mc-head-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.mc-mood {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.24);
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+.mc-mood--ok    { color: #b9f0a0; }
+.mc-mood--warn  { color: #ffd479; }
+.mc-mood--angry { color: #ff9c86; }
+
+.mc-log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(38vh, 300px);
+  min-height: 96px;
+  margin: 12px 0;
+  padding: 12px;
+  overflow-y: auto;
+  border: 2px solid #25282a;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: inset 2px 2px 0 rgba(0,0,0,0.34), inset -1px -1px 0 rgba(255,255,255,0.08);
+}
+.mc-msg {
+  max-width: 88%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #f1f2f2;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
+  word-break: break-word;
+}
+.mc-msg--merchant {
+  align-self: flex-start;
+  border: 1px solid #2b2e31;
+  background: linear-gradient(180deg, #565b60, #41454a);
+}
+.mc-msg--player {
+  align-self: flex-end;
+  border: 1px solid #2c4634;
+  background: linear-gradient(180deg, #2f5738, #22402a);
+}
+.mc-msg--typing {
+  color: #b9bcc0;
+  font-weight: 900;
+  letter-spacing: 2px;
+  animation: mcTyping 1s ease-in-out infinite;
+}
+@keyframes mcTyping { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+
+/* Proposition d'achat */
+.mc-offer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 2px solid #6b5320;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #4a3c1c, #2e2611);
+  box-shadow: inset 0 1px 0 rgba(255, 224, 150, 0.24);
+  animation: mcOfferIn 0.2s ease-out;
+}
+@keyframes mcOfferIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.mc-offer-icon {
+  display: inline-flex;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #25282a;
+  border-radius: 4px;
+  background: #35383b;
+  color: #cfc7b4;
+}
+.mc-offer-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mc-offer-text strong {
+  font-size: 13.5px;
+  font-weight: 900;
+  color: #ffe6a8;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5);
+}
+.mc-offer-desc {
+  font-size: 11px;
+  font-weight: 700;
+  color: #c9b78a;
+  line-height: 1.35;
+}
+.mc-offer-actions {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.mc-offer-price {
+  font-size: 18px;
+  font-weight: 900;
+  color: #f2c14e;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+.mc-offer-price small {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #c9a44a;
+}
+.mc-buy,
+.mc-talk {
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid #26292c;
+  font: 800 11.5px var(--font);
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.mc-buy {
+  background: linear-gradient(180deg, #5da04a, #3f7433);
+  color: #f2fff0;
+}
+.mc-buy:hover:not(:disabled) { background: linear-gradient(180deg, #6cb457, #47843a); }
+.mc-buy:disabled {
+  background: #4a4e52;
+  color: #a9adb1;
+  cursor: not-allowed;
+  font-size: 10.5px;
+}
+.mc-talk {
+  background: #4c5054;
+  color: #e6e7e8;
+}
+.mc-talk:hover { background: #5a5f64; }
+
+.mc-form { display: flex; gap: 8px; }
+.mc-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 2px solid #25282a;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.32);
+  color: #f1f2f2;
+  font: 700 13.5px var(--font);
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.3);
+}
+.mc-form input:focus { outline: none; border-color: var(--accent); }
+.mc-form input:disabled { opacity: 0.5; }
+.mc-send {
+  padding: 10px 16px;
+  border: 1px solid #26292c;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #5da04a, #3f7433);
+  color: #f2fff0;
+  font: 900 12.5px var(--font);
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.mc-send:hover:not(:disabled) { background: linear-gradient(180deg, #6cb457, #47843a); }
+.mc-send:disabled { background: #4a4e52; color: #a9adb1; cursor: wait; }
+.mc-hint {
+  margin-top: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #cfd1d2;
+  text-align: center;
+}
+.mc-hint--blocked { color: #ff9c86; }
+
+/* Petits écrans : la bourse ne doit pas écraser le HUD de gauche */
+@media (max-width: 700px) {
+  .hud-right { top: 12px; right: 12px; }
+  .wallet { padding: 7px 13px 7px 11px; }
+  .wallet-amount { font-size: 15px; }
+  .mc-offer { flex-wrap: wrap; }
+  .mc-offer-actions { margin-left: 0; align-items: stretch; }
+}
+
+/* Mode performance : pas de flou ni d'ombre portée sur l'interface */
+html.low-power .wallet,
+html.low-power .depth-chip,
+html.low-power .gear-chip,
+html.low-power .mc-frame,
+html.low-power .dialog-frame {
+  backdrop-filter: none;
+}
