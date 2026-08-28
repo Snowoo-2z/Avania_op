@@ -242,6 +242,9 @@ export class Game {
       onDescend: null,
       onTalk: null,
       onInteractBlocked: null,
+      onZoneChange: null,   // branché par le client multijoueur (js/net.js)
+      onBlockChange: null,  // idem : (tx, ty, diff) — LE JOUEUR LOCAL a modifié un bloc
+      onChestChange: null,  // idem : (tx, ty, slots[27]) — LE JOUEUR LOCAL a modifié un coffre ouvert
     };
     // PNJ (représentant de l'île, marchands de la grotte).
     this.npcs = [];
@@ -441,7 +444,13 @@ export class Game {
     ) {
       this.performanceMode = true;
       if (typeof document !== 'undefined') document.documentElement.classList.add('low-power');
-      if (typeof window !== 'undefined') window.dispatchEvent(new Event('resize'));
+      // window.Event, PAS le global `Event` : dans certains environnements
+      // (le test d'intégration navigateur, qui fait cohabiter le jsdom
+      // WebSocket avec le WebSocket natif de Node) les deux implémentations
+      // d'Event viennent de « realms » différents et ne sont pas
+      // interchangeables — dispatchEvent exige celle du même realm que
+      // `window`.
+      if (typeof window !== 'undefined') window.dispatchEvent(new window.Event('resize'));
       console.info('AVANIA: mode performance activé automatiquement.');
     }
   }
@@ -474,6 +483,11 @@ export class Game {
 
   update(dt) {
     this.time += dt;
+    // Branché par le client multijoueur (js/net.js) : lisse les
+    // positions distantes et envoie la position locale, AVANT le rendu
+    // de la frame (sinon les joueurs distants auraient une frame de
+    // retard visible).
+    if (this.uiCallbacks.onNetUpdate) this.uiCallbacks.onNetUpdate(dt, this.player);
     this.actionCooldown = Math.max(0, this.actionCooldown - dt);
     // Les fours cuisent en continu, même panneau ouvert (la barre avance).
     this.updateFurnaces(dt);
@@ -567,16 +581,24 @@ export class Game {
     return entry;
   }
 
+  // Crée/retrouve une entrée de coffre dans UN Map donné (factorisé pour
+  // servir aussi bien à `getChestEntry` — le monde affiché — qu'à
+  // l'application des mises à jour réseau reçues pour une zone qui
+  // n'est pas forcément celle affichée à l'écran, voir chestDataMapForZone).
+  _chestEntryIn(map, tx, ty) {
+    const key = ty * WORLD_W + tx;
+    let entry = map.get(key);
+    if (!entry) {
+      entry = { slots: new Array(27).fill(null), openT: 0, openTarget: 0 };
+      map.set(key, entry);
+    }
+    return entry;
+  }
+
   // Entrée de stockage d'un coffre posé (27 cases, comme Minecraft) +
   // état d'animation du couvercle (openT : 0 fermé → 1 ouvert).
   getChestEntry(tx, ty) {
-    const key = ty * WORLD_W + tx;
-    let entry = this.chestData.get(key);
-    if (!entry) {
-      entry = { slots: new Array(27).fill(null), openT: 0, openTarget: 0 };
-      this.chestData.set(key, entry);
-    }
-    return entry;
+    return this._chestEntryIn(this.chestData, tx, ty);
   }
 
   // Ouvre / ferme le couvercle du coffre posé (l'animation avance dans
@@ -812,6 +834,10 @@ export class Game {
     this.camera.snapTo(spawnX, spawnY);
     this.updateTarget();
     this.refreshGear();
+    // Prévient le client multijoueur : les autres joueurs affichés
+    // doivent changer (ex. quitter la liste visible en entrant dans
+    // la grotte). world.id vaut 'surface' ou 'cave:<profondeur>'.
+    if (this.uiCallbacks.onZoneChange) this.uiCallbacks.onZoneChange(world.id);
   }
 
   // Niveau souterrain demandé (généré une seule fois, puis réutilisé :
@@ -1142,6 +1168,7 @@ export class Game {
       const open = this.world.toggleDoor(this.targetTx, this.targetTy);
       this.actionCooldown = 0.28;
       this.spawnDoorPuff(this.targetTx, this.targetTy, open);
+      this._announceBlockChange(this.targetTx, this.targetTy, { door: open ? 1 : 0 });
       return;
     }
     if (targetBlock === 'furnace') {
@@ -1241,6 +1268,16 @@ export class Game {
       || (this.world.blocks2 && this.world.blocks2[i] !== oldBlock2)) {
       this.reindexPlacedChunk(this.targetTx, this.targetTy);
     }
+    // Multijoueur (étape 2) : annonce aux autres joueurs de la même zone
+    // ce qui a réellement changé sur cette tuile (jamais l'action brute —
+    // le drop/les particules restent une mise en scène purement locale).
+    {
+      const diff = {};
+      if (this.world.floor[i] !== oldFloor) diff.floor = this.world.floor[i];
+      if (this.world.blocks[i] !== oldBlock) diff.blocks = this.world.blocks[i];
+      if (this.world.blocks2 && this.world.blocks2[i] !== oldBlock2) diff.blocks2 = this.world.blocks2[i];
+      if (Object.keys(diff).length > 0) this._announceBlockChange(this.targetTx, this.targetTy, diff);
+    }
     // Un coffre cassé rejette son contenu au sol (comme dans Minecraft) :
     // rien ne se perd en démolissant sa maison.
     if (existingBlock === 'chest') {
@@ -1250,6 +1287,12 @@ export class Game {
         for (const stack of chestEntry.slots) {
           if (stack) this.spawnDrop(this.targetTx, this.targetTy, stack.id, stack.count);
         }
+        // Multijoueur (étape 3) : le coffre est cassé, son contenu est
+        // parti au sol — on prévient les autres joueurs que ce coffre
+        // est désormais vide, sinon le journal du serveur garderait
+        // l'ancien contenu et le referait apparaître si quelqu'un pose
+        // un nouveau coffre au même endroit plus tard.
+        this._announceChestChange(this.targetTx, this.targetTy, new Array(27).fill(null));
       }
     }
     if (drop) {
@@ -1530,16 +1573,131 @@ export class Game {
     if (!item || !ITEM_DEFS[item]?.place) return;
     if (this.isPlayerOnTile(this.targetTx, this.targetTy)) return;
 
+    const i = this.world.idx(this.targetTx, this.targetTy);
+    const oldBlock = this.world.blocks[i];
+    const oldBlock2 = this.world.blocks2 ? this.world.blocks2[i] : null;
     const placed = this.world.placeBlock(this.targetTx, this.targetTy, item);
     if (placed) {
       this.reindexPlacedChunk(this.targetTx, this.targetTy);
       this.inventory.takeSlot(this.inventory.selectedSlotIndex(), 1);
       this.actionCooldown = 0.16;
+      // Multijoueur (étape 2) : le bloc posé (couche 1 ou empilé en
+      // couche 2) doit apparaître chez les autres joueurs de la zone.
+      const diff = {};
+      if (this.world.blocks[i] !== oldBlock) diff.blocks = this.world.blocks[i];
+      if (this.world.blocks2 && this.world.blocks2[i] !== oldBlock2) diff.blocks2 = this.world.blocks2[i];
+      if (Object.keys(diff).length > 0) this._announceBlockChange(this.targetTx, this.targetTy, diff);
     }
   }
 
   isPlayerOnTile(tx, ty) {
     return Math.floor(this.player.x / TILE) === tx && Math.floor(this.player.y / TILE) === ty;
+  }
+
+  // ------------------------------------------------------------
+  //  Monde partagé (multijoueur, étape 2)
+  // ------------------------------------------------------------
+
+  // LE JOUEUR LOCAL vient de modifier une tuile (casse, pose, porte) :
+  // prévient le client réseau (js/main.js branche ce callback), qui se
+  // charge de choisir la bonne zone et le bon débit. Ne fait jamais
+  // planter le jeu solo : `onBlockChange` est null tant que js/main.js
+  // ne l'a pas branché (ou si le réseau n'a jamais pu se connecter).
+  _announceBlockChange(tx, ty, diff) {
+    if (this.uiCallbacks.onBlockChange) this.uiCallbacks.onBlockChange(tx, ty, diff);
+  }
+
+  // Même principe pour le contenu d'un coffre (étape 3) : appelé
+  // directement quand un coffre est cassé (voir mineTarget) — le
+  // ChestPanel appelle lui-même onChestChange pendant qu'il est ouvert
+  // (voir js/ui.js), donc cette méthode ne sert qu'aux cas où AUCUN
+  // panneau n'est ouvert au moment du changement.
+  _announceChestChange(tx, ty, slots) {
+    if (this.uiCallbacks.onChestChange) this.uiCallbacks.onChestChange(tx, ty, slots);
+  }
+
+  // Un AUTRE joueur a modifié une tuile de la zone actuelle (appelé par
+  // js/main.js quand le client réseau reçoit un message 'block' ou
+  // 'worldSync'). On rejoue le diff sur le bon monde SANS refaire la
+  // mise en scène locale (pas de drop, pas de particules, pas d'usure
+  // d'outil : ce sont des évènements qui appartiennent à celui qui a
+  // agi, pas à nous) — seuls les index de rendu doivent suivre.
+  //
+  // `world` est explicite (pas forcément `this.world`) : une
+  // resynchronisation peut arriver pour une zone que le joueur local
+  // n'occupe plus activement (ex. un niveau de grotte déjà visité et
+  // gardé en mémoire dans `this.caveLevels`), auquel cas on met à jour
+  // les données mais on saute la reconstruction des index de rendu
+  // (inutile tant qu'on n'y est pas, et potentiellement coûteux).
+  applyRemoteBlockDiff(world, tx, ty, diff) {
+    if (!world) return;
+    // La couche 1 (`blocks`) est celle qui porte les coffres : que le
+    // diff casse un coffre existant ou pose un nouveau bloc (forcément
+    // vide, un coffre fraîchement posé n'a jamais de contenu), toute
+    // ancienne entrée de coffre locale à cette tuile devient obsolète.
+    // Fait AVANT le early-return sur `changed` : un diff dont seule
+    // cette clé est présente mais dont la valeur est déjà identique
+    // (rare) ne doit de toute façon rien nettoyer d'autre.
+    if (Object.prototype.hasOwnProperty.call(diff, 'blocks')) {
+      const map = this.chestDataMapForZone(world.id);
+      if (map) map.delete(world.idx(tx, ty));
+    }
+    if (!world.applyBlockDiff(tx, ty, diff)) return;
+    if (world !== this.world) return; // zone pas affichée : rien d'autre à faire pour l'instant
+    if (Object.prototype.hasOwnProperty.call(diff, 'blocks')
+      || Object.prototype.hasOwnProperty.call(diff, 'blocks2')) {
+      // Un arbre/rocher/minerai (kind 'object') cassé à distance doit
+      // sortir de l'index des objets statiques — la pose ne concerne
+      // elle que des blocs 'block'/'door', jamais des objets naturels
+      // (placeBlock ne pose que ce type), donc removeStaticObjectAt
+      // suffit : pas besoin d'un rebuildStaticObjects complet.
+      if (this.staticObjectMap.has(world.idx(tx, ty))) this.removeStaticObjectAt(tx, ty);
+      this.reindexPlacedChunk(tx, ty);
+    }
+    if (Object.prototype.hasOwnProperty.call(diff, 'floor')) {
+      this.invalidateFloorChunk(tx, ty);
+    }
+  }
+
+  // Retrouve (sans le créer) le monde correspondant à une zone réseau
+  // ('surface' ou 'cave:<profondeur>'), pour appliquer un diff distant
+  // même si le joueur local ne s'y trouve pas actuellement.
+  worldForZone(zone) {
+    if (zone === 'surface') return this.surfaceWorld;
+    const m = /^cave:(\d+)$/.exec(zone);
+    if (!m) return null;
+    const depth = Number(m[1]);
+    return (this.caveLevels && this.caveLevels.get(depth)) || null;
+  }
+
+  // ------------------------------------------------------------
+  //  Coffres partagés (multijoueur, étape 3)
+  // ------------------------------------------------------------
+
+  // Retrouve (sans le créer) la table `chestData` d'une zone réseau :
+  // celle du monde actif (`this.chestData`), ou celle mise de côté pour
+  // un monde déjà visité puis quitté (voir _saveDimState/_restoreDimState).
+  // Contrairement aux blocs (qui vivent dans World.js), les coffres ne
+  // sont donc rattrapables que si le joueur local a DÉJÀ mis les pieds
+  // dans cette zone au moins une fois — cohérent avec worldForZone.
+  chestDataMapForZone(zone) {
+    if (this.world && zone === this.world.id) return this.chestData;
+    const saved = this.dimStates.get(zone);
+    return saved ? saved.chestData : null;
+  }
+
+  // Un AUTRE joueur a rangé/pioché un objet dans un coffre de la zone
+  // actuelle. `slots` est un tableau de 27 cases déjà nettoyé par
+  // sanitizeChestSlots (voir js/net-protocol.js). On mute l'entrée EN
+  // PLACE (jamais en remplaçant le tableau) : si le panneau du coffre
+  // est ouvert localement au même instant (deux joueurs dans le même
+  // coffre), le SlotManager garde une référence directe vers ce même
+  // tableau — le remplacer romprait ce lien sans qu'on le sache.
+  applyRemoteChestChange(zone, tx, ty, slots) {
+    const map = this.chestDataMapForZone(zone);
+    if (!map) return; // zone jamais visitée localement : rien à raccrocher
+    const entry = this._chestEntryIn(map, tx, ty);
+    for (let i = 0; i < 27; i++) entry.slots[i] = slots[i] || null;
   }
 
   // ------------------------------------------------------------

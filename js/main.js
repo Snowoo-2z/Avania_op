@@ -26,6 +26,7 @@ import {
   askMerchant, greetMerchant, interpretCommands, resetNegotiation,
 } from './merchant-ai.js';
 import { drawMaskMerchant, drawArmorMerchant } from './npc/index.js';
+import { MultiplayerClient } from './net.js';
 
 // Remplace tous les emojis de l'interface par de vraies icônes SVG.
 try { mountIcons(); } catch (err) { console.error('AVANIA: icônes SVG', err); }
@@ -169,6 +170,55 @@ async function boot() {
   await yieldFrame();
 
   const game = new Game(canvas, appearance, settings);
+
+  // --- Multijoueur (présence temps réel) ---
+  // « Best effort » : si le serveur ne répond pas (hors ligne, en
+  // train de se réveiller sur Render...), le jeu continue en solo.
+  // Le tableau `players` du client réseau change de référence à chaque
+  // arrivée/départ (voir _rebuildPlayers) : on le republie sur
+  // game.otherPlayers à chaque frame plutôt qu'une seule fois au démarrage.
+  const multiplayer = new MultiplayerClient({
+    name: appearance.name,
+    appearance,
+    zone: game.world.id,
+    // Étape 2 (monde partagé) : un autre joueur a modifié une tuile
+    // (message 'block') ou on vient de rejoindre une zone déjà
+    // modifiée par d'autres (message 'worldSync', une rafale de
+    // diffs). Dans les deux cas on retrouve le bon World.js par son
+    // id de zone (peut être un niveau de grotte qu'on n'occupe pas
+    // activement : applyRemoteBlockDiff se charge de ne toucher les
+    // index de rendu que si c'est la zone affichée à l'écran).
+    onBlockChange: (zone, tx, ty, diff) => {
+      game.applyRemoteBlockDiff(game.worldForZone(zone), tx, ty, diff);
+    },
+    onWorldSync: (zone, diffs) => {
+      const world = game.worldForZone(zone);
+      if (!world) return; // zone jamais visitée localement : rien à appliquer pour l'instant
+      for (const d of diffs) game.applyRemoteBlockDiff(world, d.tx, d.ty, d.diff);
+    },
+    // Étape 3 (coffres partagés) : même logique, mais un coffre entier
+    // remplace l'ancien plutôt qu'un diff partiel (voir js/game.js
+    // applyRemoteChestChange et js/net-protocol.js sanitizeChestSlots).
+    onChestChange: (zone, tx, ty, slots) => {
+      game.applyRemoteChestChange(zone, tx, ty, slots);
+    },
+    onChestSync: (zone, chests) => {
+      for (const c of chests) game.applyRemoteChestChange(zone, c.tx, c.ty, c.slots);
+    },
+  });
+  game.otherPlayers = multiplayer.players;
+  game.uiCallbacks.onZoneChange = (zone) => multiplayer.setZone(zone);
+  game.uiCallbacks.onNetUpdate = (dt, localPlayer) => {
+    multiplayer.update(dt, localPlayer);
+    game.otherPlayers = multiplayer.players;
+  };
+  // LE JOUEUR LOCAL a cassé/posé un bloc ou basculé une porte : diffuse
+  // aux autres joueurs de sa zone actuelle (best effort, comme le reste
+  // du réseau — ne bloque jamais le jeu solo si la connexion est down).
+  game.uiCallbacks.onBlockChange = (tx, ty, diff) => multiplayer.sendBlockChange(tx, ty, diff);
+  // LE JOUEUR LOCAL a rangé/pioché un objet dans un coffre ouvert.
+  game.uiCallbacks.onChestChange = (tx, ty, slots) => multiplayer.sendChestChange(tx, ty, slots);
+  window.__multiplayer = multiplayer;
 
   setLoadingProgress(75, 'Plantation des arbres…');
   await yieldFrame();

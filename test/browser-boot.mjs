@@ -110,11 +110,25 @@ window.AudioContext = window.AudioContext || class {
 
 // Certains globaux de Node (navigator, location…) n'ont qu'un accesseur :
 // on les redéfinit, et on ignore ceux qui résistent.
+// NB : `Event` n'est PAS repris ici, volontairement. Le WebSocket de
+// jsdom est lui-même construit sur le WebSocket natif de Node (undici),
+// qui construit ses propres évènements avec le `Event` global du
+// processus Node. Si on écrase ce global par celui de jsdom, undici se
+// retrouve à fabriquer des évènements avec la classe jsdom, que
+// dispatchEvent (interne à jsdom, qui attend SON `Event`) rejette avec
+// « instance of Event » — un carambolage de « realms ». Ne pas toucher
+// au `Event` global évite le problème ; le code du jeu (js/game.js) et
+// ce fichier utilisent déjà `window.Event`/`window.KeyboardEvent`
+// explicitement partout où c'est nécessaire.
 for (const k of ['document', 'localStorage', 'HTMLElement', 'HTMLCanvasElement',
-  'Element', 'Node', 'Event', 'KeyboardEvent', 'MouseEvent', 'getComputedStyle',
+  'Element', 'Node', 'KeyboardEvent', 'MouseEvent', 'getComputedStyle',
   'requestAnimationFrame', 'cancelAnimationFrame', 'devicePixelRatio',
   'matchMedia', 'ResizeObserver', 'AudioContext', 'Image', 'innerWidth',
-  'innerHeight', 'navigator', 'location']) {
+  'innerHeight', 'navigator', 'location',
+  // Le client multijoueur (js/net.js) doit voir EXACTEMENT le
+  // WebSocket de jsdom (pas celui, natif, de Node) pour rester dans le
+  // même realm que le reste du DOM simulé.
+  'WebSocket']) {
   if (window[k] === undefined) continue;
   try {
     Object.defineProperty(globalThis, k, { value: window[k], writable: true, configurable: true });

@@ -27,6 +27,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { attachMultiplayer } from './net-server.js';
 
 const PORT = process.env.PORT || 3000;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -268,6 +269,13 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
+// ------------------------------------------------------------
+//  Multijoueur (présence temps réel) : WebSocket sur /ws, greffé sur
+//  ce même serveur HTTP — un seul process, un seul port, compatible
+//  avec le déploiement Render existant (render.yaml inchangé).
+// ------------------------------------------------------------
+const multiplayer = attachMultiplayer(server);
+
 server.listen(PORT, '0.0.0.0', () => {
   // Le port réellement obtenu : avec PORT=0 c'est le système qui choisit,
   // et les tests s'appuient sur cette ligne pour le retrouver.
@@ -276,4 +284,5 @@ server.listen(PORT, '0.0.0.0', () => {
     ? `  marchands : Mistral activé (modèle ${AI.model}, ${AI.baseUrl})`
       + ` — débit limité à ~${Math.round(60000 / MIN_SPACING_MS)} appels/min`
     : '  marchands : aucune clé MISTRAL_API_KEY → cerveau de négociation local');
+  console.log(`  multijoueur : WebSocket sur /ws (jusqu'à ${process.env.AVANIA_MAX_PLAYERS || 24} joueurs)`);
 });

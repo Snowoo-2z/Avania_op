@@ -256,6 +256,43 @@ export class World {
     return false;
   }
 
+  // ------------------------------------------------------------------
+  //  Monde partagé (multijoueur, étape 2) : applique un diff reçu du
+  //  réseau (voir js/net-protocol.js sanitizeBlockDiff) tel quel, sans
+  //  rejouer breakBlock/placeBlock — un diff DÉCRIT l'état final voulu
+  //  pour une tuile, il ne mime pas l'action qui y a mené (le drop, les
+  //  particules, l'usure d'outil restent de la mise en scène purement
+  //  locale, gérée par js/game.js autour de cet appel).
+  //  Retourne true si quelque chose a effectivement changé (utile pour
+  //  savoir si les index de rendu doivent être reconstruits).
+  // ------------------------------------------------------------------
+  applyBlockDiff(tx, ty, diff) {
+    if (!this.inBounds(tx, ty)) return false;
+    const i = this.idx(tx, ty);
+    let changed = false;
+    if (Object.prototype.hasOwnProperty.call(diff, 'floor') && diff.floor !== this.floor[i]) {
+      this.floor[i] = diff.floor;
+      changed = true;
+    }
+    if (Object.prototype.hasOwnProperty.call(diff, 'blocks') && diff.blocks !== this.blocks[i]) {
+      this.blocks[i] = diff.blocks;
+      if (!diff.blocks) this.doorOpen[i] = 0; // un bloc qui disparaît ferme/efface son état de porte
+      changed = true;
+    }
+    if (Object.prototype.hasOwnProperty.call(diff, 'blocks2') && diff.blocks2 !== this.blocks2[i]) {
+      this.blocks2[i] = diff.blocks2;
+      changed = true;
+    }
+    if (Object.prototype.hasOwnProperty.call(diff, 'door')) {
+      const wanted = diff.door ? 1 : 0;
+      if (this.doorOpen[i] !== wanted) {
+        this.doorOpen[i] = wanted;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
   // Récupère la liste des blocs "objets" visibles (arbres, rochers) pour le tri
   objectAt(tx, ty) {
     const b = this.blockAt(tx, ty);
