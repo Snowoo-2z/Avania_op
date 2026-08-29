@@ -162,12 +162,157 @@ Variables d'environnement :
 | `AVANIA_AI_MODEL` | `mistral-small-latest` | `mistral-large-latest` pour des répliques plus fines |
 | `PORT` | `3000` | port d'écoute |
 
+### 🌐 Multijoueur (étape 1 : présence, étape 2 : monde partagé, étape 3 : coffres, étape 4 : fours)
+
+**Étape 1 — présence.** Chaque joueur voit les autres se déplacer en
+direct : position, orientation, animation de marche, apparence et nom.
+
+**Étape 2 — monde partagé.** Casser un arbre, poser un mur, ouvrir une
+porte : ces changements sont désormais visibles par les autres joueurs
+de la **même zone** (surface, ou grotte à une profondeur donnée), avec
+une resynchronisation automatique quand on rejoint une zone déjà
+modifiée par d'autres.
+
+**Étape 3 — coffres partagés.** Le contenu d'un coffre posé est
+désormais partagé par tous les joueurs de la zone : ranger ou piocher
+un objet dans un coffre ouvert diffuse l'intégralité de ses 27 cases
+(`{t:'chest', tx, ty, slots}`, voir `js/net-protocol.js`,
+`sanitizeChestSlots`) aux autres joueurs présents, avec la même
+resynchronisation à l'arrivée dans une zone déjà modifiée
+(`{t:'chestSync', zone, chests:[...]}`). Casser un coffre annonce aussi
+qu'il est désormais vide, pour ne pas laisser une ancienne copie
+réapparaître si un nouveau coffre est reposé au même endroit. Seuls les
+**mobs** restent locaux à chaque client.
+
+Le format volontairement simple (le coffre entier plutôt qu'un diff des
+seules cases modifiées) part du principe qu'ouvrir/manipuler un coffre
+reste un évènement rare comparé aux positions envoyées à chaque tick :
+un coffre plein avec de la durabilité pèse environ 1,4 Ko en JSON, ce
+qui reste négligeable à cette fréquence (voir `maxPayload` ci-dessous).
+
+**Étape 4 — fours partagés.** La progression de cuisson d'un four
+(ingrédient, combustible, sortie, avancement) est elle aussi partagée
+par tous les joueurs de la zone. Contrairement au coffre (qui ne change
+que sur interaction du joueur), un four cuit en continu même panneau
+fermé : le rediffuser à chaque frame gaspillerait le réseau pour rien,
+donc le débit d'émission dépend de la situation (voir
+`Game._maybeAnnounceFurnace`, `js/game.js`) :
+- tant que **personne n'a le panneau ouvert ici**, un battement toutes
+  les ~2,5 s suffit à tenir les observateurs distants à jour pendant
+  que le feu brûle — pas de message tant que le four est éteint et
+  inactif ;
+- dès qu'**un joueur ouvre le panneau localement**, le débit passe en
+  quasi temps réel (~0,5 s) pour que l'animation de cuisson reste
+  fluide à l'écran ;
+- un changement structurel (ingrédient/combustible/sortie déposé ou
+  retiré) ou l'extinction du feu déclenche toujours un message
+  immédiat, sans attendre le prochain battement.
+
+Chaque four n'est **re-simulé que par le client qui l'a ouvert au moins
+une fois** (son propriétaire local, voir `entry._owned`) : les autres
+clients se contentent d'appliquer les états reçus par le réseau plutôt
+que de faire tourner leur propre copie de `updateFurnace` en parallèle
+— ça évite que deux simulations indépendantes du même four dérivent
+l'une de l'autre au fil du temps. En solo (jamais de réseau), rien ne
+change : le four devient propriétaire dès la première ouverture et
+continue de cuire normalement, panneau fermé ou pas, exactement comme
+avant cette étape.
+
+Le serveur reste volontairement un simple **relais + mémoire tampon**,
+jamais une autorité qui rejoue les règles du jeu : il ne fait aucune
+hypothèse sur ce qu'un client a le droit de casser ou de poser, il note
+juste « en (tx,ty) de telle zone, la tuile ressemble maintenant à ceci »
+et le retransmet. C'est un choix assumé pour rester simple et gratuit
+(voir « Limites connues » ci-dessous) plutôt qu'un monde serveur
+autoritatif complet, qui exigerait de porter `world.js`/`blocks.js`
+côté serveur.
+
+Tout est pensé pour tenir dans le budget très serré du plan **gratuit**
+de Render (0.1 CPU, 512 Mo de RAM, 5 Go de bande passante par mois,
+partagés à l'échelle du workspace) :
+
+- **protocole binaire compact** pour les positions (6 octets par
+  joueur, voir `js/net-protocol.js`) plutôt que du JSON — un JSON
+  équivalent pèserait 15 à 20 fois plus lourd sur le réseau ;
+- **silence quand rien ne bouge** : aucune trame n'est envoyée si
+  aucune position n'a changé depuis le dernier tick (un monde immobile
+  ne coûte aucun octet) ;
+- **tick serveur à ~12,5 Hz** (`AVANIA_TICK_HZ`), largement suffisant
+  pour du déplacement top-down — le client lisse les positions reçues
+  pour rester fluide à 60 fps entre deux tics ;
+- **plafond dur de connexions** (`AVANIA_MAX_PLAYERS`, 24 par défaut) :
+  au-delà, une nouvelle connexion est refusée proprement plutôt que de
+  dégrader tout le monde ;
+- **garde-fou de bande passante mensuelle** (`AVANIA_MONTHLY_BYTES_BUDGET`,
+  3 Go par défaut — sous les 5 Go du plan gratuit, en laissant de la
+  marge pour le reste du workspace) : au-delà, les nouvelles connexions
+  sont refusées jusqu'au mois suivant plutôt que de risquer une
+  suspension du service en pleine partie ;
+- **reconnexion automatique côté client** avec un backoff progressif
+  (jusqu'à 20 s) si le serveur est hors ligne ou en train de se
+  réveiller (spin-down du plan gratuit) — le jeu reste jouable en solo
+  pendant ce temps, comme pour le cerveau de négociation local ;
+- **filtrage par zone** : un joueur descendu dans la grotte n'apparaît
+  pas comme un fantôme à la surface (`js/cave.js` réutilise les mêmes
+  coordonnées de tuile d'un niveau à l'autre, d'où l'importance de ce
+  filtre côté serveur ET client) — le monde partagé applique le même
+  filtre : un bloc cassé dans la grotte niveau 3 n'est diffusé qu'aux
+  joueurs qui s'y trouvent ;
+- **messages de bloc compacts et rares** : casser/poser/ouvrir une
+  porte envoie un petit message JSON (jamais un flot par frame comme
+  la position) contenant uniquement ce qui a changé sur la tuile
+  (`{t:'block', tx, ty, diff:{...}}`) — voir `js/net-protocol.js`,
+  `sanitizeBlockDiff` ;
+- **journal en mémoire par zone, avec des bornes dures** : le serveur
+  retient les tuiles modifiées d'au plus 64 zones, 20 000 tuiles par
+  zone — largement au-dessus d'un usage normal — pour resynchroniser
+  qui rejoint, sans jamais laisser la mémoire grossir sans limite sur
+  un service qui tourne plusieurs jours d'affilée (les zones les plus
+  anciennes sont évincées en premier). Un journal du même genre existe
+  pour les coffres (`chestJournal`, jusqu'à 2 000 coffres par zone) et
+  pour les fours (`furnaceJournal`, même plafond) — un four vidé et
+  éteint sort d'ailleurs du journal plutôt que d'y traîner
+  indéfiniment une entrée neutre ;
+- **`maxPayload` relevé à 4 096 octets** (`net-server.js`) pour
+  absorber un coffre plein envoyé en entier (~1,4 Ko, un état de four
+  est bien plus léger), tout en gardant une limite dure contre un
+  client qui enverrait n'importe quoi.
+
+Aucune configuration n'est nécessaire pour activer le multijoueur : le
+serveur écoute automatiquement les connexions WebSocket sur `/ws`, sur
+le même port que le reste du jeu (`render.yaml` n'a rien à changer).
+
+**Limites connues** (compromis assumé pour rester dans le budget
+gratuit) :
+- un client qui **rate un message** (coupure réseau furtive) reste
+  désynchronisé sur ce bloc/coffre/four précis jusqu'à son prochain
+  aller-retour de zone (entrer/sortir de la grotte force une
+  resynchronisation complète) ;
+- seuls les **mobs** restent purement locaux à chaque client — tout le
+  reste (forme du monde, coffres, fours) est désormais synchronisé ;
+- le serveur ne **valide rien** : un client modifié pourrait annoncer
+  un bloc halluciné n'importe où, remplir un coffre à volonté, ou
+  afficher une cuisson qui n'a jamais eu lieu (pas de vérification que
+  les objets envoyés existent vraiment dans l'inventaire du joueur).
+  Sans conséquence grave pour une partie entre amis, mais à garder en
+  tête si le service devait un jour être ouvert plus largement.
+
+Variables d'environnement :
+
+| Variable | Défaut | Rôle |
+| --- | --- | --- |
+| `AVANIA_MAX_PLAYERS` | `24` | connexions simultanées maximum |
+| `AVANIA_TICK_HZ` | `12.5` | fréquence de diffusion des positions |
+| `AVANIA_MONTHLY_BYTES_BUDGET` | `3221225472` (3 Go) | seuil de sécurité de bande passante sortante par mois |
+
 ## 🧪 Tests, aperçus & benchmark
 
 ```bash
 npm test                              # test de fumée (logique pure, sans navigateur)
 npm run test:browser                  # test d'intégration : le jeu démarre dans un vrai DOM
 npm run test:relay                    # relais marchand contre une API Mistral simulée
+npm run test:multiplayer              # protocole réseau : vrai server.js + vrais clients WebSocket
+npm run test:multiplayer:client       # client réseau (js/net.js) de bout en bout, deux "joueurs"
 npm run bench                         # benchmark de la boucle de jeu (ms/frame)
 node scripts/render-preview.mjs       # aperçus PNG : monde, personnage, blocs, mobs
 node scripts/preview-mobs.mjs         # planches des mobs (profils, marche, scène en jeu)
@@ -222,14 +367,28 @@ puis construis ta première cabane.
 
 ## 🗺️ Feuille de route
 
-- [ ] **Multijoueur** — serveur WebSocket, positions & actions synchronisées.
+- [x] **Multijoueur (étape 1 : présence)** — WebSocket, chaque joueur
+  voit les autres se déplacer en temps réel (position, orientation,
+  apparence, zone).
+- [x] **Multijoueur (étape 2 : monde partagé)** — blocs cassés/posés et
+  portes synchronisés entre joueurs d'une même zone, avec
+  resynchronisation à la connexion.
+- [x] **Multijoueur (étape 3 : coffres partagés)** — le contenu des
+  coffres est synchronisé entre joueurs d'une même zone, avec
+  resynchronisation à la connexion.
+- [x] **Multijoueur (étape 4 : fours partagés)** — la progression de
+  cuisson des fours est synchronisée entre joueurs d'une même zone
+  (débit d'émission adaptatif, voir étape 4 ci-dessus). Seuls les mobs
+  restent locaux à chaque client.
 - [x] **Plus de blocs** — planche, brique, sable, verre, terre… (+ craft).
 - [x] **Économie (v2)** — monnaie, achats auprès des marchands, négociation.
 - [ ] **Économie (suite)** — banque, salaires, taxes, troc entre joueurs.
 - [x] **La grotte** — 8 niveaux souterrains, pierre & fer, équipement exigé.
 - [ ] **Intérieurs** — entrer dans les bâtiments construits.
 - [x] **Inventaire & objets** — 36 cases, piles, outils durables et fabrication 3×3.
-- [ ] **Coffres** — stockage partagé, vols.
+- [x] **Coffres** — stockage partagé (voir étape 3 ci-dessus) ; vols
+  encore possibles côté serveur car rien n'y est validé (limite connue).
+- [x] **Fours** — cuisson partagée (voir étape 4 ci-dessus).
 - [ ] **Caméras & sécurité** — poser des caméras, zones surveillées.
 - [ ] **Métiers & police** — rôles, arrestations, enquêtes.
 - [ ] **Propriété** — revendiquer un terrain, protéger sa maison.
@@ -245,13 +404,25 @@ Avania_op/
 ├── index.html          page unique (canvas #game + DOM des panneaux UI)
 ├── css/
 │   └── style.css       tout le style : HUD Minecraft-like, panneaux, écrans
-├── server.js           serveur statique de dev (Node pur, port 3000)
+├── server.js           serveur statique (Node pur, port 3000)
 │                       + relais POST /api/merchant vers un modèle si une
 │                         clé AVANIA_AI_API_KEY est définie
-│                       — plus tard : le serveur WebSocket multijoueur se
-│                         branchera ici
+│                       + branche le multijoueur (net-server.js) sur /ws
+├── net-server.js       ★ serveur multijoueur : WebSocket, présence des
+│                         joueurs, diffusion des positions ET journal du
+│                         monde partagé + du contenu des coffres et
+│                         fours par zone (voir la section « Multijoueur »
+│                         plus haut)
 ├── js/                 TOUT le jeu (modules ES natifs, ~9 000 lignes)
 │   ├── main.js         point d'entrée : initialisation & boucle
+│   ├── net.js          ★ client multijoueur : connexion, lissage des
+│   │                     positions distantes, reconnexion automatique,
+│   │                     relais des changements de bloc (étape 2), de
+│   │                     coffre (étape 3) et de four (étape 4)
+│   ├── net-protocol.js ★ protocole partagé (client ET serveur) : trames
+│   │                     binaires de position + validation des diffs
+│   │                     de bloc, des cases de coffre et de l'état des
+│   │                     fours du monde partagé
 │   ├── game.js         boucle de jeu, rendu du monde, interactions (1 594 l.)
 │   ├── config.js       constantes globales & options de personnalisation
 │   ├── world.js        génération du monde, tuiles, collisions, casser/poser

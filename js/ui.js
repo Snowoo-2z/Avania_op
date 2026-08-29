@@ -817,6 +817,10 @@ export class FurnacePanel {
     if (!this.root.classList.contains('hidden')) return;
     this.key = `${tx},${ty}`;
     this.entry = this.game.getFurnaceEntry(tx, ty);
+    // Multijoueur (étape 4) : pendant que ce panneau est ouvert ICI, la
+    // progression est diffusée « live » (voir Game._maybeAnnounceFurnace) —
+    // sinon seulement un battement occasionnel tant que le four brûle.
+    this.entry._localOpen = true;
     this.slotManager.furnaceArrays = {
       input: this.entry.input,
       fuel: this.entry.fuel,
@@ -832,6 +836,7 @@ export class FurnacePanel {
     if (this.root.classList.contains('hidden')) return;
     this.root.classList.add('hidden');
     if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    if (this.entry) this.entry._localOpen = false;
     this.slotManager.furnaceArrays = null;
     this.slotManager.updateCursor((icon, id) => applyItemIcon(icon, id));
     this.onVisibilityChange(false);
@@ -920,6 +925,21 @@ export class ChestPanel {
       el.classList.toggle('selected', this.inventory.selected === i);
     });
     this.slotManager.updateCursor((icon, id) => applyItemIcon(icon, id));
+    // Multijoueur (étape 3) : le coffre est partagé, donc on diffuse dès
+    // qu'on détecte que SON contenu a changé depuis le dernier passage
+    // (par nous, ou par un autre joueur qui a le même coffre ouvert —
+    // dans ce cas on ne fait que rediffuser ce qu'on vient de recevoir,
+    // ce qui est sans conséquence : le serveur ne fait que remplacer sa
+    // copie par une copie identique). Comparaison JSON simple : un
+    // coffre entier tient dans quelques centaines d'octets, et ce
+    // contrôle ne tourne que pendant qu'un coffre est ouvert (150 ms).
+    const sig = JSON.stringify(slots);
+    if (sig !== this._lastSentSig) {
+      this._lastSentSig = sig;
+      if (this.game.uiCallbacks.onChestChange) {
+        this.game.uiCallbacks.onChestChange(this.tx, this.ty, slots);
+      }
+    }
   }
 
   open(tx, ty) {
@@ -929,6 +949,7 @@ export class ChestPanel {
     this.ty = ty;
     this.entry = this.game.getChestEntry(tx, ty);
     this.slotManager.chestSlots = this.entry.slots;
+    this._lastSentSig = JSON.stringify(this.entry.slots); // état déjà connu du serveur : pas de renvoi inutile à l'ouverture
     this.root.classList.remove('hidden');
     this.update();
     // Rafraîchissement léger : le contenu change uniquement quand le

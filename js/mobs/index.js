@@ -8,4 +8,5 @@
 
 export {
   MOB_DEFS, Mob, spawnMobs, updateMob, drawMob, mobDrops,
+  DEFAULT_MOB_COUNTS, findMobSpawnSpot, makeMobFromNetwork,
 } from './core.js';

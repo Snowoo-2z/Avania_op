@@ -26,6 +26,7 @@ import {
   askMerchant, greetMerchant, interpretCommands, resetNegotiation,
 } from './merchant-ai.js';
 import { drawMaskMerchant, drawArmorMerchant } from './npc/index.js';
+import { MultiplayerClient } from './net.js';
 
 // Remplace tous les emojis de l'interface par de vraies icônes SVG.
 try { mountIcons(); } catch (err) { console.error('AVANIA: icônes SVG', err); }
@@ -169,6 +170,90 @@ async function boot() {
   await yieldFrame();
 
   const game = new Game(canvas, appearance, settings);
+
+  // --- Multijoueur (présence temps réel) ---
+  // « Best effort » : si le serveur ne répond pas (hors ligne, en
+  // train de se réveiller sur Render...), le jeu continue en solo.
+  // Le tableau `players` du client réseau change de référence à chaque
+  // arrivée/départ (voir _rebuildPlayers) : on le republie sur
+  // game.otherPlayers à chaque frame plutôt qu'une seule fois au démarrage.
+  const multiplayer = new MultiplayerClient({
+    name: appearance.name,
+    appearance,
+    zone: game.world.id,
+    // Étape 2 (monde partagé) : un autre joueur a modifié une tuile
+    // (message 'block') ou on vient de rejoindre une zone déjà
+    // modifiée par d'autres (message 'worldSync', une rafale de
+    // diffs). Dans les deux cas on retrouve le bon World.js par son
+    // id de zone (peut être un niveau de grotte qu'on n'occupe pas
+    // activement : applyRemoteBlockDiff se charge de ne toucher les
+    // index de rendu que si c'est la zone affichée à l'écran).
+    onBlockChange: (zone, tx, ty, diff) => {
+      game.applyRemoteBlockDiff(game.worldForZone(zone), tx, ty, diff);
+    },
+    onWorldSync: (zone, diffs) => {
+      const world = game.worldForZone(zone);
+      if (!world) return; // zone jamais visitée localement : rien à appliquer pour l'instant
+      for (const d of diffs) game.applyRemoteBlockDiff(world, d.tx, d.ty, d.diff);
+    },
+    // Étape 3 (coffres partagés) : même logique, mais un coffre entier
+    // remplace l'ancien plutôt qu'un diff partiel (voir js/game.js
+    // applyRemoteChestChange et js/net-protocol.js sanitizeChestSlots).
+    onChestChange: (zone, tx, ty, slots) => {
+      game.applyRemoteChestChange(zone, tx, ty, slots);
+    },
+    onChestSync: (zone, chests) => {
+      for (const c of chests) game.applyRemoteChestChange(zone, c.tx, c.ty, c.slots);
+    },
+    // Étape 4 (fours partagés) : même logique que les coffres, avec un
+    // état de four complet (voir js/game.js applyRemoteFurnaceChange et
+    // js/net-protocol.js sanitizeFurnaceState).
+    onFurnaceChange: (zone, tx, ty, state) => {
+      game.applyRemoteFurnaceChange(zone, tx, ty, state);
+    },
+    onFurnaceSync: (zone, furnaces) => {
+      for (const f of furnaces) game.applyRemoteFurnaceChange(zone, f.tx, f.ty, f.state);
+    },
+    // Étape 5 (animaux partagés) : un troupeau connu (mobSync) peut
+    // être vide — c'est le signal que ce client est probablement le
+    // premier à visiter cette zone : il propose alors son propre
+    // troupeau local (voir game.mobSnapshotForZone) pour que les
+    // arrivants suivants héritent des mêmes bêtes.
+    onMobSync: (zone, mobs) => {
+      if (mobs.length === 0) {
+        if (game.world.id === zone) multiplayer.sendMobSync(game.mobSnapshotForZone());
+        return;
+      }
+      game.applyMobSync(zone, mobs);
+    },
+    onMobSpawn: (zone, mobs) => game.applyMobSpawn(zone, mobs),
+    onMobState: (zone, mobs) => game.applyMobState(zone, mobs),
+    onMobHit: (zone, mob) => game.applyMobHit(zone, mob),
+  });
+  game.otherPlayers = multiplayer.players;
+  game.uiCallbacks.onZoneChange = (zone) => multiplayer.setZone(zone);
+  game.uiCallbacks.onNetUpdate = (dt, localPlayer) => {
+    multiplayer.update(dt, localPlayer);
+    game.otherPlayers = multiplayer.players;
+  };
+  // LE JOUEUR LOCAL a cassé/posé un bloc ou basculé une porte : diffuse
+  // aux autres joueurs de sa zone actuelle (best effort, comme le reste
+  // du réseau — ne bloque jamais le jeu solo si la connexion est down).
+  game.uiCallbacks.onBlockChange = (tx, ty, diff) => multiplayer.sendBlockChange(tx, ty, diff);
+  // LE JOUEUR LOCAL a rangé/pioché un objet dans un coffre ouvert.
+  game.uiCallbacks.onChestChange = (tx, ty, slots) => multiplayer.sendChestChange(tx, ty, slots);
+  // LE JOUEUR LOCAL possède un four qui vient de changer (contenu, ou
+  // battement périodique de cuisson — voir Game._maybeAnnounceFurnace).
+  game.uiCallbacks.onFurnaceChange = (tx, ty, state) => multiplayer.sendFurnaceChange(tx, ty, state);
+  // Étape 5 (animaux) : LE JOUEUR LOCAL vient de frapper un animal, et
+  // le coordinateur de la zone (voir js/net.js isMobCoordinator) diffuse
+  // périodiquement un correctif de position / gère la repop — voir
+  // Game._maybeManageMobsNetwork pour le détail des deux rôles.
+  game.uiCallbacks.onMobHit = (id, hp, alive) => multiplayer.sendMobHit(id, hp, alive);
+  game.uiCallbacks.onMobRespawn = (mobs) => multiplayer.sendMobSpawn(mobs);
+  game.uiCallbacks.onMobState = (mobs) => multiplayer.sendMobState(mobs);
+  game.uiCallbacks.isMobCoordinator = () => multiplayer.isMobCoordinator();
+  window.__multiplayer = multiplayer;
 
   setLoadingProgress(75, 'Plantation des arbres…');
   await yieldFrame();

@@ -26,8 +26,49 @@ import { getItemSprite } from './icons.js';
 import { drawHeldItem, heldItemIsBehind } from './held.js';
 import { isLowPowerDevice, makeCanvas } from './utils.js';
 import { updateFurnace, makeFurnaceEntry } from './furnace.js';
-import { MOB_DEFS, spawnMobs, updateMob, drawMob, mobDrops } from './mobs/index.js';
+import {
+  MOB_DEFS, Mob, spawnMobs, updateMob, drawMob, mobDrops,
+  DEFAULT_MOB_COUNTS, findMobSpawnSpot, makeMobFromNetwork,
+} from './mobs/index.js';
 import { CAVE, canDescendTo } from './cave.js';
+
+// Multijoueur (étape 4, fours) : débit d'émission réseau de la
+// progression d'un four possédé localement — voir Game.updateFurnaces
+// / _maybeAnnounceFurnace. « Live » tant que quelqu'un a le panneau
+// ouvert ICI (l'utilisateur veut voir l'animation bouger en face) ;
+// beaucoup plus espacé sinon (le four continue de cuire même fermé,
+// mais ça n'intéresse qu'un battement occasionnel pour resynchroniser
+// un observateur distant, pas un flot par frame).
+const FURNACE_NET_LIVE_S = 0.5;
+const FURNACE_NET_IDLE_S = 2.5;
+
+// Multijoueur (étape 5, animaux) : contrairement aux fours, chaque
+// client continue de simuler localement l'errance de CHAQUE animal du
+// troupeau (fluide, pas cher, et ça permet à un animal de fuir « son »
+// joueur même si un autre est en train de le regarder). Trois réglages
+// suffisent à garder le troupeau cohérent d'un joueur à l'autre malgré
+// ça — voir Game._maybeManageMobsNetwork / updateMobs :
+//  - MOB_NET_STATE_S : le « coordinateur » de la zone (voir
+//    js/net.js isMobCoordinator, un seul joueur à la fois) diffuse un
+//    correctif de position de tout le troupeau à cette fréquence ;
+//  - MOB_NET_BLEND_RATE : vitesse à laquelle CHAQUE client recale en
+//    douceur sa simulation locale vers le dernier correctif reçu (un
+//    léger « aimant » permanent, jamais un saut brutal) ;
+//  - MOB_RESPAWN_CHECK_S : à quelle fréquence le coordinateur vérifie
+//    si le troupeau s'est dépeuplé (animaux tués) et doit se
+//    repeupler — la repop est alors diffusée à tout le monde.
+const MOB_NET_STATE_S = 1.5;
+const MOB_NET_BLEND_RATE = 1.2;
+const MOB_RESPAWN_CHECK_S = 5;
+
+// Forme réseau d'un animal (voir js/net-protocol.js sanitizeMobInfo) :
+// utilisée aussi bien pour établir un troupeau initial que pour une
+// repop — factorisé pour ne jamais désynchroniser les deux formats.
+function mobToNetInfo(mob) {
+  return {
+    id: mob.id, kind: mob.kind, x: mob.x, y: mob.y, hp: mob.hp, alive: mob.alive,
+  };
+}
 
 const REACH_SQ = REACH * REACH;
 const SORT_BY_Y = (a, b) => {
@@ -227,6 +268,12 @@ export class Game {
     this.mobs = spawnMobs(this.world);
     for (const mob of this.mobs) mob.dy = DRAW_MOB;
     this.mobAttackCooldown = 0;
+    // Multijoueur (étape 5) : prochain id réseau libre pour un animal
+    // (repop) — voir _allocMobId/_noteMobId. spawnMobs a déjà consommé
+    // les ids 0..N-1 de façon contiguë.
+    this._nextMobId = this.mobs.length;
+    this._mobStateTimer = 0;
+    this._mobRespawnTimer = 0;
     // Fours posés : contenu + progression (clé numérique = index de tuile,
     // finies les chaînes "tx,ty" allouées dans la boucle de rendu).
     this.furnaceData = new Map();
@@ -242,6 +289,17 @@ export class Game {
       onDescend: null,
       onTalk: null,
       onInteractBlocked: null,
+      onZoneChange: null,   // branché par le client multijoueur (js/net.js)
+      onBlockChange: null,  // idem : (tx, ty, diff) — LE JOUEUR LOCAL a modifié un bloc
+      onChestChange: null,  // idem : (tx, ty, slots[27]) — LE JOUEUR LOCAL a modifié un coffre ouvert
+      onFurnaceChange: null, // idem : (tx, ty, state) — LE JOUEUR LOCAL a modifié un four ouvert
+      // Multijoueur (étape 5, animaux) : voir js/main.js pour le
+      // câblage exact et js/net.js pour la forme de chaque message.
+      onMobEstablish: null, // (mobs[]) — AUCUN troupeau connu du serveur pour cette zone : on propose le nôtre
+      onMobRespawn: null,   // (mobs[]) — le coordinateur propose une repop
+      onMobState: null,     // (mobs[{id,x,y}]) — le coordinateur diffuse un correctif de position
+      onMobHit: null,       // (id, hp, alive) — LE JOUEUR LOCAL vient de frapper un animal
+      isMobCoordinator: null, // () => bool — suis-je le coordinateur de cette zone ? (voir js/net.js)
     };
     // PNJ (représentant de l'île, marchands de la grotte).
     this.npcs = [];
@@ -441,7 +499,13 @@ export class Game {
     ) {
       this.performanceMode = true;
       if (typeof document !== 'undefined') document.documentElement.classList.add('low-power');
-      if (typeof window !== 'undefined') window.dispatchEvent(new Event('resize'));
+      // window.Event, PAS le global `Event` : dans certains environnements
+      // (le test d'intégration navigateur, qui fait cohabiter le jsdom
+      // WebSocket avec le WebSocket natif de Node) les deux implémentations
+      // d'Event viennent de « realms » différents et ne sont pas
+      // interchangeables — dispatchEvent exige celle du même realm que
+      // `window`.
+      if (typeof window !== 'undefined') window.dispatchEvent(new window.Event('resize'));
       console.info('AVANIA: mode performance activé automatiquement.');
     }
   }
@@ -474,6 +538,11 @@ export class Game {
 
   update(dt) {
     this.time += dt;
+    // Branché par le client multijoueur (js/net.js) : lisse les
+    // positions distantes et envoie la position locale, AVANT le rendu
+    // de la frame (sinon les joueurs distants auraient une frame de
+    // retard visible).
+    if (this.uiCallbacks.onNetUpdate) this.uiCallbacks.onNetUpdate(dt, this.player);
     this.actionCooldown = Math.max(0, this.actionCooldown - dt);
     // Les fours cuisent en continu, même panneau ouvert (la barre avance).
     this.updateFurnaces(dt);
@@ -549,12 +618,52 @@ export class Game {
 
   // ------------------------------------------------------------
   //  Fours : chaque four posé cuit indépendamment (en temps réel).
+  //
+  //  Multijoueur (étape 4) : un four n'est re-simulé ICI que si CE
+  //  client en est le « propriétaire » (entry._owned — voir
+  //  applyRemoteFurnaceChange et js/ui.js FurnacePanel). Un four connu
+  //  seulement via le réseau (jamais ouvert localement) n'est PAS
+  //  re-simulé : son état ne vient QUE des messages reçus, pour éviter
+  //  que deux clients fassent chacun avancer indépendamment la même
+  //  cuisson et divergent l'un de l'autre. En solo (jamais de réseau),
+  //  ce flag est mis à `true` dès la première ouverture du panneau
+  //  (voir getFurnaceEntry / FurnacePanel.open) et n'est ensuite plus
+  //  jamais remis à `false` : la cuisson continue bien même panneau
+  //  fermé, comme avant.
   // ------------------------------------------------------------
   updateFurnaces(dt) {
     if (this.furnaceData.size === 0) return;
-    for (const entry of this.furnaceData.values()) {
+    for (const [key, entry] of this.furnaceData) {
+      if (!entry._owned) continue;
       updateFurnace(entry, dt);
+      this._maybeAnnounceFurnace(key, entry, dt);
     }
+  }
+
+  // Débit d'émission réseau d'un four possédé localement : « live »
+  // (toutes les FURNACE_NET_LIVE_S) tant que son panneau est ouvert ICI,
+  // sinon seulement un battement toutes les FURNACE_NET_IDLE_S tant
+  // qu'il brûle encore — et un message immédiat dès qu'un ingrédient/
+  // combustible/résultat change ou que le feu s'éteint, pour ne jamais
+  // faire attendre un observateur sur un évènement franc.
+  _maybeAnnounceFurnace(key, entry, dt) {
+    if (!this.uiCallbacks.onFurnaceChange) return;
+    const burning = entry.fuelTime > 0;
+    const sig = `${entry.input[0]?.id}:${entry.input[0]?.count}|`
+      + `${entry.fuel[0]?.id}:${entry.fuel[0]?.count}|`
+      + `${entry.output[0]?.id}:${entry.output[0]?.count}`;
+    const structuralChange = sig !== entry._lastAnnouncedSig;
+    const justStoppedBurning = entry._wasBurning && !burning;
+    entry._netTimer = (entry._netTimer || 0) + dt;
+    const interval = entry._localOpen ? FURNACE_NET_LIVE_S : FURNACE_NET_IDLE_S;
+    const heartbeatDue = entry._netTimer >= interval && (entry._localOpen || burning);
+    entry._wasBurning = burning;
+    if (!structuralChange && !justStoppedBurning && !heartbeatDue) return;
+    entry._lastAnnouncedSig = sig;
+    entry._netTimer = 0;
+    const tx = key % WORLD_W;
+    const ty = Math.floor(key / WORLD_W);
+    this._announceFurnaceChange(tx, ty, entry);
   }
 
   getFurnaceEntry(tx, ty) {
@@ -564,19 +673,31 @@ export class Game {
       entry = makeFurnaceEntry();
       this.furnaceData.set(key, entry);
     }
+    // Ouvrir le panneau (seul appelant de getFurnaceEntry, voir
+    // js/ui.js) rend ce client propriétaire de la simulation de ce
+    // four — voir le commentaire au-dessus de updateFurnaces.
+    entry._owned = true;
+    return entry;
+  }
+
+  // Crée/retrouve une entrée de coffre dans UN Map donné (factorisé pour
+  // servir aussi bien à `getChestEntry` — le monde affiché — qu'à
+  // l'application des mises à jour réseau reçues pour une zone qui
+  // n'est pas forcément celle affichée à l'écran, voir chestDataMapForZone).
+  _chestEntryIn(map, tx, ty) {
+    const key = ty * WORLD_W + tx;
+    let entry = map.get(key);
+    if (!entry) {
+      entry = { slots: new Array(27).fill(null), openT: 0, openTarget: 0 };
+      map.set(key, entry);
+    }
     return entry;
   }
 
   // Entrée de stockage d'un coffre posé (27 cases, comme Minecraft) +
   // état d'animation du couvercle (openT : 0 fermé → 1 ouvert).
   getChestEntry(tx, ty) {
-    const key = ty * WORLD_W + tx;
-    let entry = this.chestData.get(key);
-    if (!entry) {
-      entry = { slots: new Array(27).fill(null), openT: 0, openTarget: 0 };
-      this.chestData.set(key, entry);
-    }
-    return entry;
+    return this._chestEntryIn(this.chestData, tx, ty);
   }
 
   // Ouvre / ferme le couvercle du coffre posé (l'animation avance dans
@@ -600,12 +721,233 @@ export class Game {
 
   // ------------------------------------------------------------
   //  Mobs (moutons, vaches) : errance + fuite quand on les frappe.
-  // ------------------------------------------------------------
+  //
+  //  Multijoueur (étape 5) : CHAQUE client continue de simuler
+  //  localement l'errance de CHAQUE animal (comme en solo — c'est ce
+  //  qui garde le mouvement fluide et réactif, un mouton qui fuit LE
+  //  joueur qui vient de le frapper). Trois mécanismes gardent le
+  //  troupeau cohérent d'un joueur à l'autre sans jamais imposer un
+  //  vrai propriétaire par animal :
+  //   - _blendMobsTowardNetwork : un léger « aimant » permanent vers
+  //     le dernier correctif de position connu (voir applyRemoteMobState)
+  //     — jamais un saut brutal, juste une dérive qui ne s'accumule pas ;
+  //   - _maybeManageMobsNetwork : SEUL le coordinateur (voir
+  //     js/net.js isMobCoordinator) diffuse ce correctif, et gère la
+  //     repop — sinon chaque joueur présent enverrait le même message,
+  //     multipliant le trafic par le nombre de joueurs pour rien.
   updateMobs(dt) {
     this.mobAttackCooldown = Math.max(0, this.mobAttackCooldown - dt);
     for (const mob of this.mobs) {
       if (!mob.alive) continue;
       updateMob(mob, dt, this.world, this.player);
+    }
+    this._blendMobsTowardNetwork(dt);
+    this._maybeManageMobsNetwork(dt);
+  }
+
+  // Recale en douceur chaque animal vers le dernier correctif de
+  // position reçu du coordinateur (voir applyRemoteMobState) : sans ça,
+  // deux simulations locales indépendantes (même seed d'errance
+  // différente) dériveraient lentement l'une de l'autre au fil du
+  // temps. `_netTargetX/Y` est effacé après usage par
+  // applyRemoteMobState un court instant après réception — voir plus
+  // bas, on ne fait ici QUE la mécanique du lissage.
+  _blendMobsTowardNetwork(dt) {
+    if (!this._mobsById) return;
+    const k = 1 - Math.exp(-MOB_NET_BLEND_RATE * dt);
+    for (const mob of this.mobs) {
+      if (mob._netTargetX === undefined) continue;
+      mob.x += (mob._netTargetX - mob.x) * k;
+      mob.y += (mob._netTargetY - mob.y) * k;
+    }
+  }
+
+  // Rôle du coordinateur de la zone actuelle (voir js/net.js
+  // isMobCoordinator) : diffuser un correctif de position à basse
+  // fréquence et gérer la repop. Ne fait rien si le réseau n'a jamais
+  // pu se connecter (best effort, comme le reste du multijoueur).
+  _maybeManageMobsNetwork(dt) {
+    const cb = this.uiCallbacks;
+    if (!cb.isMobCoordinator || !cb.isMobCoordinator()) return;
+
+    this._mobStateTimer = (this._mobStateTimer || 0) + dt;
+    if (this._mobStateTimer >= MOB_NET_STATE_S) {
+      this._mobStateTimer = 0;
+      if (cb.onMobState) {
+        const entries = [];
+        for (const mob of this.mobs) {
+          if (!mob.alive) continue;
+          entries.push({ id: mob.id, x: mob.x, y: mob.y });
+        }
+        if (entries.length > 0) cb.onMobState(entries);
+      }
+    }
+
+    this._mobRespawnTimer = (this._mobRespawnTimer || 0) + dt;
+    if (this._mobRespawnTimer >= MOB_RESPAWN_CHECK_S) {
+      this._mobRespawnTimer = 0;
+      this._maybeRespawnMobs();
+    }
+  }
+
+  // Complète discrètement un troupeau dépeuplé (animaux tués) jusqu'à
+  // DEFAULT_MOB_COUNTS, un animal à la fois par vérification (repop
+  // progressive, jamais une vague soudaine) — et diffuse la nouvelle
+  // bête aux autres joueurs de la zone (voir onMobRespawn). N'a d'effet
+  // que sur la surface : comme spawnMobs, la grotte reste sans animaux.
+  _maybeRespawnMobs() {
+    if (this.world.kind === 'cave') return;
+    const counts = { sheep: 0, cow: 0 };
+    for (const mob of this.mobs) {
+      if (mob.alive && Object.prototype.hasOwnProperty.call(counts, mob.kind)) counts[mob.kind] += 1;
+    }
+    for (const [kind, target] of Object.entries(DEFAULT_MOB_COUNTS)) {
+      if (counts[kind] >= target) continue;
+      const spot = findMobSpawnSpot(this.world, 60);
+      if (!spot) continue;
+      const mob = new Mob(kind, spot.x, spot.y, this._allocMobId());
+      mob.dy = DRAW_MOB;
+      this.mobs.push(mob);
+      if (this._mobsById) this._mobsById.set(mob.id, mob);
+      if (this.uiCallbacks.onMobRespawn) this.uiCallbacks.onMobRespawn([mobToNetInfo(mob)]);
+      return; // un seul animal par vérification : repop progressive
+    }
+  }
+
+  // id réseau libre pour un nouvel animal (repop) — voir le
+  // commentaire sur this._nextMobId dans le constructeur.
+  _allocMobId() {
+    return this._nextMobId++;
+  }
+
+  // ------------------------------------------------------------
+  //  Animaux partagés (multijoueur, étape 5)
+  // ------------------------------------------------------------
+
+  // Index par id réseau (construit paresseusement) : nécessaire pour
+  // retrouver vite un animal précis quand un message réseau arrive
+  // (mobState/mobHit), sans reparcourir tout le tableau `mobs` — celui-
+  // ci reste la référence utilisée par le rendu et la boucle d'errance.
+  _mobIndex() {
+    if (!this._mobsById) {
+      this._mobsById = new Map();
+      for (const mob of this.mobs) this._mobsById.set(mob.id, mob);
+    }
+    return this._mobsById;
+  }
+
+  // Retrouve (sans le créer) le tableau `mobs` d'une zone réseau : celui
+  // du monde actif (`this.mobs`), ou celui mis de côté pour un monde
+  // déjà visité puis quitté (voir _saveDimState/_restoreDimState) —
+  // même principe que chestDataMapForZone/furnaceDataMapForZone.
+  mobsArrayForZone(zone) {
+    if (this.world && zone === this.world.id) return this.mobs;
+    const saved = this.dimStates.get(zone);
+    return saved ? saved.mobs : null;
+  }
+
+  // Appelé par js/main.js quand le serveur répond qu'AUCUN troupeau
+  // n'existe encore pour la zone actuelle (message 'mobSync' avec une
+  // liste vide) : ce client est probablement le premier arrivé, il
+  // propose son propre troupeau local tel quel — les autres arrivants
+  // recevront celui-ci en resynchronisation.
+  mobSnapshotForZone() {
+    return this.mobs.map(mobToNetInfo);
+  }
+
+  // Resynchronisation reçue du serveur pour une zone (arrivée ou
+  // changement de zone) : remplace le troupeau connu localement par
+  // celui déjà établi par d'autres joueurs, pour que tout le monde
+  // voie EXACTEMENT les mêmes bêtes au même endroit. Ignoré
+  // silencieusement si la liste reçue est vide (voir js/main.js : dans
+  // ce cas c'est à NOUS d'établir le troupeau, via mobSnapshotForZone),
+  // ou si cette zone n'a encore jamais été visitée localement (rien à
+  // raccrocher — cohérent avec chestDataMapForZone/furnaceDataMapForZone).
+  applyMobSync(zone, mobs) {
+    if (!Array.isArray(mobs) || mobs.length === 0) return;
+    const newMobs = mobs.map((info) => {
+      const mob = makeMobFromNetwork(info);
+      mob.dy = DRAW_MOB;
+      return mob;
+    });
+    if (this.world && zone === this.world.id) {
+      this.mobs = newMobs;
+      this._mobsById = null; // reconstruit paresseusement (voir _mobIndex)
+    } else {
+      const saved = this.dimStates.get(zone);
+      if (saved) saved.mobs = newMobs;
+    }
+    this._nextMobId = Math.max(this._nextMobId || 0, ...mobs.map((m) => m.id + 1));
+  }
+
+  // Un ou plusieurs animaux neufs (repop, annoncés par le coordinateur
+  // de la zone) : ignore silencieusement un id déjà connu (message reçu
+  // en double, ex. après une reconnexion) ou une zone jamais visitée.
+  applyMobSpawn(zone, mobs) {
+    const arr = this.mobsArrayForZone(zone);
+    if (!arr) return;
+    const active = this.world && zone === this.world.id;
+    const index = active ? this._mobIndex() : null;
+    for (const info of mobs) {
+      const known = active ? index.has(info.id) : arr.some((m) => m.id === info.id);
+      if (known) continue;
+      const mob = makeMobFromNetwork(info);
+      mob.dy = DRAW_MOB;
+      arr.push(mob);
+      if (index) index.set(mob.id, mob);
+      this._nextMobId = Math.max(this._nextMobId || 0, mob.id + 1);
+    }
+  }
+
+  // Correctif de position du coordinateur d'une zone : pour la zone
+  // AFFICHÉE, on ne déplace rien d'un coup — on pose juste une cible que
+  // _blendMobsTowardNetwork rejoindra en douceur à chaque frame (une
+  // zone non affichée n'a pas besoin de cette subtilité : rien ne la
+  // dessine, autant recaler directement sa position stockée). Un id
+  // inconnu localement (rare : animal apparu ailleurs juste avant notre
+  // arrivée) est ignoré, le prochain mobSync/mobSpawn le rattrapera.
+  applyMobState(zone, entries) {
+    const arr = this.mobsArrayForZone(zone);
+    if (!arr) return;
+    if (this.world && zone === this.world.id) {
+      const index = this._mobIndex();
+      for (const e of entries) {
+        const mob = index.get(e.id);
+        if (!mob || !mob.alive) continue;
+        mob._netTargetX = e.x;
+        mob._netTargetY = e.y;
+      }
+    } else {
+      for (const e of entries) {
+        const mob = arr.find((m) => m.id === e.id);
+        if (mob && mob.alive) { mob.x = e.x; mob.y = e.y; }
+      }
+    }
+  }
+
+  // Un autre joueur a frappé/tué un animal d'une zone : « dernier coup
+  // gagne », on applique tel quel (jamais de recalcul de dégâts ici —
+  // voir net-server.js, aucune validation côté serveur non plus). Un
+  // animal qui vient de mourir chez un autre joueur doit aussi lâcher
+  // son butin ICI, mais SEULEMENT si sa zone est actuellement affichée
+  // (killMob dépose des objets au sol/particules dans le monde actif —
+  // une zone non affichée se contente de mémoriser hp/alive).
+  applyMobHit(zone, info) {
+    const arr = this.mobsArrayForZone(zone);
+    if (!arr) return;
+    const active = this.world && zone === this.world.id;
+    const mob = active ? this._mobIndex().get(info.id) : arr.find((m) => m.id === info.id);
+    if (!mob) return;
+    const wasAlive = mob.alive;
+    mob.hp = info.hp;
+    mob.alive = info.alive;
+    if (!active) return;
+    if (wasAlive && !mob.alive) {
+      mob.hitFlash = 0.18;
+      this.killMob(mob);
+    } else if (mob.alive) {
+      mob.hitFlash = 0.18;
+      mob.fleeT = 1.7;
     }
   }
 
@@ -785,7 +1127,14 @@ export class Game {
       // Pas d'animaux sous terre.
       this.mobs = world.kind === 'cave' ? [] : spawnMobs(world);
       for (const mob of this.mobs) mob.dy = DRAW_MOB;
+      this._nextMobId = Math.max(this._nextMobId || 0, this.mobs.length);
     }
+    // Multijoueur (étape 5) : l'index par id (voir _mobIndex) pointait
+    // vers le troupeau de l'ANCIENNE zone — il doit être reconstruit
+    // pour la zone qu'on vient de restaurer, sinon un message réseau
+    // (mobState/mobHit) arrivant juste après le changement de zone
+    // retrouverait les mauvais animaux (ou aucun).
+    this._mobsById = null;
   }
 
   // Bascule sur un autre monde : on échange le monde, on reconstruit
@@ -812,6 +1161,10 @@ export class Game {
     this.camera.snapTo(spawnX, spawnY);
     this.updateTarget();
     this.refreshGear();
+    // Prévient le client multijoueur : les autres joueurs affichés
+    // doivent changer (ex. quitter la liste visible en entrant dans
+    // la grotte). world.id vaut 'surface' ou 'cave:<profondeur>'.
+    if (this.uiCallbacks.onZoneChange) this.uiCallbacks.onZoneChange(world.id);
   }
 
   // Niveau souterrain demandé (généré une seule fois, puis réutilisé :
@@ -978,6 +1331,11 @@ export class Game {
       const label = (MOB_DEFS[mob.kind] && MOB_DEFS[mob.kind].label) || 'Créature';
       this.notify(`${label} tué${mob.kind === 'vache' ? 'e' : ''}.`);
     }
+    // Multijoueur (étape 5) : LE JOUEUR LOCAL vient de porter ce coup —
+    // diffusé immédiatement (jamais un flot par frame, une frappe est
+    // un évènement rare comme casser un bloc). « Dernier coup gagne » :
+    // aucune validation, chaque client applique ses propres dégâts.
+    if (this.uiCallbacks.onMobHit) this.uiCallbacks.onMobHit(mob.id, mob.hp, mob.alive);
   }
 
   killMob(mob) {
@@ -1118,7 +1476,7 @@ export class Game {
     }
 
     // Poser (clic droit par défaut) : un appui suffit, le maintien aussi.
-    if (this.input.pressed('place') || this.input.down('place')) this.interactTarget();
+    if (this.input.pressed('place') || this.input.down('place')) this.interactWithTarget();
   }
 
   // Frappe un mob sous le curseur si possible. Retourne true si un mob
@@ -1135,13 +1493,24 @@ export class Game {
 
   // Clic droit : porte (ouvrir/fermer) ou four (ouvrir le panneau), sinon
   // pose le bloc sélectionné (comme dans Minecraft).
-  interactTarget() {
+  //
+  // Nommée `interactWithTarget` (et non `interactTarget`) : ce dernier nom
+  // est déjà pris par une PROPRIÉTÉ d'instance (voir updateInteractTarget,
+  // réécrite à chaque frame avec l'objet PNJ/grotte visé par la touche F,
+  // ou `null`). Une propriété d'instance masque toujours une méthode du
+  // même nom sur le prototype : appeler `this.interactTarget()` plantait
+  // donc systématiquement au clic droit dès que cette propriété valait
+  // `null` (le cas le plus courant) avec `TypeError: ... is not a
+  // function`. D'où ce nom distinct, pour ne plus jamais entrer en
+  // collision avec `this.interactTarget` (l'objet).
+  interactWithTarget() {
     if (this.actionCooldown > 0 || !this.inReach) return;
     const targetBlock = this.world.blockAt(this.targetTx, this.targetTy);
     if (targetBlock === 'door' && !this.isPlayerOnTile(this.targetTx, this.targetTy)) {
       const open = this.world.toggleDoor(this.targetTx, this.targetTy);
       this.actionCooldown = 0.28;
       this.spawnDoorPuff(this.targetTx, this.targetTy, open);
+      this._announceBlockChange(this.targetTx, this.targetTy, { door: open ? 1 : 0 });
       return;
     }
     if (targetBlock === 'furnace') {
@@ -1241,6 +1610,16 @@ export class Game {
       || (this.world.blocks2 && this.world.blocks2[i] !== oldBlock2)) {
       this.reindexPlacedChunk(this.targetTx, this.targetTy);
     }
+    // Multijoueur (étape 2) : annonce aux autres joueurs de la même zone
+    // ce qui a réellement changé sur cette tuile (jamais l'action brute —
+    // le drop/les particules restent une mise en scène purement locale).
+    {
+      const diff = {};
+      if (this.world.floor[i] !== oldFloor) diff.floor = this.world.floor[i];
+      if (this.world.blocks[i] !== oldBlock) diff.blocks = this.world.blocks[i];
+      if (this.world.blocks2 && this.world.blocks2[i] !== oldBlock2) diff.blocks2 = this.world.blocks2[i];
+      if (Object.keys(diff).length > 0) this._announceBlockChange(this.targetTx, this.targetTy, diff);
+    }
     // Un coffre cassé rejette son contenu au sol (comme dans Minecraft) :
     // rien ne se perd en démolissant sa maison.
     if (existingBlock === 'chest') {
@@ -1250,6 +1629,25 @@ export class Game {
         for (const stack of chestEntry.slots) {
           if (stack) this.spawnDrop(this.targetTx, this.targetTy, stack.id, stack.count);
         }
+        // Multijoueur (étape 3) : le coffre est cassé, son contenu est
+        // parti au sol — on prévient les autres joueurs que ce coffre
+        // est désormais vide, sinon le journal du serveur garderait
+        // l'ancien contenu et le referait apparaître si quelqu'un pose
+        // un nouveau coffre au même endroit plus tard.
+        this._announceChestChange(this.targetTx, this.targetTy, new Array(27).fill(null));
+      }
+    }
+    // Même principe pour un four cassé : son ingrédient/combustible/
+    // sortie tombent au sol (rien ne se perd), et on prévient les
+    // autres joueurs qu'il est désormais vide.
+    if (existingBlock === 'furnace') {
+      const furnaceEntry = this.furnaceData.get(i);
+      if (furnaceEntry) {
+        this.furnaceData.delete(i);
+        for (const stack of [furnaceEntry.input[0], furnaceEntry.fuel[0], furnaceEntry.output[0]]) {
+          if (stack) this.spawnDrop(this.targetTx, this.targetTy, stack.id, stack.count);
+        }
+        this._announceFurnaceChange(this.targetTx, this.targetTy, makeFurnaceEntry());
       }
     }
     if (drop) {
@@ -1530,16 +1928,183 @@ export class Game {
     if (!item || !ITEM_DEFS[item]?.place) return;
     if (this.isPlayerOnTile(this.targetTx, this.targetTy)) return;
 
+    const i = this.world.idx(this.targetTx, this.targetTy);
+    const oldBlock = this.world.blocks[i];
+    const oldBlock2 = this.world.blocks2 ? this.world.blocks2[i] : null;
     const placed = this.world.placeBlock(this.targetTx, this.targetTy, item);
     if (placed) {
       this.reindexPlacedChunk(this.targetTx, this.targetTy);
       this.inventory.takeSlot(this.inventory.selectedSlotIndex(), 1);
       this.actionCooldown = 0.16;
+      // Multijoueur (étape 2) : le bloc posé (couche 1 ou empilé en
+      // couche 2) doit apparaître chez les autres joueurs de la zone.
+      const diff = {};
+      if (this.world.blocks[i] !== oldBlock) diff.blocks = this.world.blocks[i];
+      if (this.world.blocks2 && this.world.blocks2[i] !== oldBlock2) diff.blocks2 = this.world.blocks2[i];
+      if (Object.keys(diff).length > 0) this._announceBlockChange(this.targetTx, this.targetTy, diff);
     }
   }
 
   isPlayerOnTile(tx, ty) {
     return Math.floor(this.player.x / TILE) === tx && Math.floor(this.player.y / TILE) === ty;
+  }
+
+  // ------------------------------------------------------------
+  //  Monde partagé (multijoueur, étape 2)
+  // ------------------------------------------------------------
+
+  // LE JOUEUR LOCAL vient de modifier une tuile (casse, pose, porte) :
+  // prévient le client réseau (js/main.js branche ce callback), qui se
+  // charge de choisir la bonne zone et le bon débit. Ne fait jamais
+  // planter le jeu solo : `onBlockChange` est null tant que js/main.js
+  // ne l'a pas branché (ou si le réseau n'a jamais pu se connecter).
+  _announceBlockChange(tx, ty, diff) {
+    if (this.uiCallbacks.onBlockChange) this.uiCallbacks.onBlockChange(tx, ty, diff);
+  }
+
+  // Même principe pour le contenu d'un coffre (étape 3) : appelé
+  // directement quand un coffre est cassé (voir mineTarget) — le
+  // ChestPanel appelle lui-même onChestChange pendant qu'il est ouvert
+  // (voir js/ui.js), donc cette méthode ne sert qu'aux cas où AUCUN
+  // panneau n'est ouvert au moment du changement.
+  _announceChestChange(tx, ty, slots) {
+    if (this.uiCallbacks.onChestChange) this.uiCallbacks.onChestChange(tx, ty, slots);
+  }
+
+  // Même principe pour l'état d'un four (étape 4) : appelé directement
+  // quand un four est cassé (voir mineTarget) — le FurnacePanel appelle
+  // lui-même onFurnaceChange pendant qu'il est ouvert ou tant qu'il
+  // brûle (voir js/ui.js), donc cette méthode ne sert qu'aux cas où
+  // AUCUN panneau n'est ouvert au moment du changement.
+  _announceFurnaceChange(tx, ty, entry) {
+    if (this.uiCallbacks.onFurnaceChange) {
+      this.uiCallbacks.onFurnaceChange(tx, ty, {
+        input: entry.input[0], fuel: entry.fuel[0], output: entry.output[0],
+        progress: entry.progress, fuelTime: entry.fuelTime, maxFuelTime: entry.maxFuelTime,
+      });
+    }
+  }
+
+  // Un AUTRE joueur a modifié une tuile de la zone actuelle (appelé par
+  // js/main.js quand le client réseau reçoit un message 'block' ou
+  // 'worldSync'). On rejoue le diff sur le bon monde SANS refaire la
+  // mise en scène locale (pas de drop, pas de particules, pas d'usure
+  // d'outil : ce sont des évènements qui appartiennent à celui qui a
+  // agi, pas à nous) — seuls les index de rendu doivent suivre.
+  //
+  // `world` est explicite (pas forcément `this.world`) : une
+  // resynchronisation peut arriver pour une zone que le joueur local
+  // n'occupe plus activement (ex. un niveau de grotte déjà visité et
+  // gardé en mémoire dans `this.caveLevels`), auquel cas on met à jour
+  // les données mais on saute la reconstruction des index de rendu
+  // (inutile tant qu'on n'y est pas, et potentiellement coûteux).
+  applyRemoteBlockDiff(world, tx, ty, diff) {
+    if (!world) return;
+    // La couche 1 (`blocks`) est celle qui porte les coffres : que le
+    // diff casse un coffre existant ou pose un nouveau bloc (forcément
+    // vide, un coffre fraîchement posé n'a jamais de contenu), toute
+    // ancienne entrée de coffre locale à cette tuile devient obsolète.
+    // Fait AVANT le early-return sur `changed` : un diff dont seule
+    // cette clé est présente mais dont la valeur est déjà identique
+    // (rare) ne doit de toute façon rien nettoyer d'autre.
+    if (Object.prototype.hasOwnProperty.call(diff, 'blocks')) {
+      const map = this.chestDataMapForZone(world.id);
+      if (map) map.delete(world.idx(tx, ty));
+      const furnaceMap = this.furnaceDataMapForZone(world.id);
+      if (furnaceMap) furnaceMap.delete(world.idx(tx, ty));
+    }
+    if (!world.applyBlockDiff(tx, ty, diff)) return;
+    if (world !== this.world) return; // zone pas affichée : rien d'autre à faire pour l'instant
+    if (Object.prototype.hasOwnProperty.call(diff, 'blocks')
+      || Object.prototype.hasOwnProperty.call(diff, 'blocks2')) {
+      // Un arbre/rocher/minerai (kind 'object') cassé à distance doit
+      // sortir de l'index des objets statiques — la pose ne concerne
+      // elle que des blocs 'block'/'door', jamais des objets naturels
+      // (placeBlock ne pose que ce type), donc removeStaticObjectAt
+      // suffit : pas besoin d'un rebuildStaticObjects complet.
+      if (this.staticObjectMap.has(world.idx(tx, ty))) this.removeStaticObjectAt(tx, ty);
+      this.reindexPlacedChunk(tx, ty);
+    }
+    if (Object.prototype.hasOwnProperty.call(diff, 'floor')) {
+      this.invalidateFloorChunk(tx, ty);
+    }
+  }
+
+  // Retrouve (sans le créer) le monde correspondant à une zone réseau
+  // ('surface' ou 'cave:<profondeur>'), pour appliquer un diff distant
+  // même si le joueur local ne s'y trouve pas actuellement.
+  worldForZone(zone) {
+    if (zone === 'surface') return this.surfaceWorld;
+    const m = /^cave:(\d+)$/.exec(zone);
+    if (!m) return null;
+    const depth = Number(m[1]);
+    return (this.caveLevels && this.caveLevels.get(depth)) || null;
+  }
+
+  // ------------------------------------------------------------
+  //  Coffres partagés (multijoueur, étape 3)
+  // ------------------------------------------------------------
+
+  // Retrouve (sans le créer) la table `chestData` d'une zone réseau :
+  // celle du monde actif (`this.chestData`), ou celle mise de côté pour
+  // un monde déjà visité puis quitté (voir _saveDimState/_restoreDimState).
+  // Contrairement aux blocs (qui vivent dans World.js), les coffres ne
+  // sont donc rattrapables que si le joueur local a DÉJÀ mis les pieds
+  // dans cette zone au moins une fois — cohérent avec worldForZone.
+  chestDataMapForZone(zone) {
+    if (this.world && zone === this.world.id) return this.chestData;
+    const saved = this.dimStates.get(zone);
+    return saved ? saved.chestData : null;
+  }
+
+  // Un AUTRE joueur a rangé/pioché un objet dans un coffre de la zone
+  // actuelle. `slots` est un tableau de 27 cases déjà nettoyé par
+  // sanitizeChestSlots (voir js/net-protocol.js). On mute l'entrée EN
+  // PLACE (jamais en remplaçant le tableau) : si le panneau du coffre
+  // est ouvert localement au même instant (deux joueurs dans le même
+  // coffre), le SlotManager garde une référence directe vers ce même
+  // tableau — le remplacer romprait ce lien sans qu'on le sache.
+  applyRemoteChestChange(zone, tx, ty, slots) {
+    const map = this.chestDataMapForZone(zone);
+    if (!map) return; // zone jamais visitée localement : rien à raccrocher
+    const entry = this._chestEntryIn(map, tx, ty);
+    for (let i = 0; i < 27; i++) entry.slots[i] = slots[i] || null;
+  }
+
+  // ------------------------------------------------------------
+  //  Fours partagés (multijoueur, étape 4)
+  // ------------------------------------------------------------
+
+  // Même principe que chestDataMapForZone, pour la table `furnaceData`.
+  furnaceDataMapForZone(zone) {
+    if (this.world && zone === this.world.id) return this.furnaceData;
+    const saved = this.dimStates.get(zone);
+    return saved ? saved.furnaceData : null;
+  }
+
+  // Un AUTRE joueur a modifié un four de la zone actuelle (contenu, ou
+  // juste avancement de la cuisson — voir js/ui.js FurnacePanel pour le
+  // rythme d'émission). `state` est déjà nettoyé par
+  // sanitizeFurnaceState (voir js/net-protocol.js). On mute l'entrée EN
+  // PLACE (jamais en remplaçant les tableaux input/fuel/output) : si le
+  // panneau du four est ouvert localement au même instant, le
+  // SlotManager garde une référence directe vers ces mêmes tableaux —
+  // les remplacer romprait ce lien sans qu'on le sache.
+  applyRemoteFurnaceChange(zone, tx, ty, state) {
+    const map = this.furnaceDataMapForZone(zone);
+    if (!map) return; // zone jamais visitée localement : rien à raccrocher
+    const key = ty * WORLD_W + tx;
+    let entry = map.get(key);
+    if (!entry) {
+      entry = makeFurnaceEntry();
+      map.set(key, entry);
+    }
+    entry.input[0] = state.input;
+    entry.fuel[0] = state.fuel;
+    entry.output[0] = state.output;
+    entry.progress = state.progress;
+    entry.fuelTime = state.fuelTime;
+    entry.maxFuelTime = state.maxFuelTime;
   }
 
   // ------------------------------------------------------------

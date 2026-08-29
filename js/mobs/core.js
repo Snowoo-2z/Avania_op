@@ -26,8 +26,13 @@ export const MOB_DEFS = {};
 for (const [kind, mod] of Object.entries(MOBS)) MOB_DEFS[kind] = mod.DEF;
 
 export class Mob {
-  constructor(kind, x, y) {
+  // `id` : identifiant réseau stable (multijoueur, étape 5 — voir
+  // js/game.js et js/net-protocol.js sanitizeMobInfo). `null` en solo
+  // tant qu'aucune synchronisation n'a eu lieu (jamais utilisé, mais
+  // ne casse rien : les champs id sont ignorés hors ligne).
+  constructor(kind, x, y, id = null) {
     const def = MOB_DEFS[kind];
+    this.id = id;
     this.kind = kind;
     this.x = x;
     this.y = y;
@@ -45,25 +50,59 @@ export class Mob {
   }
 }
 
+// Nombre d'animaux visés par espèce (spawn initial ET repop — voir
+// js/game.js _maybeRespawnMobs) : un troupeau qui se dépeuple avec le
+// temps redevient discrètement complet, sans jamais le dépasser.
+export const DEFAULT_MOB_COUNTS = { sheep: 10, cow: 7 };
+
+const GRASS_FLOORS = new Set(['grass', 'grassDark', 'flowers', 'dirt']);
+
+// Cherche UNE case d'herbe libre (jamais l'eau ni un bloc posé) pour y
+// faire apparaître un animal. Factorisé pour servir au spawn initial
+// (spawnMobs) ET à la repop au fil du temps (js/game.js).
+export function findMobSpawnSpot(world, tries = 200) {
+  for (let i = 0; i < tries; i++) {
+    const tx = 4 + Math.floor(Math.random() * (world.w - 8));
+    const ty = 4 + Math.floor(Math.random() * (world.h - 8));
+    const idx = world.idx(tx, ty);
+    if (!GRASS_FLOORS.has(world.floor[idx])) continue;
+    if (world.blocks[idx] !== null) continue;
+    return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 };
+  }
+  return null;
+}
+
 // Fait apparaître des animaux sur l'herbe (jamais sur l'eau ou un bloc).
-export function spawnMobs(world, counts = { sheep: 10, cow: 7 }) {
+// Chaque animal reçoit un id séquentiel (0, 1, 2…) : en solo cet id ne
+// sert jamais à rien ; en multijoueur (étape 5), le premier joueur à
+// arriver dans la zone diffuse ce troupeau tel quel (voir
+// Game.mobSnapshotForZone) pour que tout le monde voie exactement les
+// mêmes bêtes au même endroit.
+export function spawnMobs(world, counts = DEFAULT_MOB_COUNTS) {
   const mobs = [];
-  const grass = new Set(['grass', 'grassDark', 'flowers', 'dirt']);
+  let nextId = 0;
   for (const [kind, count] of Object.entries(counts)) {
     let spawned = 0;
     let tries = 0;
     while (spawned < count && tries < count * 60) {
       tries++;
-      const tx = 4 + Math.floor(Math.random() * (world.w - 8));
-      const ty = 4 + Math.floor(Math.random() * (world.h - 8));
-      const i = world.idx(tx, ty);
-      if (!grass.has(world.floor[i])) continue;
-      if (world.blocks[i] !== null) continue;
-      mobs.push(new Mob(kind, tx * TILE + TILE / 2, ty * TILE + TILE / 2));
+      const spot = findMobSpawnSpot(world, 1);
+      if (!spot) continue;
+      mobs.push(new Mob(kind, spot.x, spot.y, nextId++));
       spawned++;
     }
   }
   return mobs;
+}
+
+// Reconstruit un Mob à partir d'un objet réseau déjà nettoyé (voir
+// js/net-protocol.js sanitizeMobInfo) : synchronisation initiale
+// (mobSync) ou nouvel arrivant dans le troupeau (mobSpawn).
+export function makeMobFromNetwork(info) {
+  const mob = new Mob(info.kind, info.x, info.y, info.id);
+  mob.hp = info.hp;
+  mob.alive = info.alive;
+  return mob;
 }
 
 // Errance + fuite. `player` sert uniquement pour la direction de fuite.
