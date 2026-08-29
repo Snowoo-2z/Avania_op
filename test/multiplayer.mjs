@@ -158,7 +158,8 @@ try {
   // plus de 2 connexions supplémentaires ouvertes à la fois ci-dessous.
   console.log('\n▶ Monde partagé : un bloc cassé/posé est diffusé à la zone');
   const finn = await connect(srv.port);
-  await waitForJson(finn, (m) => m.t === 'welcome');
+  const finnWelcome = await waitForJson(finn, (m) => m.t === 'welcome');
+  const finnId = finnWelcome.id;
   const grace = await connect(srv.port);
   await waitForJson(grace, (m) => m.t === 'welcome');
   // Les deux restent à 'surface' par défaut : ils partagent la zone.
@@ -249,7 +250,68 @@ try {
   await sleep(150);
   assert(srv.child.exitCode === null, 'le serveur tourne toujours après des messages de coffre malformés');
 
+  console.log('\n▶ Fours partagés : l\'état d\'un four est diffusé à la zone');
+  const ivy = await connect(srv.port);
+  await waitForJson(ivy, (m) => m.t === 'welcome'); // finn + ivy = 2, sous le cap de 3
+  const furnaceState = {
+    input: { id: 'rawIron', count: 3 }, fuel: { id: 'wood', count: 1 }, output: null,
+    progress: 4.2, fuelTime: 9.5, maxFuelTime: 15,
+  };
+  const furnaceSeenByFinn = waitForJson(finn, (m) => m.t === 'furnace');
+  ivy.send(JSON.stringify({ t: 'furnace', tx: 30, ty: 31, state: furnaceState }));
+  const furnaceMsg = await furnaceSeenByFinn;
+  assert(furnaceMsg.tx === 30 && furnaceMsg.ty === 31, `coordonnées transmises (${furnaceMsg.tx},${furnaceMsg.ty})`);
+  assert(furnaceMsg.state.input?.id === 'rawIron' && furnaceMsg.state.input?.count === 3, 'ingrédient transmis intact');
+  assert(furnaceMsg.state.fuel?.id === 'wood', 'combustible transmis intact');
+  assert(furnaceMsg.state.output === null, 'sortie vide transmise telle quelle');
+  assert(furnaceMsg.state.progress === 4.2 && furnaceMsg.state.fuelTime === 9.5, 'progression/feu transmis intacts');
+
+  console.log('\n▶ Fours partagés : resynchronisation à l\'arrivée dans une zone déjà modifiée');
+  const ivyLeftSeenByFinn = waitForJson(finn, (m) => m.t === 'leave');
+  ivy.close(); // libère une place avant d'ouvrir Jack
+  await ivyLeftSeenByFinn;
+  const jack = await connect(srv.port);
+  const furnaceSyncMsg = await waitForJson(jack, (m) => m.t === 'furnaceSync' && m.zone === 'surface');
+  assert(Array.isArray(furnaceSyncMsg.furnaces), 'la resynchronisation contient un tableau de fours');
+  const foundFurnace = furnaceSyncMsg.furnaces.find((f) => f.tx === 30 && f.ty === 31);
+  assert(Boolean(foundFurnace), 'le four rempli plus tôt par Ivy y figure');
+  assert(foundFurnace && foundFurnace.state.input?.id === 'rawIron', 'avec son contenu intact');
+  // Même remarque que pour grace/helen plus haut : on attend la confirmation
+  // serveur du départ avant d'ouvrir Kate, sinon la place n'est pas encore
+  // libérée (close() est asynchrone) et Kate se fait refuser (cap = 3).
+  const jackLeftSeenByFinn = waitForJson(finn, (m) => m.t === 'leave');
+  jack.close();
+  await jackLeftSeenByFinn;
+
+  console.log('\n▶ Fours partagés : un four vidé et éteint sort du journal (pas de fuite mémoire)');
+  finn.send(JSON.stringify({
+    t: 'furnace', tx: 30, ty: 31,
+    state: { input: null, fuel: null, output: null, progress: 0, fuelTime: 0, maxFuelTime: 0 },
+  }));
+  await sleep(150);
+  const kate = await connect(srv.port);
+  const furnaceSyncMsg2 = await waitForJson(kate, (m) => m.t === 'furnaceSync' && m.zone === 'surface');
+  const stillThere = furnaceSyncMsg2.furnaces.find((f) => f.tx === 30 && f.ty === 31);
+  assert(!stillThere, 'le four vide et éteint ne réapparaît pas dans la resynchronisation');
+  kate.close();
+
+  console.log('\n▶ Fours partagés : état invalide nettoyé, jamais un plantage');
+  finn.send(JSON.stringify({ t: 'furnace', tx: 32, ty: 32, state: 'nimportequoi' }));
+  finn.send(JSON.stringify({ t: 'furnace', tx: 'nope', ty: 32, state: {} }));
+  finn.send(JSON.stringify({
+    t: 'furnace', tx: 33, ty: 33,
+    state: { input: { id: 'x'.repeat(999), count: 1 }, fuel: null, output: null, progress: -5, fuelTime: 'nope', maxFuelTime: 15 },
+  }));
+  await sleep(150);
+  assert(srv.child.exitCode === null, 'le serveur tourne toujours après des messages de four malformés');
+
+  // Même remarque que plus haut (grace/helen, jack/kate) : on attend la
+  // confirmation serveur du départ avant d'ouvrir Carol, sinon la place
+  // n'est pas encore libérée (close() est asynchrone) et le test de
+  // plafond ci-dessous compte une connexion de trop.
+  const finnLeftSeenByAlice = waitForJson(alice, (m) => m.t === 'leave' && m.id === finnId);
   finn.close();
+  await finnLeftSeenByAlice;
 
   console.log('\n▶ Plafond de connexions (MAX_PLAYERS)');
   const carol = await connect(srv.port);

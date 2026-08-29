@@ -8,11 +8,14 @@
 //  Étape 3 : le contenu des coffres posés est partagé de la même façon
 //  (voir chestJournal) — plusieurs joueurs peuvent ranger/piocher dans
 //  le même coffre.
+//  Étape 4 : la progression des fours (ingrédient, combustible,
+//  sortie, cuisson en cours) est partagée de la même façon (voir
+//  furnaceJournal) — plusieurs joueurs voient le même four cuire.
 //  Le monde reste néanmoins « bête » côté serveur : PAS de World.js
 //  ici, PAS de validation des règles du jeu — juste un relais + un
 //  journal mémoire par zone pour resynchroniser les arrivants (voir le
-//  commentaire au-dessus de `worldJournal`). Les mobs et la
-//  progression des fours restent locaux à chaque client.
+//  commentaire au-dessus de `worldJournal`). Seuls les mobs restent
+//  locaux à chaque client.
 //
 //  Tout ça en restant dans le budget très serré du plan gratuit Render
 //  (0.1 CPU, 512 Mo, 5 Go de bande passante par mois) :
@@ -36,6 +39,7 @@ import { WebSocketServer } from 'ws';
 import {
   WS_PATH, MAX_PLAYER_ID, encodeState, decodeInput,
   sanitizeBlockDiff, sanitizeZone, validTile, sanitizeChestSlots,
+  sanitizeFurnaceState,
 } from './js/net-protocol.js';
 
 // --- Réglages, pensés pour Render free ---
@@ -153,6 +157,45 @@ function recordChestSlots(zone, tx, ty, slots) {
   j.set(key, { tx, ty, slots });
 }
 
+// --- Fours partagés (étape 4) : même principe que chestJournal, mais
+// un four vide de son contenu redevient une entrée « neutre » que l'on
+// retire du journal (pas la peine de traîner indéfiniment un four
+// éteint et vide dans la mémoire du serveur — recordFurnaceState s'en
+// charge, voir plus bas).
+const MAX_FURNACES_PER_ZONE = 2000;
+/** @type {Map<string, Map<number, {tx:number, ty:number, state:object}>>} */
+const furnaceJournal = new Map();
+
+function zoneFurnaceJournal(zone) {
+  let j = furnaceJournal.get(zone);
+  if (!j) {
+    if (furnaceJournal.size >= MAX_ZONES) {
+      const oldest = furnaceJournal.keys().next().value;
+      if (oldest !== undefined) furnaceJournal.delete(oldest);
+    }
+    j = new Map();
+    furnaceJournal.set(zone, j);
+  }
+  return j;
+}
+
+function isEmptyFurnaceState(state) {
+  return !state.input && !state.fuel && !state.output && state.progress === 0 && state.fuelTime === 0;
+}
+
+function recordFurnaceState(zone, tx, ty, state) {
+  const j = zoneFurnaceJournal(zone);
+  const key = ty * MAX_WORLD_TILE_STRIDE + tx;
+  if (isEmptyFurnaceState(state)) {
+    // Four vide et éteint : rien à resynchroniser, autant libérer la
+    // mémoire plutôt que de garder une entrée neutre pour toujours.
+    j.delete(key);
+    return;
+  }
+  if (!j.has(key) && j.size >= MAX_FURNACES_PER_ZONE) return; // zone déjà pleine de fours : on arrête d'enregistrer, sans planter
+  j.set(key, { tx, ty, state });
+}
+
 function sanitizeAppearance(app) {
   // On ne fait AUCUNE hypothèse sur les valeurs valides ici (elles
   // vivent dans js/config.js, côté rendu) : on se contente de brider
@@ -259,6 +302,13 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     sendJson(ws, { t: 'chestSync', zone, chests });
   }
 
+  // Idem, pour la progression des fours connus de la zone (étape 4).
+  function sendFurnaceSync(ws, zone) {
+    const j = furnaceJournal.get(zone);
+    const furnaces = j ? [...j.values()] : [];
+    sendJson(ws, { t: 'furnaceSync', zone, furnaces });
+  }
+
   wss.on('connection', (ws, req) => {
     if (budgetExhausted()) {
       warn('AVANIA multi : quota de bande passante mensuel atteint — connexion refusée');
@@ -299,6 +349,7 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     });
     sendWorldSync(ws, player.zone);
     sendChestSync(ws, player.zone);
+    sendFurnaceSync(ws, player.zone);
 
     // 2. On annonce le nouvel arrivant à tout le monde (apparence
     //    encore vide : elle arrive dans le prochain message 'hello').
@@ -342,6 +393,7 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
         // par d'autres joueurs avant son arrivée : resynchronisation.
         sendWorldSync(ws, zone);
         sendChestSync(ws, zone);
+        sendFurnaceSync(ws, zone);
         return;
       }
       // Un joueur a cassé/posé un bloc ou basculé une porte : on note
@@ -371,6 +423,20 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
         const slots = sanitizeChestSlots(msg.slots);
         recordChestSlots(player.zone, tx, ty, slots);
         broadcastToZone(player.zone, { t: 'chest', tx, ty, slots }, ws);
+        return;
+      }
+      // Un joueur a modifié un four (ranger/sortir un ingrédient ou du
+      // combustible, ou juste une mise à jour périodique de la
+      // progression pendant qu'il brûle — voir js/game.js pour le
+      // rythme d'émission côté client) : même logique de confiance et
+      // de journal que pour les coffres.
+      if (msg.t === 'furnace') {
+        const tx = Math.trunc(msg.tx);
+        const ty = Math.trunc(msg.ty);
+        if (!validTile(tx) || !validTile(ty)) return;
+        const state = sanitizeFurnaceState(msg.state);
+        recordFurnaceState(player.zone, tx, ty, state);
+        broadcastToZone(player.zone, { t: 'furnace', tx, ty, state }, ws);
       }
     });
 

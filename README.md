@@ -162,7 +162,7 @@ Variables d'environnement :
 | `AVANIA_AI_MODEL` | `mistral-small-latest` | `mistral-large-latest` pour des répliques plus fines |
 | `PORT` | `3000` | port d'écoute |
 
-### 🌐 Multijoueur (étape 1 : présence, étape 2 : monde partagé, étape 3 : coffres)
+### 🌐 Multijoueur (étape 1 : présence, étape 2 : monde partagé, étape 3 : coffres, étape 4 : fours)
 
 **Étape 1 — présence.** Chaque joueur voit les autres se déplacer en
 direct : position, orientation, animation de marche, apparence et nom.
@@ -181,15 +181,42 @@ un objet dans un coffre ouvert diffuse l'intégralité de ses 27 cases
 resynchronisation à l'arrivée dans une zone déjà modifiée
 (`{t:'chestSync', zone, chests:[...]}`). Casser un coffre annonce aussi
 qu'il est désormais vide, pour ne pas laisser une ancienne copie
-réapparaître si un nouveau coffre est reposé au même endroit. Les mobs
-et la progression des **fours**, eux, restent **locaux à chaque
-client** — ce sera l'objet d'une étape suivante.
+réapparaître si un nouveau coffre est reposé au même endroit. Seuls les
+**mobs** restent locaux à chaque client.
 
 Le format volontairement simple (le coffre entier plutôt qu'un diff des
 seules cases modifiées) part du principe qu'ouvrir/manipuler un coffre
 reste un évènement rare comparé aux positions envoyées à chaque tick :
 un coffre plein avec de la durabilité pèse environ 1,4 Ko en JSON, ce
 qui reste négligeable à cette fréquence (voir `maxPayload` ci-dessous).
+
+**Étape 4 — fours partagés.** La progression de cuisson d'un four
+(ingrédient, combustible, sortie, avancement) est elle aussi partagée
+par tous les joueurs de la zone. Contrairement au coffre (qui ne change
+que sur interaction du joueur), un four cuit en continu même panneau
+fermé : le rediffuser à chaque frame gaspillerait le réseau pour rien,
+donc le débit d'émission dépend de la situation (voir
+`Game._maybeAnnounceFurnace`, `js/game.js`) :
+- tant que **personne n'a le panneau ouvert ici**, un battement toutes
+  les ~2,5 s suffit à tenir les observateurs distants à jour pendant
+  que le feu brûle — pas de message tant que le four est éteint et
+  inactif ;
+- dès qu'**un joueur ouvre le panneau localement**, le débit passe en
+  quasi temps réel (~0,5 s) pour que l'animation de cuisson reste
+  fluide à l'écran ;
+- un changement structurel (ingrédient/combustible/sortie déposé ou
+  retiré) ou l'extinction du feu déclenche toujours un message
+  immédiat, sans attendre le prochain battement.
+
+Chaque four n'est **re-simulé que par le client qui l'a ouvert au moins
+une fois** (son propriétaire local, voir `entry._owned`) : les autres
+clients se contentent d'appliquer les états reçus par le réseau plutôt
+que de faire tourner leur propre copie de `updateFurnace` en parallèle
+— ça évite que deux simulations indépendantes du même four dérivent
+l'une de l'autre au fil du temps. En solo (jamais de réseau), rien ne
+change : le four devient propriétaire dès la première ouverture et
+continue de cuire normalement, panneau fermé ou pas, exactement comme
+avant cette étape.
 
 Le serveur reste volontairement un simple **relais + mémoire tampon**,
 jamais une autorité qui rejoue les règles du jeu : il ne fait aucune
@@ -242,10 +269,14 @@ partagés à l'échelle du workspace) :
   qui rejoint, sans jamais laisser la mémoire grossir sans limite sur
   un service qui tourne plusieurs jours d'affilée (les zones les plus
   anciennes sont évincées en premier). Un journal du même genre existe
-  pour les coffres (`chestJournal`, jusqu'à 2 000 coffres par zone) ;
+  pour les coffres (`chestJournal`, jusqu'à 2 000 coffres par zone) et
+  pour les fours (`furnaceJournal`, même plafond) — un four vidé et
+  éteint sort d'ailleurs du journal plutôt que d'y traîner
+  indéfiniment une entrée neutre ;
 - **`maxPayload` relevé à 4 096 octets** (`net-server.js`) pour
-  absorber un coffre plein envoyé en entier (~1,4 Ko), tout en gardant
-  une limite dure contre un client qui enverrait n'importe quoi.
+  absorber un coffre plein envoyé en entier (~1,4 Ko, un état de four
+  est bien plus léger), tout en gardant une limite dure contre un
+  client qui enverrait n'importe quoi.
 
 Aucune configuration n'est nécessaire pour activer le multijoueur : le
 serveur écoute automatiquement les connexions WebSocket sur `/ws`, sur
@@ -254,18 +285,17 @@ le même port que le reste du jeu (`render.yaml` n'a rien à changer).
 **Limites connues** (compromis assumé pour rester dans le budget
 gratuit) :
 - un client qui **rate un message** (coupure réseau furtive) reste
-  désynchronisé sur ce bloc/coffre précis jusqu'à son prochain
+  désynchronisé sur ce bloc/coffre/four précis jusqu'à son prochain
   aller-retour de zone (entrer/sortir de la grotte force une
   resynchronisation complète) ;
-- la progression des **fours** n'est *pas* synchronisée — seule la
-  forme du monde (sol, blocs posés, portes) et le contenu des
-  **coffres** le sont ;
+- seuls les **mobs** restent purement locaux à chaque client — tout le
+  reste (forme du monde, coffres, fours) est désormais synchronisé ;
 - le serveur ne **valide rien** : un client modifié pourrait annoncer
-  un bloc halluciné n'importe où, ou remplir un coffre à volonté (pas
-  de vérification que les objets envoyés existent vraiment dans
-  l'inventaire du joueur). Sans conséquence grave pour une partie entre
-  amis, mais à garder en tête si le service devait un jour être ouvert
-  plus largement.
+  un bloc halluciné n'importe où, remplir un coffre à volonté, ou
+  afficher une cuisson qui n'a jamais eu lieu (pas de vérification que
+  les objets envoyés existent vraiment dans l'inventaire du joueur).
+  Sans conséquence grave pour une partie entre amis, mais à garder en
+  tête si le service devait un jour être ouvert plus largement.
 
 Variables d'environnement :
 
@@ -345,8 +375,11 @@ puis construis ta première cabane.
   resynchronisation à la connexion.
 - [x] **Multijoueur (étape 3 : coffres partagés)** — le contenu des
   coffres est synchronisé entre joueurs d'une même zone, avec
-  resynchronisation à la connexion. Les mobs et la progression des
-  fours restent locaux à chaque client — ce sera une étape suivante.
+  resynchronisation à la connexion.
+- [x] **Multijoueur (étape 4 : fours partagés)** — la progression de
+  cuisson des fours est synchronisée entre joueurs d'une même zone
+  (débit d'émission adaptatif, voir étape 4 ci-dessus). Seuls les mobs
+  restent locaux à chaque client.
 - [x] **Plus de blocs** — planche, brique, sable, verre, terre… (+ craft).
 - [x] **Économie (v2)** — monnaie, achats auprès des marchands, négociation.
 - [ ] **Économie (suite)** — banque, salaires, taxes, troc entre joueurs.
@@ -355,6 +388,7 @@ puis construis ta première cabane.
 - [x] **Inventaire & objets** — 36 cases, piles, outils durables et fabrication 3×3.
 - [x] **Coffres** — stockage partagé (voir étape 3 ci-dessus) ; vols
   encore possibles côté serveur car rien n'y est validé (limite connue).
+- [x] **Fours** — cuisson partagée (voir étape 4 ci-dessus).
 - [ ] **Caméras & sécurité** — poser des caméras, zones surveillées.
 - [ ] **Métiers & police** — rôles, arrestations, enquêtes.
 - [ ] **Propriété** — revendiquer un terrain, protéger sa maison.
@@ -376,17 +410,19 @@ Avania_op/
 │                       + branche le multijoueur (net-server.js) sur /ws
 ├── net-server.js       ★ serveur multijoueur : WebSocket, présence des
 │                         joueurs, diffusion des positions ET journal du
-│                         monde partagé + du contenu des coffres par
-│                         zone (voir la section « Multijoueur » plus haut)
+│                         monde partagé + du contenu des coffres et
+│                         fours par zone (voir la section « Multijoueur »
+│                         plus haut)
 ├── js/                 TOUT le jeu (modules ES natifs, ~9 000 lignes)
 │   ├── main.js         point d'entrée : initialisation & boucle
 │   ├── net.js          ★ client multijoueur : connexion, lissage des
 │   │                     positions distantes, reconnexion automatique,
-│   │                     relais des changements de bloc (étape 2) et
-│   │                     de coffre (étape 3)
+│   │                     relais des changements de bloc (étape 2), de
+│   │                     coffre (étape 3) et de four (étape 4)
 │   ├── net-protocol.js ★ protocole partagé (client ET serveur) : trames
 │   │                     binaires de position + validation des diffs
-│   │                     de bloc et des cases de coffre du monde partagé
+│   │                     de bloc, des cases de coffre et de l'état des
+│   │                     fours du monde partagé
 │   ├── game.js         boucle de jeu, rendu du monde, interactions (1 594 l.)
 │   ├── config.js       constantes globales & options de personnalisation
 │   ├── world.js        génération du monde, tuiles, collisions, casser/poser

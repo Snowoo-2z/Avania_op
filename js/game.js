@@ -29,6 +29,16 @@ import { updateFurnace, makeFurnaceEntry } from './furnace.js';
 import { MOB_DEFS, spawnMobs, updateMob, drawMob, mobDrops } from './mobs/index.js';
 import { CAVE, canDescendTo } from './cave.js';
 
+// Multijoueur (étape 4, fours) : débit d'émission réseau de la
+// progression d'un four possédé localement — voir Game.updateFurnaces
+// / _maybeAnnounceFurnace. « Live » tant que quelqu'un a le panneau
+// ouvert ICI (l'utilisateur veut voir l'animation bouger en face) ;
+// beaucoup plus espacé sinon (le four continue de cuire même fermé,
+// mais ça n'intéresse qu'un battement occasionnel pour resynchroniser
+// un observateur distant, pas un flot par frame).
+const FURNACE_NET_LIVE_S = 0.5;
+const FURNACE_NET_IDLE_S = 2.5;
+
 const REACH_SQ = REACH * REACH;
 const SORT_BY_Y = (a, b) => {
   const diff = a.sortY - b.sortY;
@@ -245,6 +255,7 @@ export class Game {
       onZoneChange: null,   // branché par le client multijoueur (js/net.js)
       onBlockChange: null,  // idem : (tx, ty, diff) — LE JOUEUR LOCAL a modifié un bloc
       onChestChange: null,  // idem : (tx, ty, slots[27]) — LE JOUEUR LOCAL a modifié un coffre ouvert
+      onFurnaceChange: null, // idem : (tx, ty, state) — LE JOUEUR LOCAL a modifié un four ouvert
     };
     // PNJ (représentant de l'île, marchands de la grotte).
     this.npcs = [];
@@ -563,12 +574,52 @@ export class Game {
 
   // ------------------------------------------------------------
   //  Fours : chaque four posé cuit indépendamment (en temps réel).
+  //
+  //  Multijoueur (étape 4) : un four n'est re-simulé ICI que si CE
+  //  client en est le « propriétaire » (entry._owned — voir
+  //  applyRemoteFurnaceChange et js/ui.js FurnacePanel). Un four connu
+  //  seulement via le réseau (jamais ouvert localement) n'est PAS
+  //  re-simulé : son état ne vient QUE des messages reçus, pour éviter
+  //  que deux clients fassent chacun avancer indépendamment la même
+  //  cuisson et divergent l'un de l'autre. En solo (jamais de réseau),
+  //  ce flag est mis à `true` dès la première ouverture du panneau
+  //  (voir getFurnaceEntry / FurnacePanel.open) et n'est ensuite plus
+  //  jamais remis à `false` : la cuisson continue bien même panneau
+  //  fermé, comme avant.
   // ------------------------------------------------------------
   updateFurnaces(dt) {
     if (this.furnaceData.size === 0) return;
-    for (const entry of this.furnaceData.values()) {
+    for (const [key, entry] of this.furnaceData) {
+      if (!entry._owned) continue;
       updateFurnace(entry, dt);
+      this._maybeAnnounceFurnace(key, entry, dt);
     }
+  }
+
+  // Débit d'émission réseau d'un four possédé localement : « live »
+  // (toutes les FURNACE_NET_LIVE_S) tant que son panneau est ouvert ICI,
+  // sinon seulement un battement toutes les FURNACE_NET_IDLE_S tant
+  // qu'il brûle encore — et un message immédiat dès qu'un ingrédient/
+  // combustible/résultat change ou que le feu s'éteint, pour ne jamais
+  // faire attendre un observateur sur un évènement franc.
+  _maybeAnnounceFurnace(key, entry, dt) {
+    if (!this.uiCallbacks.onFurnaceChange) return;
+    const burning = entry.fuelTime > 0;
+    const sig = `${entry.input[0]?.id}:${entry.input[0]?.count}|`
+      + `${entry.fuel[0]?.id}:${entry.fuel[0]?.count}|`
+      + `${entry.output[0]?.id}:${entry.output[0]?.count}`;
+    const structuralChange = sig !== entry._lastAnnouncedSig;
+    const justStoppedBurning = entry._wasBurning && !burning;
+    entry._netTimer = (entry._netTimer || 0) + dt;
+    const interval = entry._localOpen ? FURNACE_NET_LIVE_S : FURNACE_NET_IDLE_S;
+    const heartbeatDue = entry._netTimer >= interval && (entry._localOpen || burning);
+    entry._wasBurning = burning;
+    if (!structuralChange && !justStoppedBurning && !heartbeatDue) return;
+    entry._lastAnnouncedSig = sig;
+    entry._netTimer = 0;
+    const tx = key % WORLD_W;
+    const ty = Math.floor(key / WORLD_W);
+    this._announceFurnaceChange(tx, ty, entry);
   }
 
   getFurnaceEntry(tx, ty) {
@@ -578,6 +629,10 @@ export class Game {
       entry = makeFurnaceEntry();
       this.furnaceData.set(key, entry);
     }
+    // Ouvrir le panneau (seul appelant de getFurnaceEntry, voir
+    // js/ui.js) rend ce client propriétaire de la simulation de ce
+    // four — voir le commentaire au-dessus de updateFurnaces.
+    entry._owned = true;
     return entry;
   }
 
@@ -1295,6 +1350,19 @@ export class Game {
         this._announceChestChange(this.targetTx, this.targetTy, new Array(27).fill(null));
       }
     }
+    // Même principe pour un four cassé : son ingrédient/combustible/
+    // sortie tombent au sol (rien ne se perd), et on prévient les
+    // autres joueurs qu'il est désormais vide.
+    if (existingBlock === 'furnace') {
+      const furnaceEntry = this.furnaceData.get(i);
+      if (furnaceEntry) {
+        this.furnaceData.delete(i);
+        for (const stack of [furnaceEntry.input[0], furnaceEntry.fuel[0], furnaceEntry.output[0]]) {
+          if (stack) this.spawnDrop(this.targetTx, this.targetTy, stack.id, stack.count);
+        }
+        this._announceFurnaceChange(this.targetTx, this.targetTy, makeFurnaceEntry());
+      }
+    }
     if (drop) {
       if (existingBlock && BLOCK_DEFS[existingBlock]?.kind === 'object') {
         this.removeStaticObjectAt(this.targetTx, this.targetTy);
@@ -1616,6 +1684,20 @@ export class Game {
     if (this.uiCallbacks.onChestChange) this.uiCallbacks.onChestChange(tx, ty, slots);
   }
 
+  // Même principe pour l'état d'un four (étape 4) : appelé directement
+  // quand un four est cassé (voir mineTarget) — le FurnacePanel appelle
+  // lui-même onFurnaceChange pendant qu'il est ouvert ou tant qu'il
+  // brûle (voir js/ui.js), donc cette méthode ne sert qu'aux cas où
+  // AUCUN panneau n'est ouvert au moment du changement.
+  _announceFurnaceChange(tx, ty, entry) {
+    if (this.uiCallbacks.onFurnaceChange) {
+      this.uiCallbacks.onFurnaceChange(tx, ty, {
+        input: entry.input[0], fuel: entry.fuel[0], output: entry.output[0],
+        progress: entry.progress, fuelTime: entry.fuelTime, maxFuelTime: entry.maxFuelTime,
+      });
+    }
+  }
+
   // Un AUTRE joueur a modifié une tuile de la zone actuelle (appelé par
   // js/main.js quand le client réseau reçoit un message 'block' ou
   // 'worldSync'). On rejoue le diff sur le bon monde SANS refaire la
@@ -1641,6 +1723,8 @@ export class Game {
     if (Object.prototype.hasOwnProperty.call(diff, 'blocks')) {
       const map = this.chestDataMapForZone(world.id);
       if (map) map.delete(world.idx(tx, ty));
+      const furnaceMap = this.furnaceDataMapForZone(world.id);
+      if (furnaceMap) furnaceMap.delete(world.idx(tx, ty));
     }
     if (!world.applyBlockDiff(tx, ty, diff)) return;
     if (world !== this.world) return; // zone pas affichée : rien d'autre à faire pour l'instant
@@ -1698,6 +1782,42 @@ export class Game {
     if (!map) return; // zone jamais visitée localement : rien à raccrocher
     const entry = this._chestEntryIn(map, tx, ty);
     for (let i = 0; i < 27; i++) entry.slots[i] = slots[i] || null;
+  }
+
+  // ------------------------------------------------------------
+  //  Fours partagés (multijoueur, étape 4)
+  // ------------------------------------------------------------
+
+  // Même principe que chestDataMapForZone, pour la table `furnaceData`.
+  furnaceDataMapForZone(zone) {
+    if (this.world && zone === this.world.id) return this.furnaceData;
+    const saved = this.dimStates.get(zone);
+    return saved ? saved.furnaceData : null;
+  }
+
+  // Un AUTRE joueur a modifié un four de la zone actuelle (contenu, ou
+  // juste avancement de la cuisson — voir js/ui.js FurnacePanel pour le
+  // rythme d'émission). `state` est déjà nettoyé par
+  // sanitizeFurnaceState (voir js/net-protocol.js). On mute l'entrée EN
+  // PLACE (jamais en remplaçant les tableaux input/fuel/output) : si le
+  // panneau du four est ouvert localement au même instant, le
+  // SlotManager garde une référence directe vers ces mêmes tableaux —
+  // les remplacer romprait ce lien sans qu'on le sache.
+  applyRemoteFurnaceChange(zone, tx, ty, state) {
+    const map = this.furnaceDataMapForZone(zone);
+    if (!map) return; // zone jamais visitée localement : rien à raccrocher
+    const key = ty * WORLD_W + tx;
+    let entry = map.get(key);
+    if (!entry) {
+      entry = makeFurnaceEntry();
+      map.set(key, entry);
+    }
+    entry.input[0] = state.input;
+    entry.fuel[0] = state.fuel;
+    entry.output[0] = state.output;
+    entry.progress = state.progress;
+    entry.fuelTime = state.fuelTime;
+    entry.maxFuelTime = state.maxFuelTime;
   }
 
   // ------------------------------------------------------------

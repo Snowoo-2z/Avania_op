@@ -1,5 +1,5 @@
 // ============================================================
-//  AVANIA — Client multijoueur (présence + monde partagé + coffres)
+//  AVANIA — Client multijoueur (présence + monde partagé + coffres + fours)
 //
 //  Ce module est volontairement autonome et « best effort » : si la
 //  connexion échoue ou tombe, le jeu continue normalement en solo
@@ -8,9 +8,9 @@
 //
 //  Ce qu'il synchronise : position, orientation, état de marche et
 //  apparence des AUTRES joueurs (étape 1), la forme du monde — blocs
-//  cassés/posés, portes (étape 2) — et le contenu des coffres posés
-//  (étape 3). Les mobs et la progression des fours restent locaux à
-//  chaque client.
+//  cassés/posés, portes (étape 2) —, le contenu des coffres posés
+//  (étape 3), et la progression des fours (étape 4). Seuls les mobs
+//  restent locaux à chaque client.
 //
 //  Filtrage par « zone » : un joueur dans la grotte au niveau 3 ne
 //  doit pas apparaître fantôme à la surface (les coordonnées de tuile
@@ -22,6 +22,7 @@
 
 import {
   WS_PATH, encodeInput, decodeState, sanitizeBlockDiff, sanitizeChestSlots,
+  sanitizeFurnaceState,
 } from './net-protocol.js';
 
 // Cadence d'envoi de la position locale : inutile d'aller plus vite
@@ -50,6 +51,9 @@ export class MultiplayerClient {
     // (un coffre entier plutôt qu'un diff — voir sendChestChange).
     onChestChange = null, // (zone, tx, ty, slots[27]) — un coffre distant a été modifié
     onChestSync = null,   // (zone, chests[]) — resynchronisation des coffres connus de la zone
+    // Étape 4 (fours partagés) : même principe, un état de four complet.
+    onFurnaceChange = null, // (zone, tx, ty, state) — un four distant a changé (contenu ou cuisson)
+    onFurnaceSync = null,   // (zone, furnaces[]) — resynchronisation des fours connus de la zone
   } = {}) {
     this.url = url;
     this.ws = null;
@@ -62,6 +66,8 @@ export class MultiplayerClient {
     this.onWorldSync = onWorldSync;
     this.onChestChange = onChestChange;
     this.onChestSync = onChestSync;
+    this.onFurnaceChange = onFurnaceChange;
+    this.onFurnaceSync = onFurnaceSync;
     // id distant → état rendu (forme compatible avec drawPlayer : x, y,
     // facing, moving, walkPhase, appearance).
     this.remote = new Map();
@@ -228,6 +234,21 @@ export class MultiplayerClient {
       if (this.onChestSync) this.onChestSync(msg.zone, msg.chests);
       return;
     }
+    // Un autre joueur a modifié un four (contenu ou juste avancement de
+    // la cuisson — voir js/game.js pour le rythme d'émission) dans
+    // notre zone actuelle.
+    if (msg.t === 'furnace') {
+      if (typeof msg.tx !== 'number' || typeof msg.ty !== 'number') return;
+      const state = sanitizeFurnaceState(msg.state);
+      if (this.onFurnaceChange) this.onFurnaceChange(this.zone, msg.tx, msg.ty, state);
+      return;
+    }
+    // Resynchronisation des fours connus d'une zone (connexion / arrivée).
+    if (msg.t === 'furnaceSync') {
+      if (!Array.isArray(msg.furnaces)) return;
+      if (this.onFurnaceSync) this.onFurnaceSync(msg.zone, msg.furnaces);
+      return;
+    }
   }
 
   // À appeler par le jeu quand LE JOUEUR LOCAL casse/pose un bloc ou
@@ -249,6 +270,15 @@ export class MultiplayerClient {
   sendChestChange(tx, ty, slots) {
     if (!this.connected) return;
     this.ws.send(JSON.stringify({ t: 'chest', tx, ty, slots: sanitizeChestSlots(slots) }));
+  }
+
+  // À appeler par le jeu quand LE JOUEUR LOCAL modifie un four (dépose
+  // un ingrédient/combustible, récupère la sortie), ou périodiquement
+  // tant qu'il brûle (voir js/game.js pour le rythme — ce module ne
+  // fait qu'envoyer ce qu'on lui donne, sans throttle de son cru).
+  sendFurnaceChange(tx, ty, state) {
+    if (!this.connected) return;
+    this.ws.send(JSON.stringify({ t: 'furnace', tx, ty, state: sanitizeFurnaceState(state) }));
   }
 
   _onBinary(data) {

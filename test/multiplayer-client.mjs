@@ -179,6 +179,38 @@ try {
     dave.destroy();
   }
 
+  console.log('\n▶ Fours partagés : l\'état géré par Bob est reçu par Alice');
+  const aliceFurnaceChanges = [];
+  alice.onFurnaceChange = (zone, tx, ty, state) => aliceFurnaceChanges.push({ zone, tx, ty, state });
+  const bobFurnaceState = {
+    input: { id: 'rawIron', count: 2 }, fuel: { id: 'wood', count: 1 }, output: null,
+    progress: 3.5, fuelTime: 12, maxFuelTime: 15,
+  };
+  bob.sendFurnaceChange(25, 26, bobFurnaceState);
+  assert(await until(() => aliceFurnaceChanges.length === 1), 'Alice reçoit le changement de four de Bob');
+  const furnaceChange = aliceFurnaceChanges[0];
+  assert(furnaceChange.tx === 25 && furnaceChange.ty === 26, `coordonnées reçues intactes (${furnaceChange.tx},${furnaceChange.ty})`);
+  assert(furnaceChange.state.input?.id === 'rawIron' && furnaceChange.state.input?.count === 2, 'ingrédient reçu intact');
+  assert(furnaceChange.state.progress === 3.5 && furnaceChange.state.fuelTime === 12, 'progression/feu reçus intacts');
+
+  console.log('\n▶ Fours partagés : resynchronisation à la connexion d\'un nouveau client');
+  const erin = new MultiplayerClient({ url: wsUrl, name: 'Erin', appearance: {}, zone: 'surface' });
+  const erinLocalPlayer = { x: 0, y: 0, facing: 'down', moving: false };
+  const erinLoop = driveLoop(erin, erinLocalPlayer);
+  const erinFurnaceSyncs = [];
+  erin.onFurnaceSync = (zone, furnaces) => erinFurnaceSyncs.push({ zone, furnaces });
+  try {
+    assert(await until(() => erinFurnaceSyncs.length > 0), 'Erin reçoit une resynchronisation des fours en se connectant');
+    const furnaceSync = erinFurnaceSyncs[0];
+    assert(furnaceSync.zone === 'surface', `pour la bonne zone (${furnaceSync.zone})`);
+    const foundFurnace = furnaceSync.furnaces.find((f) => f.tx === 25 && f.ty === 26);
+    assert(Boolean(foundFurnace), 'le four géré par Bob plus tôt y figure déjà');
+    assert(foundFurnace && foundFurnace.state.input?.id === 'rawIron', 'avec son contenu intact');
+  } finally {
+    clearInterval(erinLoop);
+    erin.destroy();
+  }
+
   console.log('\n▶ Déconnexion propre');
   bob.destroy();
   assert(await until(() => alice.players.length === 0), 'Alice voit Bob partir');

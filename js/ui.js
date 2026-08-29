@@ -817,6 +817,10 @@ export class FurnacePanel {
     if (!this.root.classList.contains('hidden')) return;
     this.key = `${tx},${ty}`;
     this.entry = this.game.getFurnaceEntry(tx, ty);
+    // Multijoueur (étape 4) : pendant que ce panneau est ouvert ICI, la
+    // progression est diffusée « live » (voir Game._maybeAnnounceFurnace) —
+    // sinon seulement un battement occasionnel tant que le four brûle.
+    this.entry._localOpen = true;
     this.slotManager.furnaceArrays = {
       input: this.entry.input,
       fuel: this.entry.fuel,
@@ -832,6 +836,7 @@ export class FurnacePanel {
     if (this.root.classList.contains('hidden')) return;
     this.root.classList.add('hidden');
     if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    if (this.entry) this.entry._localOpen = false;
     this.slotManager.furnaceArrays = null;
     this.slotManager.updateCursor((icon, id) => applyItemIcon(icon, id));
     this.onVisibilityChange(false);

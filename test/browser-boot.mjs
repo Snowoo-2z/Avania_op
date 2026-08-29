@@ -469,5 +469,50 @@ await frames(20);
 assert(runtimeErrors.length === 0,
   `aucune erreur pendant toute la partie (${runtimeErrors[0] || 'rien'})`);
 
+console.log('\n▶ Multijoueur : débit d\'émission réseau d\'un four (étape 4)');
+{
+  const furnaceEvents = [];
+  const prevOnFurnaceChange = game.uiCallbacks.onFurnaceChange;
+  game.uiCallbacks.onFurnaceChange = (tx, ty, state) => furnaceEvents.push({ tx, ty, state });
+
+  const entry = game.getFurnaceEntry(50, 51);
+  assert(entry._owned === true, 'ouvrir/récupérer un four en fait le propriétaire local (simulation active)');
+
+  // Panneau fermé (entry._localOpen resté false) : dépose un ingrédient
+  // et du combustible directement (sans passer par le SlotManager, hors
+  // scope de ce test), puis avance le temps par petits pas — un four qui
+  // brûle ne doit annoncer qu'un battement toutes les ~2,5 s tant que le
+  // panneau n'est pas ouvert, jamais un flot par frame.
+  entry.input[0] = { id: 'rawIron', count: 1 };
+  entry.fuel[0] = { id: 'wood', count: 1 };
+  furnaceEvents.length = 0; // on ignore l'annonce immédiate du changement structurel ci-dessous
+  game.updateFurnaces(0.001); // un tick minuscule suffit à détecter le changement structurel
+  assert(furnaceEvents.length === 1, 'déposer un ingrédient/combustible annonce immédiatement (changement structurel)');
+
+  furnaceEvents.length = 0;
+  for (let i = 0; i < 20; i++) game.updateFurnaces(0.1); // 2 s : sous le seuil d'inactivité (2,5 s)
+  assert(furnaceEvents.length === 0,
+    `aucune annonce avant le battement d'inactivité tant que rien ne change structurellement (${furnaceEvents.length})`);
+  for (let i = 0; i < 10; i++) game.updateFurnaces(0.1); // +1 s : dépasse le seuil de 2,5 s
+  assert(furnaceEvents.length >= 1, 'un battement finit par arriver tant que le four brûle, même panneau fermé');
+
+  // Panneau ouvert : le débit devient « live » (toutes les ~0,5 s).
+  entry._localOpen = true;
+  furnaceEvents.length = 0;
+  for (let i = 0; i < 6; i++) game.updateFurnaces(0.1); // 0,6 s : dépasse le seuil live (0,5 s)
+  assert(furnaceEvents.length >= 1, 'panneau ouvert : le débit passe en « live » (bien plus fréquent)');
+
+  // Le feu s'éteint : un dernier message est envoyé sans attendre le
+  // prochain battement, pour que les observateurs distants voient tout
+  // de suite le four s'éteindre.
+  entry._localOpen = false;
+  entry.fuelTime = 0.05;
+  game.updateFurnaces(0.1); // le feu s'éteint pendant ce pas
+  const lastEvent = furnaceEvents[furnaceEvents.length - 1];
+  assert(lastEvent && lastEvent.state.fuelTime === 0, 'l\'extinction du feu est annoncée immédiatement');
+
+  game.uiCallbacks.onFurnaceChange = prevOnFurnaceChange;
+}
+
 console.log(failures === 0 ? '\n✅ Intégration navigateur OK' : `\n❌ ${failures} échec(s)`);
 process.exit(failures === 0 ? 0 : 1);

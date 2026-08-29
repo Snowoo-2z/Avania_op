@@ -217,3 +217,32 @@ export function sanitizeChestSlots(src) {
   for (let i = 0; i < MAX_CHEST_SLOTS && i < src.length; i++) out[i] = sanitizeStack(src[i]);
   return out;
 }
+
+// ------------------------------------------------------------
+//  Étape 4 : fours partagés (progression de cuisson)
+//
+//  Un four posé (voir js/furnace.js makeFurnaceEntry) est synchronisé
+//  comme un tout : {input, fuel, output, progress, fuelTime,
+//  maxFuelTime}. Contrairement aux coffres (qui ne changent que sur
+//  interaction du joueur), la cuisson avance en continu — le débit
+//  d'émission est donc géré côté appelant (js/game.js), PAS ici : ce
+//  module se contente de valider la forme d'un état reçu/envoyé.
+// ------------------------------------------------------------
+const MAX_FURNACE_SECONDS = 100000; // large marge au-dessus des recettes réelles (quelques secondes)
+
+// Valide/nettoie un état de four reçu du réseau (ou construit
+// localement avant émission). Toujours un objet complet (jamais
+// partiel) — un four vide/neuf a des cases nulles et des compteurs à 0.
+export function sanitizeFurnaceState(src) {
+  const out = { input: null, fuel: null, output: null, progress: 0, fuelTime: 0, maxFuelTime: 0 };
+  if (!src || typeof src !== 'object') return out;
+  out.input = sanitizeStack(src.input);
+  out.fuel = sanitizeStack(src.fuel);
+  out.output = sanitizeStack(src.output);
+  for (const key of ['progress', 'fuelTime', 'maxFuelTime']) {
+    const n = Number(src[key]);
+    if (Number.isFinite(n)) out[key] = Math.max(0, Math.min(MAX_FURNACE_SECONDS, n));
+  }
+  return out;
+}
+

@@ -205,6 +205,15 @@ async function boot() {
     onChestSync: (zone, chests) => {
       for (const c of chests) game.applyRemoteChestChange(zone, c.tx, c.ty, c.slots);
     },
+    // Étape 4 (fours partagés) : même logique que les coffres, avec un
+    // état de four complet (voir js/game.js applyRemoteFurnaceChange et
+    // js/net-protocol.js sanitizeFurnaceState).
+    onFurnaceChange: (zone, tx, ty, state) => {
+      game.applyRemoteFurnaceChange(zone, tx, ty, state);
+    },
+    onFurnaceSync: (zone, furnaces) => {
+      for (const f of furnaces) game.applyRemoteFurnaceChange(zone, f.tx, f.ty, f.state);
+    },
   });
   game.otherPlayers = multiplayer.players;
   game.uiCallbacks.onZoneChange = (zone) => multiplayer.setZone(zone);
@@ -218,6 +227,9 @@ async function boot() {
   game.uiCallbacks.onBlockChange = (tx, ty, diff) => multiplayer.sendBlockChange(tx, ty, diff);
   // LE JOUEUR LOCAL a rangé/pioché un objet dans un coffre ouvert.
   game.uiCallbacks.onChestChange = (tx, ty, slots) => multiplayer.sendChestChange(tx, ty, slots);
+  // LE JOUEUR LOCAL possède un four qui vient de changer (contenu, ou
+  // battement périodique de cuisson — voir Game._maybeAnnounceFurnace).
+  game.uiCallbacks.onFurnaceChange = (tx, ty, state) => multiplayer.sendFurnaceChange(tx, ty, state);
   window.__multiplayer = multiplayer;
 
   setLoadingProgress(75, 'Plantation des arbres…');
