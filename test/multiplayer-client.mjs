@@ -211,6 +211,62 @@ try {
     erin.destroy();
   }
 
+  console.log('\n▶ Animaux partagés : Bob établit le troupeau, Alice le reçoit');
+  const aliceMobSyncs = [];
+  alice.onMobSync = (zone, mobs) => aliceMobSyncs.push({ zone, mobs });
+  const troupeau = [
+    { id: 0, kind: 'sheep', x: 100, y: 150, hp: 8, alive: true },
+    { id: 1, kind: 'cow', x: 200, y: 250, hp: 12, alive: true },
+  ];
+  // Alice a reçu un mobSync vide dès sa connexion (personne n'avait
+  // encore établi de troupeau) : Bob l'établit maintenant.
+  bob.sendMobSync(troupeau);
+  assert(await until(() => aliceMobSyncs.some((s) => s.mobs.length === 2)),
+    'Alice reçoit le troupeau établi par Bob');
+  const established = aliceMobSyncs.find((s) => s.mobs.length === 2);
+  assert(established.mobs[0].kind === 'sheep' && established.mobs[1].kind === 'cow',
+    'avec les bonnes espèces et le bon ordre');
+
+  console.log('\n▶ Animaux partagés : réapparition (repop) reçue par Alice');
+  const aliceMobSpawns = [];
+  alice.onMobSpawn = (zone, mobs) => aliceMobSpawns.push({ zone, mobs });
+  bob.sendMobSpawn([{ id: 2, kind: 'sheep', x: 60, y: 70, hp: 8, alive: true }]);
+  assert(await until(() => aliceMobSpawns.length === 1), 'Alice reçoit la nouvelle bête');
+  assert(aliceMobSpawns[0].mobs[0].id === 2, 'avec le bon id');
+
+  console.log('\n▶ Animaux partagés : correctif de position (coordinateur) reçu par Alice');
+  const aliceMobStates = [];
+  alice.onMobState = (zone, mobs) => aliceMobStates.push({ zone, mobs });
+  bob.sendMobState([{ id: 0, x: 321, y: 654 }]);
+  assert(await until(() => aliceMobStates.length === 1), 'Alice reçoit le correctif de position');
+  assert(aliceMobStates[0].mobs[0].x === 321 && aliceMobStates[0].mobs[0].y === 654, 'coordonnées reçues intactes');
+
+  console.log('\n▶ Animaux partagés : un coup porté par Bob est reçu par Alice');
+  const aliceMobHits = [];
+  alice.onMobHit = (zone, mob) => aliceMobHits.push({ zone, mob });
+  bob.sendMobHit(1, 0, false);
+  assert(await until(() => aliceMobHits.length === 1), 'Alice reçoit le coup porté par Bob');
+  assert(aliceMobHits[0].mob.id === 1 && aliceMobHits[0].mob.alive === false, 'la mort est transmise intacte');
+
+  console.log('\n▶ Animaux partagés : resynchronisation à la connexion d\'un nouveau client');
+  const felix = new MultiplayerClient({ url: wsUrl, name: 'Felix', appearance: {}, zone: 'surface' });
+  const felixLocalPlayer = { x: 0, y: 0, facing: 'down', moving: false };
+  const felixLoop = driveLoop(felix, felixLocalPlayer);
+  const felixMobSyncs = [];
+  felix.onMobSync = (zone, mobs) => felixMobSyncs.push({ zone, mobs });
+  try {
+    assert(await until(() => felixMobSyncs.some((s) => s.mobs.length > 0)),
+      'Felix reçoit le troupeau existant en se connectant');
+    const sync = felixMobSyncs.find((s) => s.mobs.length > 0);
+    assert(sync.zone === 'surface', `pour la bonne zone (${sync.zone})`);
+    const cow = sync.mobs.find((m) => m.id === 1);
+    assert(Boolean(cow), 'y compris la vache tuée plus tôt');
+    assert(cow && cow.alive === false, 'avec son état de mort à jour');
+  } finally {
+    clearInterval(felixLoop);
+    felix.destroy();
+  }
+
   console.log('\n▶ Déconnexion propre');
   bob.destroy();
   assert(await until(() => alice.players.length === 0), 'Alice voit Bob partir');

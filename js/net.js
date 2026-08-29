@@ -1,5 +1,6 @@
 // ============================================================
-//  AVANIA — Client multijoueur (présence + monde partagé + coffres + fours)
+//  AVANIA — Client multijoueur (présence + monde partagé + coffres +
+//  fours + animaux)
 //
 //  Ce module est volontairement autonome et « best effort » : si la
 //  connexion échoue ou tombe, le jeu continue normalement en solo
@@ -9,8 +10,9 @@
 //  Ce qu'il synchronise : position, orientation, état de marche et
 //  apparence des AUTRES joueurs (étape 1), la forme du monde — blocs
 //  cassés/posés, portes (étape 2) —, le contenu des coffres posés
-//  (étape 3), et la progression des fours (étape 4). Seuls les mobs
-//  restent locaux à chaque client.
+//  (étape 3), la progression des fours (étape 4), et le troupeau —
+//  moutons/vaches, même bêtes au même endroit, coups et morts partagés
+//  (étape 5, voir js/game.js pour le détail de la simulation locale).
 //
 //  Filtrage par « zone » : un joueur dans la grotte au niveau 3 ne
 //  doit pas apparaître fantôme à la surface (les coordonnées de tuile
@@ -22,7 +24,7 @@
 
 import {
   WS_PATH, encodeInput, decodeState, sanitizeBlockDiff, sanitizeChestSlots,
-  sanitizeFurnaceState,
+  sanitizeFurnaceState, sanitizeMobList, sanitizeMobStateList, sanitizeMobHit,
 } from './net-protocol.js';
 
 // Cadence d'envoi de la position locale : inutile d'aller plus vite
@@ -54,6 +56,13 @@ export class MultiplayerClient {
     // Étape 4 (fours partagés) : même principe, un état de four complet.
     onFurnaceChange = null, // (zone, tx, ty, state) — un four distant a changé (contenu ou cuisson)
     onFurnaceSync = null,   // (zone, furnaces[]) — resynchronisation des fours connus de la zone
+    // Étape 5 (animaux partagés) : voir js/game.js pour l'usage exact
+    // de chacun de ces rappels (établissement du troupeau, réapparition,
+    // correctif de position, coups portés).
+    onMobSync = null,  // (zone, mobs[]) — troupeau connu du serveur pour cette zone (peut être vide)
+    onMobSpawn = null, // (zone, mobs[]) — un ou plusieurs animaux neufs (repop)
+    onMobState = null, // (zone, mobs[{id,x,y}]) — correctif de position du coordinateur
+    onMobHit = null,   // (zone, {id,hp,alive}) — un animal distant a été frappé/tué
   } = {}) {
     this.url = url;
     this.ws = null;
@@ -68,6 +77,10 @@ export class MultiplayerClient {
     this.onChestSync = onChestSync;
     this.onFurnaceChange = onFurnaceChange;
     this.onFurnaceSync = onFurnaceSync;
+    this.onMobSync = onMobSync;
+    this.onMobSpawn = onMobSpawn;
+    this.onMobState = onMobState;
+    this.onMobHit = onMobHit;
     // id distant → état rendu (forme compatible avec drawPlayer : x, y,
     // facing, moving, walkPhase, appearance).
     this.remote = new Map();
@@ -249,6 +262,36 @@ export class MultiplayerClient {
       if (this.onFurnaceSync) this.onFurnaceSync(msg.zone, msg.furnaces);
       return;
     }
+    // Troupeau connu du serveur pour une zone (connexion / arrivée) —
+    // peut être VIDE : c'est le signal que personne n'a encore établi
+    // de troupeau ici, voir js/game.js pour la suite (le jeu appelle
+    // alors sendMobSync avec son propre troupeau local).
+    if (msg.t === 'mobSync') {
+      const mobs = sanitizeMobList(msg.mobs);
+      if (this.onMobSync) this.onMobSync(msg.zone, mobs);
+      return;
+    }
+    // Un ou plusieurs animaux neufs (repop) dans notre zone actuelle.
+    if (msg.t === 'mobSpawn') {
+      const mobs = sanitizeMobList(msg.mobs);
+      if (mobs.length === 0) return;
+      if (this.onMobSpawn) this.onMobSpawn(this.zone, mobs);
+      return;
+    }
+    // Correctif de position du coordinateur de notre zone actuelle.
+    if (msg.t === 'mobState') {
+      const mobs = sanitizeMobStateList(msg.mobs);
+      if (mobs.length === 0) return;
+      if (this.onMobState) this.onMobState(this.zone, mobs);
+      return;
+    }
+    // Un autre joueur a frappé/tué un animal de notre zone actuelle.
+    if (msg.t === 'mobHit') {
+      const mob = sanitizeMobHit(msg.mob);
+      if (!mob) return;
+      if (this.onMobHit) this.onMobHit(this.zone, mob);
+      return;
+    }
   }
 
   // À appeler par le jeu quand LE JOUEUR LOCAL casse/pose un bloc ou
@@ -350,6 +393,63 @@ export class MultiplayerClient {
     if (sig === this._lastSentSig) return; // rien de nouveau : zéro octet envoyé
     this._lastSentSig = sig;
     this.ws.send(encodeInput(x, y, localPlayer.facing, localPlayer.moving));
+  }
+
+  // Suis-je le « coordinateur » du troupeau de ma zone actuelle ? Élu
+  // sans aucun message dédié : le plus petit id de joueur présent dans
+  // la zone fait foi, et tout le monde calcule la même chose à partir
+  // des mêmes informations (welcome/join/leave/zone) déjà reçues —
+  // voir js/game.js _maybeSendMobState pour l'usage (correctif de
+  // position à basse fréquence, un seul émetteur pour ne pas multiplier
+  // les messages par le nombre de joueurs présents).
+  isMobCoordinator() {
+    // Pas connecté (jeu solo, ou serveur injoignable) : personne
+    // d'autre ne peut recevoir quoi que ce soit de toute façon (les
+    // méthodes sendMob* ci-dessous n'envoient rien tant que
+    // `connected` est faux) — autant se considérer maître de son
+    // propre troupeau plutôt que de figer la repop pour rien.
+    if (!this.connected || this.localId < 0) return true;
+    for (const r of this.remote.values()) {
+      if (r.zone === this.zone && r.id < this.localId) return false;
+    }
+    return true;
+  }
+
+  // À appeler par le jeu quand LE JOUEUR LOCAL est le premier à
+  // constater qu'aucun troupeau n'existe encore pour sa zone (message
+  // 'mobSync' reçu du serveur avec une liste vide) : établit le
+  // troupeau pour tout le monde.
+  sendMobSync(mobs) {
+    if (!this.connected) return;
+    this.ws.send(JSON.stringify({ t: 'mobSync', zone: this.zone, mobs: sanitizeMobList(mobs) }));
+  }
+
+  // Un ou plusieurs animaux réapparaissent (repop périodique — voir
+  // js/game.js _maybeRespawnMobs, appelé uniquement par le coordinateur
+  // de la zone pour ne pas faire réapparaître le troupeau en double).
+  sendMobSpawn(mobs) {
+    if (!this.connected) return;
+    const clean = sanitizeMobList(mobs);
+    if (clean.length === 0) return;
+    this.ws.send(JSON.stringify({ t: 'mobSpawn', zone: this.zone, mobs: clean }));
+  }
+
+  // Correctif de position à basse fréquence (voir isMobCoordinator) :
+  // ne fait qu'aligner les autres clients, jamais créer un animal.
+  sendMobState(mobs) {
+    if (!this.connected) return;
+    const clean = sanitizeMobStateList(mobs);
+    if (clean.length === 0) return;
+    this.ws.send(JSON.stringify({ t: 'mobState', zone: this.zone, mobs: clean }));
+  }
+
+  // LE JOUEUR LOCAL vient de frapper un animal (dégâts ou mise à mort) :
+  // diffusé immédiatement, comme un changement de bloc.
+  sendMobHit(id, hp, alive) {
+    if (!this.connected) return;
+    const mob = sanitizeMobHit({ id, hp, alive });
+    if (!mob) return;
+    this.ws.send(JSON.stringify({ t: 'mobHit', zone: this.zone, mob }));
   }
 
   get playerCount() {

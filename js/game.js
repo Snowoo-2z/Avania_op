@@ -26,7 +26,10 @@ import { getItemSprite } from './icons.js';
 import { drawHeldItem, heldItemIsBehind } from './held.js';
 import { isLowPowerDevice, makeCanvas } from './utils.js';
 import { updateFurnace, makeFurnaceEntry } from './furnace.js';
-import { MOB_DEFS, spawnMobs, updateMob, drawMob, mobDrops } from './mobs/index.js';
+import {
+  MOB_DEFS, Mob, spawnMobs, updateMob, drawMob, mobDrops,
+  DEFAULT_MOB_COUNTS, findMobSpawnSpot, makeMobFromNetwork,
+} from './mobs/index.js';
 import { CAVE, canDescendTo } from './cave.js';
 
 // Multijoueur (étape 4, fours) : débit d'émission réseau de la
@@ -38,6 +41,34 @@ import { CAVE, canDescendTo } from './cave.js';
 // un observateur distant, pas un flot par frame).
 const FURNACE_NET_LIVE_S = 0.5;
 const FURNACE_NET_IDLE_S = 2.5;
+
+// Multijoueur (étape 5, animaux) : contrairement aux fours, chaque
+// client continue de simuler localement l'errance de CHAQUE animal du
+// troupeau (fluide, pas cher, et ça permet à un animal de fuir « son »
+// joueur même si un autre est en train de le regarder). Trois réglages
+// suffisent à garder le troupeau cohérent d'un joueur à l'autre malgré
+// ça — voir Game._maybeManageMobsNetwork / updateMobs :
+//  - MOB_NET_STATE_S : le « coordinateur » de la zone (voir
+//    js/net.js isMobCoordinator, un seul joueur à la fois) diffuse un
+//    correctif de position de tout le troupeau à cette fréquence ;
+//  - MOB_NET_BLEND_RATE : vitesse à laquelle CHAQUE client recale en
+//    douceur sa simulation locale vers le dernier correctif reçu (un
+//    léger « aimant » permanent, jamais un saut brutal) ;
+//  - MOB_RESPAWN_CHECK_S : à quelle fréquence le coordinateur vérifie
+//    si le troupeau s'est dépeuplé (animaux tués) et doit se
+//    repeupler — la repop est alors diffusée à tout le monde.
+const MOB_NET_STATE_S = 1.5;
+const MOB_NET_BLEND_RATE = 1.2;
+const MOB_RESPAWN_CHECK_S = 5;
+
+// Forme réseau d'un animal (voir js/net-protocol.js sanitizeMobInfo) :
+// utilisée aussi bien pour établir un troupeau initial que pour une
+// repop — factorisé pour ne jamais désynchroniser les deux formats.
+function mobToNetInfo(mob) {
+  return {
+    id: mob.id, kind: mob.kind, x: mob.x, y: mob.y, hp: mob.hp, alive: mob.alive,
+  };
+}
 
 const REACH_SQ = REACH * REACH;
 const SORT_BY_Y = (a, b) => {
@@ -237,6 +268,12 @@ export class Game {
     this.mobs = spawnMobs(this.world);
     for (const mob of this.mobs) mob.dy = DRAW_MOB;
     this.mobAttackCooldown = 0;
+    // Multijoueur (étape 5) : prochain id réseau libre pour un animal
+    // (repop) — voir _allocMobId/_noteMobId. spawnMobs a déjà consommé
+    // les ids 0..N-1 de façon contiguë.
+    this._nextMobId = this.mobs.length;
+    this._mobStateTimer = 0;
+    this._mobRespawnTimer = 0;
     // Fours posés : contenu + progression (clé numérique = index de tuile,
     // finies les chaînes "tx,ty" allouées dans la boucle de rendu).
     this.furnaceData = new Map();
@@ -256,6 +293,13 @@ export class Game {
       onBlockChange: null,  // idem : (tx, ty, diff) — LE JOUEUR LOCAL a modifié un bloc
       onChestChange: null,  // idem : (tx, ty, slots[27]) — LE JOUEUR LOCAL a modifié un coffre ouvert
       onFurnaceChange: null, // idem : (tx, ty, state) — LE JOUEUR LOCAL a modifié un four ouvert
+      // Multijoueur (étape 5, animaux) : voir js/main.js pour le
+      // câblage exact et js/net.js pour la forme de chaque message.
+      onMobEstablish: null, // (mobs[]) — AUCUN troupeau connu du serveur pour cette zone : on propose le nôtre
+      onMobRespawn: null,   // (mobs[]) — le coordinateur propose une repop
+      onMobState: null,     // (mobs[{id,x,y}]) — le coordinateur diffuse un correctif de position
+      onMobHit: null,       // (id, hp, alive) — LE JOUEUR LOCAL vient de frapper un animal
+      isMobCoordinator: null, // () => bool — suis-je le coordinateur de cette zone ? (voir js/net.js)
     };
     // PNJ (représentant de l'île, marchands de la grotte).
     this.npcs = [];
@@ -677,12 +721,233 @@ export class Game {
 
   // ------------------------------------------------------------
   //  Mobs (moutons, vaches) : errance + fuite quand on les frappe.
-  // ------------------------------------------------------------
+  //
+  //  Multijoueur (étape 5) : CHAQUE client continue de simuler
+  //  localement l'errance de CHAQUE animal (comme en solo — c'est ce
+  //  qui garde le mouvement fluide et réactif, un mouton qui fuit LE
+  //  joueur qui vient de le frapper). Trois mécanismes gardent le
+  //  troupeau cohérent d'un joueur à l'autre sans jamais imposer un
+  //  vrai propriétaire par animal :
+  //   - _blendMobsTowardNetwork : un léger « aimant » permanent vers
+  //     le dernier correctif de position connu (voir applyRemoteMobState)
+  //     — jamais un saut brutal, juste une dérive qui ne s'accumule pas ;
+  //   - _maybeManageMobsNetwork : SEUL le coordinateur (voir
+  //     js/net.js isMobCoordinator) diffuse ce correctif, et gère la
+  //     repop — sinon chaque joueur présent enverrait le même message,
+  //     multipliant le trafic par le nombre de joueurs pour rien.
   updateMobs(dt) {
     this.mobAttackCooldown = Math.max(0, this.mobAttackCooldown - dt);
     for (const mob of this.mobs) {
       if (!mob.alive) continue;
       updateMob(mob, dt, this.world, this.player);
+    }
+    this._blendMobsTowardNetwork(dt);
+    this._maybeManageMobsNetwork(dt);
+  }
+
+  // Recale en douceur chaque animal vers le dernier correctif de
+  // position reçu du coordinateur (voir applyRemoteMobState) : sans ça,
+  // deux simulations locales indépendantes (même seed d'errance
+  // différente) dériveraient lentement l'une de l'autre au fil du
+  // temps. `_netTargetX/Y` est effacé après usage par
+  // applyRemoteMobState un court instant après réception — voir plus
+  // bas, on ne fait ici QUE la mécanique du lissage.
+  _blendMobsTowardNetwork(dt) {
+    if (!this._mobsById) return;
+    const k = 1 - Math.exp(-MOB_NET_BLEND_RATE * dt);
+    for (const mob of this.mobs) {
+      if (mob._netTargetX === undefined) continue;
+      mob.x += (mob._netTargetX - mob.x) * k;
+      mob.y += (mob._netTargetY - mob.y) * k;
+    }
+  }
+
+  // Rôle du coordinateur de la zone actuelle (voir js/net.js
+  // isMobCoordinator) : diffuser un correctif de position à basse
+  // fréquence et gérer la repop. Ne fait rien si le réseau n'a jamais
+  // pu se connecter (best effort, comme le reste du multijoueur).
+  _maybeManageMobsNetwork(dt) {
+    const cb = this.uiCallbacks;
+    if (!cb.isMobCoordinator || !cb.isMobCoordinator()) return;
+
+    this._mobStateTimer = (this._mobStateTimer || 0) + dt;
+    if (this._mobStateTimer >= MOB_NET_STATE_S) {
+      this._mobStateTimer = 0;
+      if (cb.onMobState) {
+        const entries = [];
+        for (const mob of this.mobs) {
+          if (!mob.alive) continue;
+          entries.push({ id: mob.id, x: mob.x, y: mob.y });
+        }
+        if (entries.length > 0) cb.onMobState(entries);
+      }
+    }
+
+    this._mobRespawnTimer = (this._mobRespawnTimer || 0) + dt;
+    if (this._mobRespawnTimer >= MOB_RESPAWN_CHECK_S) {
+      this._mobRespawnTimer = 0;
+      this._maybeRespawnMobs();
+    }
+  }
+
+  // Complète discrètement un troupeau dépeuplé (animaux tués) jusqu'à
+  // DEFAULT_MOB_COUNTS, un animal à la fois par vérification (repop
+  // progressive, jamais une vague soudaine) — et diffuse la nouvelle
+  // bête aux autres joueurs de la zone (voir onMobRespawn). N'a d'effet
+  // que sur la surface : comme spawnMobs, la grotte reste sans animaux.
+  _maybeRespawnMobs() {
+    if (this.world.kind === 'cave') return;
+    const counts = { sheep: 0, cow: 0 };
+    for (const mob of this.mobs) {
+      if (mob.alive && Object.prototype.hasOwnProperty.call(counts, mob.kind)) counts[mob.kind] += 1;
+    }
+    for (const [kind, target] of Object.entries(DEFAULT_MOB_COUNTS)) {
+      if (counts[kind] >= target) continue;
+      const spot = findMobSpawnSpot(this.world, 60);
+      if (!spot) continue;
+      const mob = new Mob(kind, spot.x, spot.y, this._allocMobId());
+      mob.dy = DRAW_MOB;
+      this.mobs.push(mob);
+      if (this._mobsById) this._mobsById.set(mob.id, mob);
+      if (this.uiCallbacks.onMobRespawn) this.uiCallbacks.onMobRespawn([mobToNetInfo(mob)]);
+      return; // un seul animal par vérification : repop progressive
+    }
+  }
+
+  // id réseau libre pour un nouvel animal (repop) — voir le
+  // commentaire sur this._nextMobId dans le constructeur.
+  _allocMobId() {
+    return this._nextMobId++;
+  }
+
+  // ------------------------------------------------------------
+  //  Animaux partagés (multijoueur, étape 5)
+  // ------------------------------------------------------------
+
+  // Index par id réseau (construit paresseusement) : nécessaire pour
+  // retrouver vite un animal précis quand un message réseau arrive
+  // (mobState/mobHit), sans reparcourir tout le tableau `mobs` — celui-
+  // ci reste la référence utilisée par le rendu et la boucle d'errance.
+  _mobIndex() {
+    if (!this._mobsById) {
+      this._mobsById = new Map();
+      for (const mob of this.mobs) this._mobsById.set(mob.id, mob);
+    }
+    return this._mobsById;
+  }
+
+  // Retrouve (sans le créer) le tableau `mobs` d'une zone réseau : celui
+  // du monde actif (`this.mobs`), ou celui mis de côté pour un monde
+  // déjà visité puis quitté (voir _saveDimState/_restoreDimState) —
+  // même principe que chestDataMapForZone/furnaceDataMapForZone.
+  mobsArrayForZone(zone) {
+    if (this.world && zone === this.world.id) return this.mobs;
+    const saved = this.dimStates.get(zone);
+    return saved ? saved.mobs : null;
+  }
+
+  // Appelé par js/main.js quand le serveur répond qu'AUCUN troupeau
+  // n'existe encore pour la zone actuelle (message 'mobSync' avec une
+  // liste vide) : ce client est probablement le premier arrivé, il
+  // propose son propre troupeau local tel quel — les autres arrivants
+  // recevront celui-ci en resynchronisation.
+  mobSnapshotForZone() {
+    return this.mobs.map(mobToNetInfo);
+  }
+
+  // Resynchronisation reçue du serveur pour une zone (arrivée ou
+  // changement de zone) : remplace le troupeau connu localement par
+  // celui déjà établi par d'autres joueurs, pour que tout le monde
+  // voie EXACTEMENT les mêmes bêtes au même endroit. Ignoré
+  // silencieusement si la liste reçue est vide (voir js/main.js : dans
+  // ce cas c'est à NOUS d'établir le troupeau, via mobSnapshotForZone),
+  // ou si cette zone n'a encore jamais été visitée localement (rien à
+  // raccrocher — cohérent avec chestDataMapForZone/furnaceDataMapForZone).
+  applyMobSync(zone, mobs) {
+    if (!Array.isArray(mobs) || mobs.length === 0) return;
+    const newMobs = mobs.map((info) => {
+      const mob = makeMobFromNetwork(info);
+      mob.dy = DRAW_MOB;
+      return mob;
+    });
+    if (this.world && zone === this.world.id) {
+      this.mobs = newMobs;
+      this._mobsById = null; // reconstruit paresseusement (voir _mobIndex)
+    } else {
+      const saved = this.dimStates.get(zone);
+      if (saved) saved.mobs = newMobs;
+    }
+    this._nextMobId = Math.max(this._nextMobId || 0, ...mobs.map((m) => m.id + 1));
+  }
+
+  // Un ou plusieurs animaux neufs (repop, annoncés par le coordinateur
+  // de la zone) : ignore silencieusement un id déjà connu (message reçu
+  // en double, ex. après une reconnexion) ou une zone jamais visitée.
+  applyMobSpawn(zone, mobs) {
+    const arr = this.mobsArrayForZone(zone);
+    if (!arr) return;
+    const active = this.world && zone === this.world.id;
+    const index = active ? this._mobIndex() : null;
+    for (const info of mobs) {
+      const known = active ? index.has(info.id) : arr.some((m) => m.id === info.id);
+      if (known) continue;
+      const mob = makeMobFromNetwork(info);
+      mob.dy = DRAW_MOB;
+      arr.push(mob);
+      if (index) index.set(mob.id, mob);
+      this._nextMobId = Math.max(this._nextMobId || 0, mob.id + 1);
+    }
+  }
+
+  // Correctif de position du coordinateur d'une zone : pour la zone
+  // AFFICHÉE, on ne déplace rien d'un coup — on pose juste une cible que
+  // _blendMobsTowardNetwork rejoindra en douceur à chaque frame (une
+  // zone non affichée n'a pas besoin de cette subtilité : rien ne la
+  // dessine, autant recaler directement sa position stockée). Un id
+  // inconnu localement (rare : animal apparu ailleurs juste avant notre
+  // arrivée) est ignoré, le prochain mobSync/mobSpawn le rattrapera.
+  applyMobState(zone, entries) {
+    const arr = this.mobsArrayForZone(zone);
+    if (!arr) return;
+    if (this.world && zone === this.world.id) {
+      const index = this._mobIndex();
+      for (const e of entries) {
+        const mob = index.get(e.id);
+        if (!mob || !mob.alive) continue;
+        mob._netTargetX = e.x;
+        mob._netTargetY = e.y;
+      }
+    } else {
+      for (const e of entries) {
+        const mob = arr.find((m) => m.id === e.id);
+        if (mob && mob.alive) { mob.x = e.x; mob.y = e.y; }
+      }
+    }
+  }
+
+  // Un autre joueur a frappé/tué un animal d'une zone : « dernier coup
+  // gagne », on applique tel quel (jamais de recalcul de dégâts ici —
+  // voir net-server.js, aucune validation côté serveur non plus). Un
+  // animal qui vient de mourir chez un autre joueur doit aussi lâcher
+  // son butin ICI, mais SEULEMENT si sa zone est actuellement affichée
+  // (killMob dépose des objets au sol/particules dans le monde actif —
+  // une zone non affichée se contente de mémoriser hp/alive).
+  applyMobHit(zone, info) {
+    const arr = this.mobsArrayForZone(zone);
+    if (!arr) return;
+    const active = this.world && zone === this.world.id;
+    const mob = active ? this._mobIndex().get(info.id) : arr.find((m) => m.id === info.id);
+    if (!mob) return;
+    const wasAlive = mob.alive;
+    mob.hp = info.hp;
+    mob.alive = info.alive;
+    if (!active) return;
+    if (wasAlive && !mob.alive) {
+      mob.hitFlash = 0.18;
+      this.killMob(mob);
+    } else if (mob.alive) {
+      mob.hitFlash = 0.18;
+      mob.fleeT = 1.7;
     }
   }
 
@@ -862,7 +1127,14 @@ export class Game {
       // Pas d'animaux sous terre.
       this.mobs = world.kind === 'cave' ? [] : spawnMobs(world);
       for (const mob of this.mobs) mob.dy = DRAW_MOB;
+      this._nextMobId = Math.max(this._nextMobId || 0, this.mobs.length);
     }
+    // Multijoueur (étape 5) : l'index par id (voir _mobIndex) pointait
+    // vers le troupeau de l'ANCIENNE zone — il doit être reconstruit
+    // pour la zone qu'on vient de restaurer, sinon un message réseau
+    // (mobState/mobHit) arrivant juste après le changement de zone
+    // retrouverait les mauvais animaux (ou aucun).
+    this._mobsById = null;
   }
 
   // Bascule sur un autre monde : on échange le monde, on reconstruit
@@ -1059,6 +1331,11 @@ export class Game {
       const label = (MOB_DEFS[mob.kind] && MOB_DEFS[mob.kind].label) || 'Créature';
       this.notify(`${label} tué${mob.kind === 'vache' ? 'e' : ''}.`);
     }
+    // Multijoueur (étape 5) : LE JOUEUR LOCAL vient de porter ce coup —
+    // diffusé immédiatement (jamais un flot par frame, une frappe est
+    // un évènement rare comme casser un bloc). « Dernier coup gagne » :
+    // aucune validation, chaque client applique ses propres dégâts.
+    if (this.uiCallbacks.onMobHit) this.uiCallbacks.onMobHit(mob.id, mob.hp, mob.alive);
   }
 
   killMob(mob) {
@@ -1199,7 +1476,7 @@ export class Game {
     }
 
     // Poser (clic droit par défaut) : un appui suffit, le maintien aussi.
-    if (this.input.pressed('place') || this.input.down('place')) this.interactTarget();
+    if (this.input.pressed('place') || this.input.down('place')) this.interactWithTarget();
   }
 
   // Frappe un mob sous le curseur si possible. Retourne true si un mob
@@ -1216,7 +1493,17 @@ export class Game {
 
   // Clic droit : porte (ouvrir/fermer) ou four (ouvrir le panneau), sinon
   // pose le bloc sélectionné (comme dans Minecraft).
-  interactTarget() {
+  //
+  // Nommée `interactWithTarget` (et non `interactTarget`) : ce dernier nom
+  // est déjà pris par une PROPRIÉTÉ d'instance (voir updateInteractTarget,
+  // réécrite à chaque frame avec l'objet PNJ/grotte visé par la touche F,
+  // ou `null`). Une propriété d'instance masque toujours une méthode du
+  // même nom sur le prototype : appeler `this.interactTarget()` plantait
+  // donc systématiquement au clic droit dès que cette propriété valait
+  // `null` (le cas le plus courant) avec `TypeError: ... is not a
+  // function`. D'où ce nom distinct, pour ne plus jamais entrer en
+  // collision avec `this.interactTarget` (l'objet).
+  interactWithTarget() {
     if (this.actionCooldown > 0 || !this.inReach) return;
     const targetBlock = this.world.blockAt(this.targetTx, this.targetTy);
     if (targetBlock === 'door' && !this.isPlayerOnTile(this.targetTx, this.targetTy)) {

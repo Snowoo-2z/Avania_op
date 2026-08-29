@@ -130,10 +130,9 @@ export function decodeInput(src) {
 //  de resynchronisation), pour ne jamais avoir deux définitions du
 //  même objet à faire évoluer en parallèle.
 //
-//  Volontairement HORS scope de ce diff : le contenu des coffres et
-//  la progression des fours restent locaux à chaque client (voir
-//  README, section limitations connues) — seule la FORME du monde
-//  (sol, blocs posés, portes) est synchronisée.
+//  Le contenu des coffres, la progression des fours et le troupeau
+//  d'animaux sont synchronisés séparément (voir plus bas dans ce
+//  fichier) : chacun a un format assez différent pour mériter le sien.
 // ------------------------------------------------------------
 // Un identifiant de bloc/sol ne dépasse jamais quelques caractères
 // (voir js/blocks.js) : on se laisse une marge large sans avoir à
@@ -244,5 +243,112 @@ export function sanitizeFurnaceState(src) {
     if (Number.isFinite(n)) out[key] = Math.max(0, Math.min(MAX_FURNACE_SECONDS, n));
   }
   return out;
+}
+
+// ------------------------------------------------------------
+//  Étape 5 : animaux partagés (moutons, vaches)
+//
+//  Contrairement aux coffres/fours (un seul propriétaire logique par
+//  objet), un troupeau est visible et attaquable par TOUS les joueurs
+//  d'une zone en même temps : chaque client continue de simuler
+//  localement l'errance de CHAQUE animal (comme en solo, c'est cheap
+//  et ça reste fluide), mais on partage trois choses pour que le
+//  troupeau reste cohérent d'un joueur à l'autre :
+//   - le troupeau lui-même (mêmes bêtes, même endroit de départ, et
+//     les réapparitions) : messages 'mobSync' (resynchronisation) et
+//     'mobSpawn' (une ou plusieurs bêtes neuves) ;
+//   - un correctif de position à basse fréquence, envoyé par UN SEUL
+//     client élu « coordinateur » (voir js/net.js isMobCoordinator),
+//     pour que deux simulations indépendantes ne dérivent jamais trop
+//     l'une de l'autre : message 'mobState' ;
+//   - les coups portés (dégâts, mort) : n'importe quel joueur peut
+//     taper n'importe quel animal, « dernier coup gagne » — message
+//     'mobHit'.
+//
+//  Ce module reste ignorant de js/mobs/*.js (pas d'énumération des
+//  espèces valides) : comme pour un id de coffre, on se contente de
+//  borner la taille de ce qu'un client peut faire mémoriser au
+//  serveur.
+// ------------------------------------------------------------
+export const MAX_MOB_ID = 4095; // large marge (un troupeau ne dépasse jamais quelques centaines d'ids, même après beaucoup de réapparitions)
+export const MAX_MOBS_PER_MESSAGE = 64; // large marge au-dessus d'un troupeau réel (~17 par défaut)
+const MAX_MOB_KIND_LEN = 16;
+const MAX_MOB_COORD = MAX_WORLD_TILE * 64; // borne large en pixels (tuile × marge)
+const MAX_MOB_HP = 1000;
+
+function sanitizeMobKind(v) {
+  return (typeof v === 'string' && v.length > 0 && v.length <= MAX_MOB_KIND_LEN) ? v : null;
+}
+
+function sanitizeMobId(v) {
+  const n = Math.trunc(v);
+  return Number.isFinite(n) && n >= 0 && n <= MAX_MOB_ID ? n : null;
+}
+
+function sanitizeMobCoord(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.min(MAX_MOB_COORD, n)) : 0;
+}
+
+function sanitizeMobHp(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.min(MAX_MOB_HP, n)) : 0;
+}
+
+// Un animal complet : troupeau initial, réapparition, ou une entrée
+// d'un 'mobSync' de resynchronisation.
+export function sanitizeMobInfo(src) {
+  if (!src || typeof src !== 'object') return null;
+  const id = sanitizeMobId(src.id);
+  const kind = sanitizeMobKind(src.kind);
+  if (id === null || kind === null) return null;
+  return {
+    id,
+    kind,
+    x: sanitizeMobCoord(src.x),
+    y: sanitizeMobCoord(src.y),
+    hp: sanitizeMobHp(src.hp),
+    alive: src.alive !== false,
+  };
+}
+
+export function sanitizeMobList(src) {
+  const out = [];
+  if (!Array.isArray(src)) return out;
+  for (let i = 0; i < src.length && out.length < MAX_MOBS_PER_MESSAGE; i++) {
+    const info = sanitizeMobInfo(src[i]);
+    if (info) out.push(info);
+  }
+  return out;
+}
+
+// Un correctif de position (mobState) est plus léger qu'un animal
+// complet : juste de quoi recaler doucement une simulation qui aurait
+// dérivé, jamais de quoi créer ou ressusciter un animal.
+export function sanitizeMobStateEntry(src) {
+  if (!src || typeof src !== 'object') return null;
+  const id = sanitizeMobId(src.id);
+  if (id === null) return null;
+  return { id, x: sanitizeMobCoord(src.x), y: sanitizeMobCoord(src.y) };
+}
+
+export function sanitizeMobStateList(src) {
+  const out = [];
+  if (!Array.isArray(src)) return out;
+  for (let i = 0; i < src.length && out.length < MAX_MOBS_PER_MESSAGE; i++) {
+    const e = sanitizeMobStateEntry(src[i]);
+    if (e) out.push(e);
+  }
+  return out;
+}
+
+// Un coup porté à un animal (hp après le coup + mort éventuelle) —
+// jamais de quoi créer un animal inconnu du serveur (voir net-server.js
+// recordMobHit : un coup sur un id absent du journal est ignoré).
+export function sanitizeMobHit(src) {
+  if (!src || typeof src !== 'object') return null;
+  const id = sanitizeMobId(src.id);
+  if (id === null) return null;
+  return { id, hp: sanitizeMobHp(src.hp), alive: src.alive !== false };
 }
 

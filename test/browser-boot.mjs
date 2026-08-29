@@ -469,6 +469,26 @@ await frames(20);
 assert(runtimeErrors.length === 0,
   `aucune erreur pendant toute la partie (${runtimeErrors[0] || 'rien'})`);
 
+console.log('\n▶ Clic droit (poser un bloc / interagir) : jamais un plantage');
+// Régression : `interactWithTarget` (l'action du clic droit) portait
+// autrefois le même nom que `this.interactTarget`, une PROPRIÉTÉ
+// d'instance réécrite à chaque frame par `updateInteractTarget` (l'objet
+// PNJ/grotte visé par la touche F, ou `null`). Une propriété d'instance
+// masque toujours une méthode de même nom sur le prototype : au moindre
+// clic droit, avec `this.interactTarget` valant `null` (le cas courant),
+// l'appel `this.interactTarget()` plantait avec « is not a function ».
+// On vérifie ici les deux conditions qui garantissent que ça ne peut
+// plus se reproduire :
+assert(typeof game.interactWithTarget === 'function',
+  'la méthode du clic droit existe sous un nom qui ne collisionne pas');
+assert(game.interactTarget === null || typeof game.interactTarget === 'object',
+  'la propriété du même nom (PNJ/grotte ciblé par F) reste un objet ou null, jamais la méthode elle-même');
+game.updateInteractTarget(); // rejoue le cycle qui écrase la propriété, comme en jeu
+let rightClickThrew = null;
+try { game.interactWithTarget(); } catch (err) { rightClickThrew = err; }
+assert(rightClickThrew === null,
+  `un clic droit ne plante jamais (${rightClickThrew && rightClickThrew.message})`);
+
 console.log('\n▶ Multijoueur : débit d\'émission réseau d\'un four (étape 4)');
 {
   const furnaceEvents = [];
@@ -512,6 +532,87 @@ console.log('\n▶ Multijoueur : débit d\'émission réseau d\'un four (étape 
   assert(lastEvent && lastEvent.state.fuelTime === 0, 'l\'extinction du feu est annoncée immédiatement');
 
   game.uiCallbacks.onFurnaceChange = prevOnFurnaceChange;
+}
+
+console.log('\n▶ Multijoueur : animaux partagés (étape 5)');
+{
+  // --- Établissement du troupeau (mobSync vide → on propose le nôtre) ---
+  const snapshot = game.mobSnapshotForZone();
+  assert(Array.isArray(snapshot) && snapshot.length === game.mobs.length,
+    'le troupeau local peut être capturé pour être proposé au serveur');
+  assert(snapshot.every((m) => typeof m.id === 'number' && typeof m.kind === 'string'),
+    'chaque animal du troupeau a un id et une espèce');
+
+  // --- Resynchronisation (un troupeau différent est déjà établi ailleurs) ---
+  const remoteMobs = [
+    { id: 100, kind: 'sheep', x: 111, y: 222, hp: 8, alive: true },
+    { id: 101, kind: 'cow', x: 333, y: 444, hp: 12, alive: true },
+  ];
+  game.applyMobSync(game.world.id, remoteMobs);
+  assert(game.mobs.length === 2, 'applyMobSync remplace le troupeau local par celui reçu');
+  assert(game.mobs[0].id === 100 && game.mobs[0].kind === 'sheep', 'avec le bon id et la bonne espèce');
+  assert(game.mobs[0].x === 111 && game.mobs[0].y === 222, 'à la bonne position');
+
+  // --- Réapparition (mobSpawn) : ajoute un animal, ignore un id déjà connu ---
+  game.applyMobSpawn(game.world.id, [{ id: 102, kind: 'sheep', x: 10, y: 20, hp: 8, alive: true }]);
+  assert(game.mobs.length === 3, 'un animal neuf (repop) est ajouté au troupeau');
+  game.applyMobSpawn(game.world.id, [{ id: 102, kind: 'sheep', x: 999, y: 999, hp: 8, alive: true }]);
+  assert(game.mobs.length === 3, 'un id déjà connu est ignoré (pas de doublon)');
+
+  // --- Correctif de position (mobState) : lissé en douceur, jamais un saut ---
+  const sheep = game.mobs.find((m) => m.id === 100);
+  const beforeX = sheep.x;
+  game.applyMobState(game.world.id, [{ id: 100, x: 900, y: 900 }]);
+  assert(sheep.x === beforeX, 'le correctif de position ne déplace pas immédiatement (juste une cible)');
+  // Le correctif n'est qu'un « aimant » permanent : l'errance normale de
+  // l'animal continue en parallèle (voir updateMob) et peut le faire
+  // dériver un peu de sa cible — la tolérance reste large, on vérifie
+  // juste une convergence nette, pas une position figée au pixel près.
+  for (let i = 0; i < 400; i++) game.updateMobs(0.05); // 20 s de simulation : largement de quoi converger
+  const dist = Math.hypot(sheep.x - 900, sheep.y - 900);
+  assert(dist < 60,
+    `l'animal converge en douceur vers le correctif reçu (${sheep.x.toFixed(1)}, ${sheep.y.toFixed(1)}, distance ${dist.toFixed(1)})`);
+
+  // --- Coup local : diffusé via onMobHit ---
+  const hitEvents = [];
+  const prevOnMobHit = game.uiCallbacks.onMobHit;
+  game.uiCallbacks.onMobHit = (id, hp, alive) => hitEvents.push({ id, hp, alive });
+  const cow = game.mobs.find((m) => m.id === 101);
+  game.attackMob(cow);
+  assert(hitEvents.length === 1 && hitEvents[0].id === 101, 'frapper un animal annonce le coup immédiatement');
+  assert(hitEvents[0].hp === cow.hp, 'avec les PV restants après le coup');
+  game.uiCallbacks.onMobHit = prevOnMobHit;
+
+  // --- Coup distant (mobHit) : mort et butin appliqués localement ---
+  const dropsBefore = game.droppedItems.length;
+  game.applyMobHit(game.world.id, { id: 100, hp: 0, alive: false });
+  assert(sheep.alive === false, 'un coup fatal reçu à distance tue bien l\'animal localement');
+  assert(game.droppedItems.length > dropsBefore, 'et laisse tomber son butin comme un animal tué localement');
+
+  // --- Coordinateur : seul le premier joueur (id le plus petit) gère la repop/l'état ---
+  const stateEvents = [];
+  const respawnEvents = [];
+  const prevOnMobState = game.uiCallbacks.onMobState;
+  const prevOnMobRespawn = game.uiCallbacks.onMobRespawn;
+  const prevIsCoordinator = game.uiCallbacks.isMobCoordinator;
+  game.uiCallbacks.onMobState = (mobs) => stateEvents.push(mobs);
+  game.uiCallbacks.onMobRespawn = (mobs) => respawnEvents.push(mobs);
+
+  game.uiCallbacks.isMobCoordinator = () => false;
+  game._mobStateTimer = 999; game._mobRespawnTimer = 999;
+  game.updateMobs(0.016);
+  assert(stateEvents.length === 0 && respawnEvents.length === 0,
+    'un client qui n\'est PAS coordinateur ne diffuse ni correctif ni repop');
+
+  game.uiCallbacks.isMobCoordinator = () => true;
+  game._mobStateTimer = 999; game._mobRespawnTimer = 999;
+  game.updateMobs(0.016);
+  assert(stateEvents.length === 1, 'le coordinateur diffuse un correctif de position');
+  assert(respawnEvents.length === 1, 'le coordinateur vérifie aussi la repop à son échéance');
+
+  game.uiCallbacks.onMobState = prevOnMobState;
+  game.uiCallbacks.onMobRespawn = prevOnMobRespawn;
+  game.uiCallbacks.isMobCoordinator = prevIsCoordinator;
 }
 
 console.log(failures === 0 ? '\n✅ Intégration navigateur OK' : `\n❌ ${failures} échec(s)`);

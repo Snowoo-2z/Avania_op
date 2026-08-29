@@ -214,6 +214,21 @@ async function boot() {
     onFurnaceSync: (zone, furnaces) => {
       for (const f of furnaces) game.applyRemoteFurnaceChange(zone, f.tx, f.ty, f.state);
     },
+    // Étape 5 (animaux partagés) : un troupeau connu (mobSync) peut
+    // être vide — c'est le signal que ce client est probablement le
+    // premier à visiter cette zone : il propose alors son propre
+    // troupeau local (voir game.mobSnapshotForZone) pour que les
+    // arrivants suivants héritent des mêmes bêtes.
+    onMobSync: (zone, mobs) => {
+      if (mobs.length === 0) {
+        if (game.world.id === zone) multiplayer.sendMobSync(game.mobSnapshotForZone());
+        return;
+      }
+      game.applyMobSync(zone, mobs);
+    },
+    onMobSpawn: (zone, mobs) => game.applyMobSpawn(zone, mobs),
+    onMobState: (zone, mobs) => game.applyMobState(zone, mobs),
+    onMobHit: (zone, mob) => game.applyMobHit(zone, mob),
   });
   game.otherPlayers = multiplayer.players;
   game.uiCallbacks.onZoneChange = (zone) => multiplayer.setZone(zone);
@@ -230,6 +245,14 @@ async function boot() {
   // LE JOUEUR LOCAL possède un four qui vient de changer (contenu, ou
   // battement périodique de cuisson — voir Game._maybeAnnounceFurnace).
   game.uiCallbacks.onFurnaceChange = (tx, ty, state) => multiplayer.sendFurnaceChange(tx, ty, state);
+  // Étape 5 (animaux) : LE JOUEUR LOCAL vient de frapper un animal, et
+  // le coordinateur de la zone (voir js/net.js isMobCoordinator) diffuse
+  // périodiquement un correctif de position / gère la repop — voir
+  // Game._maybeManageMobsNetwork pour le détail des deux rôles.
+  game.uiCallbacks.onMobHit = (id, hp, alive) => multiplayer.sendMobHit(id, hp, alive);
+  game.uiCallbacks.onMobRespawn = (mobs) => multiplayer.sendMobSpawn(mobs);
+  game.uiCallbacks.onMobState = (mobs) => multiplayer.sendMobState(mobs);
+  game.uiCallbacks.isMobCoordinator = () => multiplayer.isMobCoordinator();
   window.__multiplayer = multiplayer;
 
   setLoadingProgress(75, 'Plantation des arbres…');

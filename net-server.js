@@ -11,11 +11,14 @@
 //  Étape 4 : la progression des fours (ingrédient, combustible,
 //  sortie, cuisson en cours) est partagée de la même façon (voir
 //  furnaceJournal) — plusieurs joueurs voient le même four cuire.
+//  Étape 5 : le troupeau (moutons, vaches) est lui aussi partagé (voir
+//  mobJournal) — mêmes bêtes au même endroit pour tout le monde, coups
+//  et morts vus par tous ; seul le détail frame par frame de l'errance
+//  (dead reckoning) reste calculé localement par chaque client.
 //  Le monde reste néanmoins « bête » côté serveur : PAS de World.js
 //  ici, PAS de validation des règles du jeu — juste un relais + un
 //  journal mémoire par zone pour resynchroniser les arrivants (voir le
-//  commentaire au-dessus de `worldJournal`). Seuls les mobs restent
-//  locaux à chaque client.
+//  commentaire au-dessus de `worldJournal`).
 //
 //  Tout ça en restant dans le budget très serré du plan gratuit Render
 //  (0.1 CPU, 512 Mo, 5 Go de bande passante par mois) :
@@ -39,7 +42,8 @@ import { WebSocketServer } from 'ws';
 import {
   WS_PATH, MAX_PLAYER_ID, encodeState, decodeInput,
   sanitizeBlockDiff, sanitizeZone, validTile, sanitizeChestSlots,
-  sanitizeFurnaceState,
+  sanitizeFurnaceState, sanitizeMobList, sanitizeMobInfo,
+  sanitizeMobStateList, sanitizeMobHit,
 } from './js/net-protocol.js';
 
 // --- Réglages, pensés pour Render free ---
@@ -179,6 +183,37 @@ function zoneFurnaceJournal(zone) {
   return j;
 }
 
+// --- Animaux partagés (étape 5) : contrairement aux coffres/fours (un
+// objet = un état), un troupeau est une COLLECTION d'animaux (clé =
+// id numérique de l'animal, pas une coordonnée de tuile). Le serveur
+// ne fait toujours AUCUNE simulation : il retient juste le dernier état
+// connu de chaque animal (position, vie), pour resynchroniser un
+// arrivant, exactement comme les autres journaux.
+const MAX_MOBS_PER_ZONE = 500; // large marge au-dessus d'un troupeau réel (défaut ~17, même après beaucoup de réapparitions)
+/** @type {Map<string, Map<number, object>>} */
+const mobJournal = new Map();
+
+function zoneMobJournal(zone) {
+  let j = mobJournal.get(zone);
+  if (!j) {
+    if (mobJournal.size >= MAX_ZONES) {
+      const oldest = mobJournal.keys().next().value;
+      if (oldest !== undefined) mobJournal.delete(oldest);
+    }
+    j = new Map();
+    mobJournal.set(zone, j);
+  }
+  return j;
+}
+
+function recordMobInfo(zone, info) {
+  const j = zoneMobJournal(zone);
+  if (!j.has(info.id) && j.size >= MAX_MOBS_PER_ZONE) return; // zone déjà pleine d'animaux : on arrête d'enregistrer, sans planter
+  j.set(info.id, {
+    id: info.id, kind: info.kind, x: info.x, y: info.y, hp: info.hp, alive: info.alive,
+  });
+}
+
 function isEmptyFurnaceState(state) {
   return !state.input && !state.fuel && !state.output && state.progress === 0 && state.fuelTime === 0;
 }
@@ -309,6 +344,17 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     sendJson(ws, { t: 'furnaceSync', zone, furnaces });
   }
 
+  // Idem, pour le troupeau connu de la zone (étape 5). Un tableau VIDE
+  // signifie « personne ne m'a encore dit ce qu'il y avait ici » : le
+  // client qui reçoit ça sait qu'il est (probablement) le premier de
+  // la zone, et doit établir le troupeau lui-même (voir js/net.js et
+  // le handler du message 'mobSync' plus bas).
+  function sendMobSync(ws, zone) {
+    const j = mobJournal.get(zone);
+    const mobs = j ? [...j.values()] : [];
+    sendJson(ws, { t: 'mobSync', zone, mobs });
+  }
+
   wss.on('connection', (ws, req) => {
     if (budgetExhausted()) {
       warn('AVANIA multi : quota de bande passante mensuel atteint — connexion refusée');
@@ -350,6 +396,7 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     sendWorldSync(ws, player.zone);
     sendChestSync(ws, player.zone);
     sendFurnaceSync(ws, player.zone);
+    sendMobSync(ws, player.zone);
 
     // 2. On annonce le nouvel arrivant à tout le monde (apparence
     //    encore vide : elle arrive dans le prochain message 'hello').
@@ -394,6 +441,7 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
         sendWorldSync(ws, zone);
         sendChestSync(ws, zone);
         sendFurnaceSync(ws, zone);
+        sendMobSync(ws, zone);
         return;
       }
       // Un joueur a cassé/posé un bloc ou basculé une porte : on note
@@ -437,6 +485,58 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
         const state = sanitizeFurnaceState(msg.state);
         recordFurnaceState(player.zone, tx, ty, state);
         broadcastToZone(player.zone, { t: 'furnace', tx, ty, state }, ws);
+        return;
+      }
+      // Un joueur (le premier arrivé dans une zone vide de troupeau,
+      // voir js/net.js) établit le troupeau initial : le serveur
+      // n'accepte cette « prise de possession » que si son journal est
+      // encore vide pour cette zone — sinon un troupeau existe déjà et
+      // ce message est ignoré (évite qu'un rechargement de page double
+      // le troupeau en écrivant par-dessus un troupeau déjà partagé).
+      if (msg.t === 'mobSync') {
+        const j = zoneMobJournal(player.zone);
+        if (j.size > 0) return; // troupeau déjà établi par quelqu'un d'autre : on ignore
+        const mobs = sanitizeMobList(msg.mobs);
+        for (const info of mobs) recordMobInfo(player.zone, info);
+        broadcastToZone(player.zone, { t: 'mobSync', zone: player.zone, mobs }, ws);
+        return;
+      }
+      // Un ou plusieurs animaux réapparaissent (repop, voir
+      // js/game.js _maybeRespawnMobs) : n'importe quel client peut en
+      // proposer (même logique de confiance que pour un bloc cassé).
+      if (msg.t === 'mobSpawn') {
+        const mobs = sanitizeMobList(msg.mobs);
+        if (mobs.length === 0) return;
+        for (const info of mobs) recordMobInfo(player.zone, info);
+        broadcastToZone(player.zone, { t: 'mobSpawn', zone: player.zone, mobs }, ws);
+        return;
+      }
+      // Correctif de position à basse fréquence, envoyé par le
+      // coordinateur de la zone (voir js/net.js isMobCoordinator) :
+      // recale doucement les simulations distantes sans jamais créer
+      // ni ressusciter un animal (voir recordMobInfo : un id inconnu
+      // n'est pas enregistré ici, contrairement à mobSpawn/mobSync).
+      if (msg.t === 'mobState') {
+        const entries = sanitizeMobStateList(msg.mobs);
+        if (entries.length === 0) return;
+        const j = zoneMobJournal(player.zone);
+        for (const e of entries) {
+          const known = j.get(e.id);
+          if (known) { known.x = e.x; known.y = e.y; }
+        }
+        broadcastToZone(player.zone, { t: 'mobState', zone: player.zone, mobs: entries }, ws);
+        return;
+      }
+      // Un joueur a frappé un animal (dégâts ou mise à mort) : « dernier
+      // coup gagne », comme annoncé — pas de vrai propriétaire, chaque
+      // client applique ses propres dégâts et diffuse le résultat.
+      if (msg.t === 'mobHit') {
+        const hit = sanitizeMobHit(msg.mob);
+        if (!hit) return;
+        const j = zoneMobJournal(player.zone);
+        const known = j.get(hit.id);
+        if (known) { known.hp = hit.hp; known.alive = hit.alive; }
+        broadcastToZone(player.zone, { t: 'mobHit', zone: player.zone, mob: hit }, ws);
       }
     });
 
