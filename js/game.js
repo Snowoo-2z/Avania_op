@@ -7,6 +7,7 @@ import {
 } from './config.js';
 import {
   BLOCK_DEFS, ITEM_DEFS, TOOL_TIERS, toolTierIndex, blockMinTierIndex, toolDamage,
+  CROPS, CROP_MATURE, CROP_GROW_SECONDS,
 } from './blocks.js';
 import { World } from './world.js';
 import { Player } from './player.js';
@@ -270,6 +271,10 @@ export class Game {
     this.otherPlayers = []; // futurs joueurs en ligne
     // Objets posés au sol (ramassables en marchant dessus).
     this.droppedItems = [];
+    // Agriculture : âge (en secondes) de chaque pousse de blé, par tuile.
+    this.cropAge = new Map();
+    // Bonus temporaire après avoir mangé (secondes restantes).
+    this.wellFedT = 0;
     this.pickupFullCooldown = 0;
     // Animaux (moutons, vaches) qui se baladent dans le monde.
     this.mobs = spawnMobs(this.world);
@@ -603,13 +608,15 @@ export class Game {
     // Pendant une cinématique (l'arrivée du représentant), le joueur ne
     // contrôle plus rien : on ignore simplement ses entrées.
     const dir = this.cutscene ? this._zeroDir : this.input.getDirection();
-    this.player.update(dir, dt, this.world);
+    this.player.update(dir, dt, this.world, this.wellFedBoost());
     this.camera.follow(this.player.x, this.player.y, dt);
     // Pré-construit par petits lots les chunks qui vont entrer dans la vue :
     // c'est le correctif des saccades au déplacement (plus de rasterisation
     // synchrone de chunk dans la boucle de rendu).
     this.prewarmFloorChunks(PERFORMANCE.CHUNK_PREWARM_BUDGET_MS);
     this.updateDroppedItems(dt);
+    if (this.wellFedT > 0) this.wellFedT = Math.max(0, this.wellFedT - dt);
+    this.updateCrops(dt);
     this.updateParticles(dt);
     this.updateHeldItem(dt);
     this.updateMobs(dt);
@@ -1541,7 +1548,83 @@ export class Game {
       this.actionCooldown = 0.25;
       return;
     }
+
+    // Labour : la houe retourne herbe / terre en terre labourée, prête à
+    // semer. (Clic droit, comme poser — mais ça transforme le SOL.)
+    const held = this.inventory.getSelectedStackRef();
+    const heldDef = held && ITEM_DEFS[held.id];
+    if (heldDef?.toolType === 'hoe' && !targetBlock) {
+      const floor = this.world.floorAt(this.targetTx, this.targetTy);
+      if (floor === 'grass' || floor === 'grassDark' || floor === 'dirt') {
+        const i = this.world.idx(this.targetTx, this.targetTy);
+        this.world.floor[i] = 'farmland';
+        this.invalidateFloorChunk(this.targetTx, this.targetTy);
+        this.actionCooldown = 0.2;
+        this._announceBlockChange(this.targetTx, this.targetTy, { floor: 'farmland' });
+        const res = this.inventory.damageSelectedTool(1);
+        if (res.broken) this.notify(`${heldDef.label} s'est cassée.`);
+        return;
+      }
+    }
+
+    // Manger : un aliment en main se consomme d'un clic droit (bien nourri
+    // = un coup de pouce temporaire au minage et à la marche).
+    if (heldDef?.food) {
+      this.eatSelectedFood();
+      return;
+    }
+
     this.placeSelectedBlock();
+  }
+
+  // Consomme l'aliment sélectionné et applique le bonus « bien nourri ».
+  eatSelectedFood() {
+    const idx = this.inventory.selectedSlotIndex();
+    const stack = this.inventory.getSlot(idx);
+    const def = stack && ITEM_DEFS[stack.id];
+    if (!def?.food) return;
+    this.inventory.takeSlot(idx, 1);
+    this.wellFedT = Math.min(120, this.wellFedT + def.food * 10);
+    this.notify(`Miam ! ${def.label} : bien nourri ${Math.round(this.wellFedT)} s.`);
+  }
+
+  // Bonus tant que le joueur est bien nourri (mine et marche un peu mieux).
+  wellFedBoost() {
+    return this.wellFedT > 0 ? 1.1 : 1;
+  }
+
+  // Fait pousser le blé autour du joueur : chaque pousse sur terre labourée
+  // accumule un âge et passe au stade suivant toutes les CROP_GROW_SECONDS.
+  // Le changement de stade est un simple diff de bloc, diffusé comme les
+  // autres modifications de tuile (les voisins voient le blé mûrir).
+  updateCrops(dt) {
+    const world = this.world;
+    if (!world) return;
+    const ptx = Math.floor(this.player.x / TILE);
+    const pty = Math.floor(this.player.y / TILE);
+    const R = 8;
+    for (let ty = pty - R; ty <= pty + R; ty++) {
+      for (let tx = ptx - R; tx <= ptx + R; tx++) {
+        if (!world.inBounds(tx, ty)) continue;
+        const i = world.idx(tx, ty);
+        const block = world.blocks[i];
+        if (!block || !CROPS.includes(block)) {
+          if (this.cropAge.has(i)) this.cropAge.delete(i);
+          continue;
+        }
+        if (block === CROP_MATURE || world.floor[i] !== 'farmland') continue;
+        const age = (this.cropAge.get(i) || 0) + dt;
+        if (age >= CROP_GROW_SECONDS) {
+          const next = CROPS[CROPS.indexOf(block) + 1];
+          world.blocks[i] = next;
+          this.cropAge.delete(i);
+          this.reindexPlacedChunk(tx, ty);
+          this._announceBlockChange(tx, ty, { blocks: next });
+        } else {
+          this.cropAge.set(i, age);
+        }
+      }
+    }
   }
 
   // Petite bouffée de particules quand une porte s'ouvre / se ferme.
@@ -1607,7 +1690,7 @@ export class Game {
     if (stoneByHand) speed /= 10;
     // L'équipement de la grotte accélère réellement le minage : c'est
     // la récompense tangible de l'achat chez les marchands.
-    this.mining.duration = duration / (speed * this.gearMiningBoost());
+    this.mining.duration = duration / (speed * this.gearMiningBoost() * this.wellFedBoost());
     this.mining.progress += dt / this.mining.duration;
 
     if (this.mining.progress < 1) return;
@@ -1692,6 +1775,11 @@ export class Game {
         const result = this.inventory.damageSelectedTool(1);
         if (result.broken) this.notify(`${selectedDef.label} s'est cassé.`);
       }
+    }
+    // Récolter du blé mûr rend aussi des graines : la ferme s'auto-entretient.
+    if (existingBlock === CROP_MATURE) {
+      const extra = 1 + (Math.random() < 0.5 ? 1 : 0);
+      for (let k = 0; k < extra; k++) this.spawnDrop(this.targetTx, this.targetTy, 'seeds', 1);
     }
     if (this.world.floor[i] !== oldFloor) this.invalidateFloorChunk(this.targetTx, this.targetTy);
     this.resetMining();
@@ -2335,6 +2423,14 @@ export class Game {
         } else if (block === 'furnace') {
           const entry = this.furnaceData.get(i);
           ctx.drawImage(getFurnaceCanvas(Boolean(entry && entry.fuelTime > 0)), tx * TILE, ty * TILE);
+        } else if (CROPS.includes(block)) {
+          // Une pousse de blé : petit sprite ancré au sol de la tuile.
+          const spr = getObjectSprite(block);
+          if (spr) {
+            ctx.drawImage(spr.canvas,
+              tx * TILE + TILE / 2 - spr.anchorX,
+              ty * TILE + TILE - 6 - spr.anchorY);
+          }
         } else if (def.kind === 'block') {
           ctx.drawImage(getTileCanvas(block), tx * TILE, ty * TILE);
         }
@@ -2580,6 +2676,7 @@ export class Game {
     const blocks2 = this.world.blocks2;
     const b1 = blocks[i];
     if (b1) {
+      if (CROPS.includes(b1)) return true; // les pousses de blé posées
       const kind = BLOCK_DEFS[b1]?.kind;
       if (kind === 'block' || kind === 'door') return true;
     }

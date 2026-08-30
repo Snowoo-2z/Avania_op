@@ -16,14 +16,14 @@ export class Player {
   }
 
   // tente de déplacer le joueur ; gère les collisions avec le monde
-  update(dir, dt, world) {
+  update(dir, dt, world, speedMul = 1) {
     if (dir.x === 0 && dir.y === 0) {
       this.moving = false;
       return;
     }
 
     this.moving = true;
-    const step = PLAYER_SPEED * dt;
+    const step = PLAYER_SPEED * speedMul * dt;
 
     // Déplacement en X (avec résolution de collision)
     let nx = this.x + dir.x * step;

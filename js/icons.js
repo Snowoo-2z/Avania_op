@@ -256,6 +256,68 @@ function drawDiamond(ctx) {
   ctx.restore();
 }
 
+// --- Houe : manche + lame perpendiculaire, l'outil de la ferme ---
+function drawHoe(ctx, head, handle) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.rotate(0.5);
+  ctx.fillStyle = handle.dark; ctx.fillRect(-2, -12, 4, 24);
+  ctx.fillStyle = handle.base; ctx.fillRect(-1, -12, 2, 24);
+  ctx.fillStyle = head.dark; ctx.fillRect(-11, -14, 15, 5);
+  ctx.fillStyle = head.base; ctx.fillRect(-10, -13, 13, 3);
+  ctx.fillStyle = head.light; ctx.fillRect(-10, -13, 13, 1);
+  ctx.restore();
+}
+
+// --- Graines : petit sachet ouvert qui laisse voir les grains ---
+function drawSeeds(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.fillStyle = '#8a6a3c'; ctx.fillRect(-9, -4, 18, 12);
+  ctx.fillStyle = '#a8865a'; ctx.fillRect(-9, -4, 18, 3);
+  ctx.fillStyle = '#6e4426'; ctx.fillRect(-9, 6, 18, 2);
+  // grains qui débordent
+  ctx.fillStyle = '#d8c26a';
+  ctx.fillRect(-6, -7, 3, 3); ctx.fillRect(0, -8, 3, 3); ctx.fillRect(4, -6, 3, 3);
+  ctx.fillStyle = '#e8d47a';
+  ctx.fillRect(-5, -6, 1, 1); ctx.fillRect(1, -7, 1, 1);
+  ctx.restore();
+}
+
+// --- Blé : gerbe dorée liée ---
+function drawWheatItem(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  for (let s = -1; s <= 1; s++) {
+    const x = s * 5;
+    ctx.fillStyle = '#c9b45a';
+    ctx.fillRect(x - 1, -6, 2, 16);
+    ctx.fillStyle = '#e8d47a';
+    ctx.fillRect(x - 2, -12, 4, 7);
+    ctx.fillStyle = '#d8c26a';
+    ctx.fillRect(x - 1, -11, 2, 5);
+  }
+  ctx.fillStyle = '#a8865a';
+  ctx.fillRect(-7, 4, 14, 3); // lien
+  ctx.restore();
+}
+
+// --- Pain : miche dorée entaillée ---
+function drawBread(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.fillStyle = '#8a5a26';
+  ctx.fillRect(-11, -4, 22, 10);
+  ctx.fillRect(-9, -7, 18, 4);
+  ctx.fillStyle = '#c98f4a';
+  ctx.fillRect(-10, -6, 20, 10);
+  ctx.fillStyle = '#e8b46a';
+  ctx.fillRect(-9, -6, 18, 3);
+  ctx.fillStyle = '#8a5a26';
+  ctx.fillRect(-5, -5, 2, 4); ctx.fillRect(0, -5, 2, 4); ctx.fillRect(5, -5, 2, 4);
+  ctx.restore();
+}
+
 // --- Lingot de fer : barre arrondie au reflet métallique ---
 function drawIronIngot(ctx) {
   ctx.save();
@@ -550,6 +612,13 @@ const TOOL_DRAWERS = {
   diamond_axe:     (ctx) => drawAxe(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
   diamond_shovel:  (ctx) => drawShovel(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
   diamond_sword:   (ctx) => drawSword(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
+  wooden_hoe:      (ctx) => drawHoe(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
+  stone_hoe:       (ctx) => drawHoe(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
+  iron_hoe:        (ctx) => drawHoe(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
+  diamond_hoe:     (ctx) => drawHoe(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
+  seeds:           (ctx) => drawSeeds(ctx),
+  wheat:           (ctx) => drawWheatItem(ctx),
+  bread:           (ctx) => drawBread(ctx),
   stick:          (ctx) => drawStick(ctx, TOOL_COLORS.stick),
   coin:           (ctx) => drawCoinPile(ctx), // la monnaie (js/economy.js)
   rawIron:        (ctx) => drawRawIron(ctx),

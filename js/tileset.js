@@ -88,6 +88,41 @@ function drawDirt(ctx, rng) {
   }
 }
 
+// --- Terre labourée : sillons réguliers, prête à semer ---
+function drawFarmland(ctx, rng) {
+  ctx.fillStyle = '#5a3f22';
+  ctx.fillRect(0, 0, S, S);
+  for (let y = 4; y < S; y += 7) {
+    ctx.fillStyle = withAlpha('#3a2812', 0.8);
+    ctx.fillRect(0, y, S, 3);
+    ctx.fillStyle = withAlpha('#7a5a30', 0.6);
+    ctx.fillRect(0, y - 1, S, 1);
+  }
+  ctx.fillStyle = withAlpha('#8a6a3c', 0.5);
+  for (let i = 0; i < 6; i++) ctx.fillRect(rng() * S, rng() * S, 2, 2);
+}
+
+// --- Blé : un stade de croissance (0 semis → 3 mûr) ---
+function makeWheatRaw(stage) {
+  const STALK = ['#7a8a3a', '#9aa83a', '#b8b44a', '#d8c26a'];
+  const HEAD = ['#9aa83a', '#b8b44a', '#d8c26a', '#e8d47a'];
+  return (ctx, x, y, shadow = true) => {
+    if (shadow) softShadow(ctx, x, y + 1, 10, 3);
+    const n = 4 + stage;          // de 4 à 7 tiges
+    const hgt = 8 + stage * 5;    // de 8 à 23 px de haut
+    for (let s = 0; s < n; s++) {
+      const sx = x - 8 + Math.round(s * (16 / (n - 1)));
+      ctx.fillStyle = STALK[stage];
+      ctx.fillRect(sx, y - hgt, 1, hgt);
+      ctx.fillRect(sx - 1, y - Math.floor(hgt / 2), 1, 2);
+      if (stage >= 2) {
+        ctx.fillStyle = HEAD[stage];
+        ctx.fillRect(sx - 1, y - hgt - 2, 3, 3);
+      }
+    }
+  };
+}
+
 // --- Sable : grains ---
 function drawSand(ctx, rng) {
   ctx.fillStyle = BLOCK_DEFS.sand.color;
@@ -1096,6 +1131,7 @@ const DRAWERS = {
   grassDark: (c, r) => drawGrass(c, r, BLOCK_DEFS.grassDark.color),
   flowers:   (c, r) => drawFlowers(c, r),
   dirt:      (c, r) => drawDirt(c, r),
+  farmland:  (c, r) => drawFarmland(c, r),
   sand:      (c, r) => drawSand(c, r),
   wood:      (c) => drawBlockTile(c, BLOCK_DEFS.wood.color, woodGrain),
   stone:     (c) => drawBlockTile(c, BLOCK_DEFS.stone.color, stoneTexture),
@@ -1652,6 +1688,11 @@ function buildObjectSprites() {
   objectCache.caveStone = makeObjectSprite(40, 44, 20, 34, drawCaveStoneObjectRaw);
   objectCache.caveIron = makeObjectSprite(40, 44, 20, 34, drawCaveIronObjectRaw);
   objectCache.caveDiamond = makeObjectSprite(40, 44, 20, 34, drawCaveDiamondObjectRaw);
+  // Les quatre stades du blé (agriculture), petits et lisibles.
+  objectCache.wheat0 = makeObjectSprite(32, 36, 16, 30, makeWheatRaw(0));
+  objectCache.wheat1 = makeObjectSprite(32, 36, 16, 30, makeWheatRaw(1));
+  objectCache.wheat2 = makeObjectSprite(32, 36, 16, 30, makeWheatRaw(2));
+  objectCache.wheat3 = makeObjectSprite(32, 36, 16, 30, makeWheatRaw(3));
   // L'entrée de la grotte déborde largement de sa tuile (point de repère).
   objectCache.caveMouth = makeObjectSprite(76, 88, 38, 80, drawCaveMouthObjectRaw);
   objectCache.caveLadderDown = makeObjectSprite(44, 48, 22, 38, drawCaveLadderDownRaw);

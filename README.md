@@ -59,6 +59,12 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   comme dans Minecraft, cogne elle aussi (bois 2 → diamant 6). Pioche, pelle
   et mains nues frappent à 1 (`toolDamage`, js/blocks.js). Épée et hache
   s'usent à chaque coup porté.
+- **🌾 Agriculture** : la **houe** (4 paliers) retourne herbe/terre en
+  **terre labourée** (clic droit) ; on y sème des **graines** (trouvées en
+  fauchant les fleurs) qui poussent en 4 stades (~15 s chacun) jusqu'au
+  **blé** mûr. Récolter rend du blé + des graines ; 3 blés → 1 **pain**.
+  Pain et steak se mangent (clic droit) et donnent un bonus temporaire de
+  minage/marche. La pousse est diffusée en multijoueur comme un diff de bloc.
 - **📦 Lâcher des objets** : touche `Q` pour jeter un objet de ta main,
   `Ctrl+Q` pour toute la pile — ou sors une pile de l'inventaire par-dessus
   le bord de l'écran. Les objets tombent au sol, fusionnent entre eux et
@@ -463,6 +469,8 @@ puis construis ta première cabane.
   niveau 1 et présent dès la profondeur 2, bien plus rare que le fer ;
   miné à la pioche, il lâche une gemme (`diamond`). Densité réglable dans
   `CAVE.diamondDensity` (js/cave.js).
+- [x] **Agriculture** — houe (4 paliers), terre labourée, graines → blé en
+  4 stades, pain nourrissant. Croissance diffusée en multijoueur.
 - [x] **Multijoueur (étape 6 : chat & réseau social)** — fenêtre de chat
   toujours visible (canal global + talkie-walkie de proximité en `V`),
   et téléphone (`P`) avec un réseau social partagé : comptes,

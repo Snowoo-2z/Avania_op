@@ -650,6 +650,36 @@ console.log('\n▶ Multijoueur : animaux partagés (étape 5)');
   inv.setSlot(swordSlot, prevStack || null);
   inv.select(prevSel);
 
+  console.log('\n▶ Agriculture (boucle de jeu)');
+{
+  const ptx = Math.floor(game.player.x / 32);
+  const pty = Math.floor(game.player.y / 32);
+  const idx = game.world.idx(ptx, pty);
+  const keepFloor = game.world.floor[idx];
+  const keepBlock = game.world.blocks[idx];
+  game.world.blocks[idx] = 'wheat0';
+  game.world.floor[idx] = 'farmland';
+  for (let s = 0; s < 16; s++) game.updateCrops(1); // 16 s simulées
+  assert(game.world.blocks[idx] === 'wheat1', `le semis pousse (→ ${game.world.blocks[idx]})`);
+  for (let s = 0; s < 46; s++) game.updateCrops(1);
+  assert(game.world.blocks[idx] === 'wheat3', `le blé atteint la maturité (${game.world.blocks[idx]})`);
+  game.world.blocks[idx] = keepBlock;
+  game.world.floor[idx] = keepFloor;
+
+  // Manger donne un bonus temporaire.
+  const foodSlot = game.inventory.hotbarStart + 7;
+  const keepFood = game.inventory.getSlot(foodSlot);
+  game.inventory.setSlot(foodSlot, { id: 'bread', count: 1 });
+  game.inventory.select(7);
+  game.wellFedT = 0;
+  game.eatSelectedFood();
+  assert(game.wellFedT > 0, 'manger rend bien nourri');
+  assert(game.inventory.count('bread') === 0, 'le pain est consommé');
+  assert(game.wellFedBoost() === 1.1, 'et le bonus de minage s\'applique');
+  game.wellFedT = 0;
+  game.inventory.setSlot(foodSlot, keepFood || null);
+}
+
   // --- Coup distant (mobHit) : mort et butin appliqués localement ---
   const dropsBefore = game.droppedItems.length;
   game.applyMobHit(game.world.id, { id: 100, hp: 0, alive: false });

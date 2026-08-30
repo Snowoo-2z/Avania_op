@@ -337,6 +337,32 @@ assert(dInv.craft(RECIPES.find((r) => r.id === 'diamond_pickaxe')) === true, '3 
 assert(dInv.count('diamond_pickaxe') === 1, 'la pioche en diamant est fabriquée');
 assert(dInv.count('diamond') === 0 && dInv.count('stick') === 0, 'les ingrédients sont consommés');
 
+console.log('▶ Agriculture');
+const { CROPS, CROP_MATURE, DIGGABLE_FLOOR } = await import('../js/blocks.js');
+assert(CROPS.join(',') === 'wheat0,wheat1,wheat2,wheat3', '4 stades de blé');
+assert(CROP_MATURE === 'wheat3', 'le stade mûr est le dernier');
+assert(DIGGABLE_FLOOR.flowers?.drop === 'seeds', 'faucher les fleurs donne des graines');
+assert(DIGGABLE_FLOOR.farmland, 'la terre labourée se retransforme en terre');
+assert(ITEM_DEFS.seeds.place === 'wheat0', 'les graines se sèment');
+assert(ITEM_DEFS.bread.food > 0 && ITEM_DEFS.cookedBeef.food > 0, 'pain et steak nourrissent');
+assert(toolDamage(ITEM_DEFS.diamond_hoe) === 1, 'la houe n\'est pas une arme');
+assert(RECIPES.some((r) => r.id === 'bread' && r.inputs.wheat === 3), '3 blés → 1 pain');
+for (const t of ['wooden_hoe', 'stone_hoe', 'iron_hoe', 'diamond_hoe']) {
+  assert(ITEM_DEFS[t]?.toolType === 'hoe', `${t} est une houe`);
+  assert(RECIPES.some((r) => r.id === t), `${t} se crafte`);
+}
+// On ne sème QUE sur de la terre labourée.
+const farmWorld = new World(20260821);
+const fx = 40, fy = 40;
+const fi = farmWorld.idx(fx, fy);
+farmWorld.blocks[fi] = null;
+farmWorld.floor[fi] = 'grass';
+assert(farmWorld.placeBlock(fx, fy, 'seeds') === false, 'impossible de semer dans l\'herbe');
+farmWorld.floor[fi] = 'farmland';
+assert(farmWorld.placeBlock(fx, fy, 'seeds') === true, 'mais oui sur terre labourée');
+assert(farmWorld.blocks[fi] === 'wheat0', 'le semis apparaît');
+assert(BLOCK_DEFS.wheat0.solid === false, 'le blé ne bloque pas le passage');
+
 console.log('▶ Porte craftable');
 const doorRecipe = RECIPES.find((r) => r.id === 'door');
 const doorInv = new Inventory();

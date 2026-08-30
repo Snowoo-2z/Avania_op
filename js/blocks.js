@@ -106,6 +106,20 @@ export const BLOCK_DEFS = {
     id: 'caveDiamond', label: 'Filon de diamant', kind: 'object', solid: true, breakable: true,
     drop: 'diamond', dropN: 1, color: '#3fbcd4', requiredTool: 'pickaxe', minTier: 'stone', breakTime: 4.0,
   },
+
+  // ------------------------------------------------------------
+  //  Agriculture : les pousses de blé (4 stades). Ce sont des OBJETS
+  //  non solides posés sur de la terre labourée (`farmland`), rendus
+  //  par l'index des blocs posés (js/game.js). Le stade 3 est mûr.
+  // ------------------------------------------------------------
+  wheat0: { id: 'wheat0', label: 'Blé (semis)', kind: 'object', solid: false, breakable: true,
+    drop: 'seeds', dropN: 1, color: '#7a8a3a', requiredTool: null, breakTime: 0.15 },
+  wheat1: { id: 'wheat1', label: 'Blé (pousse)', kind: 'object', solid: false, breakable: true,
+    drop: 'seeds', dropN: 1, color: '#9aa83a', requiredTool: null, breakTime: 0.15 },
+  wheat2: { id: 'wheat2', label: 'Blé (jeune)', kind: 'object', solid: false, breakable: true,
+    drop: 'seeds', dropN: 1, color: '#b8b44a', requiredTool: null, breakTime: 0.15 },
+  wheat3: { id: 'wheat3', label: 'Blé (mûr)', kind: 'object', solid: false, breakable: true,
+    drop: 'wheat', dropN: 1, color: '#d8c26a', requiredTool: null, breakTime: 0.15 },
   // L'entrée de la grotte, à la surface : un arche sombre. On y entre
   // avec la touche d'interaction — elle ne se casse pas.
   caveMouth: {
@@ -122,6 +136,12 @@ export const BLOCK_DEFS = {
     drop: null, color: '#3a3440', requiredTool: null, breakTime: 0,
   },
 };
+
+// Les stades de croissance du blé, dans l'ordre (semis → mûr).
+export const CROPS = ['wheat0', 'wheat1', 'wheat2', 'wheat3'];
+export const CROP_MATURE = 'wheat3';
+// Secondes entre deux stades de croissance (sur terre labourée).
+export const CROP_GROW_SECONDS = 15;
 
 // Sols qui bloquent le passage. Déduit de BLOCK_DEFS une bonne fois :
 // la collision ne fait plus de comparaison de chaînes en cascade.
@@ -142,6 +162,10 @@ export const ITEM_DEFS = {
   dirt:  { id: 'dirt',  label: 'Terre',     color: '#8a6a46', icon: '▪',  type: 'resource', maxStack: 64, place: 'dirtBlock' },
   rawIron: { id: 'rawIron', label: 'Fer brut', color: '#b0875f', type: 'resource', maxStack: 64 },
   diamond: { id: 'diamond', label: 'Diamant', color: '#59d8e8', type: 'resource', maxStack: 64 },
+  // Agriculture : graines (à semer), blé (récolte), pain (nourriture).
+  seeds: { id: 'seeds', label: 'Graines', color: '#9a8a4a', type: 'resource', maxStack: 64, place: 'wheat0' },
+  wheat: { id: 'wheat', label: 'Blé', color: '#d8c26a', type: 'resource', maxStack: 64 },
+  bread: { id: 'bread', label: 'Pain', color: '#c98f4a', type: 'food', maxStack: 64, food: 6 },
   ironIngot: { id: 'ironIngot', label: 'Lingot de fer', color: '#dfe4e8', type: 'material', maxStack: 64 },
   ironBlock: { id: 'ironBlock', label: 'Bloc de fer', color: '#d8dde2', type: 'material', maxStack: 64, place: 'ironBlock' },
   door: { id: 'door', label: 'Porte en bois', color: '#c89a5e', type: 'material', maxStack: 64, place: 'door' },
@@ -150,7 +174,7 @@ export const ITEM_DEFS = {
   wool: { id: 'wool', label: 'Laine', color: '#e8e8e8', type: 'resource', maxStack: 64 },
   woolBlock: { id: 'woolBlock', label: 'Bloc de laine', color: '#e8e8e8', type: 'material', maxStack: 64, place: 'woolBlock' },
   rawBeef: { id: 'rawBeef', label: 'Bœuf cru', color: '#c0504a', type: 'resource', maxStack: 64 },
-  cookedBeef: { id: 'cookedBeef', label: 'Steak cuit', color: '#a4683c', type: 'resource', maxStack: 64 },
+  cookedBeef: { id: 'cookedBeef', label: 'Steak cuit', color: '#a4683c', type: 'food', maxStack: 64, food: 8 },
   plank: { id: 'plank', label: 'Planches',  color: '#c89a5e', icon: '▤',  type: 'material', maxStack: 64, place: 'plank' },
   brick: { id: 'brick', label: 'Briques',   color: '#b4553f', icon: '▦',  type: 'material', maxStack: 64, place: 'brick' },
   glass: { id: 'glass', label: 'Verre',     color: '#bfe3ea', icon: '◇',  type: 'material', maxStack: 64, place: 'glass' },
@@ -230,6 +254,25 @@ export const ITEM_DEFS = {
   diamond_sword: {
     id: 'diamond_sword', label: 'Épée en diamant', color: '#59d8e8', icon: 'sword', type: 'tool', maxStack: 1,
     toolType: 'sword', tier: 'diamond', durability: 520, efficiency: 1,
+  },
+
+  // --- Houes : l'outil de la ferme. Labourer la terre (clic droit sur
+  //     herbe/terre) la transforme en terre labourée, prête à semer. ---
+  wooden_hoe: {
+    id: 'wooden_hoe', label: 'Houe en bois', color: '#b07a3c', icon: 'hoe', type: 'tool', maxStack: 1,
+    toolType: 'hoe', tier: 'wood', durability: 45, efficiency: 1,
+  },
+  stone_hoe: {
+    id: 'stone_hoe', label: 'Houe en pierre', color: '#9a9aa3', icon: 'hoe', type: 'tool', maxStack: 1,
+    toolType: 'hoe', tier: 'stone', durability: 110, efficiency: 1,
+  },
+  iron_hoe: {
+    id: 'iron_hoe', label: 'Houe en fer', color: '#d8dde2', icon: 'hoe', type: 'tool', maxStack: 1,
+    toolType: 'hoe', tier: 'iron', durability: 250, efficiency: 1,
+  },
+  diamond_hoe: {
+    id: 'diamond_hoe', label: 'Houe en diamant', color: '#59d8e8', icon: 'hoe', type: 'tool', maxStack: 1,
+    toolType: 'hoe', tier: 'diamond', durability: 520, efficiency: 1,
   },
 
   // ------------------------------------------------------------
@@ -415,6 +458,28 @@ export const RECIPES = [
     id: 'diamond_sword', label: 'Épée en diamant', out: 'diamond_sword', outN: 1,
     inputs: { diamond: 2, stick: 1 }, pattern: [['diamond'], ['diamond'], ['stick']], category: 'outils',
   },
+  // Houes : mêmes formes que les pioches mais deux matériaux seulement.
+  {
+    id: 'wooden_hoe', label: 'Houe en bois', out: 'wooden_hoe', outN: 1,
+    inputs: { plank: 2, stick: 2 }, pattern: [['plank', 'plank'], [null, 'stick'], [null, 'stick']], category: 'outils',
+  },
+  {
+    id: 'stone_hoe', label: 'Houe en pierre', out: 'stone_hoe', outN: 1,
+    inputs: { stone: 2, stick: 2 }, pattern: [['stone', 'stone'], [null, 'stick'], [null, 'stick']], category: 'outils',
+  },
+  {
+    id: 'iron_hoe', label: 'Houe en fer', out: 'iron_hoe', outN: 1,
+    inputs: { ironIngot: 2, stick: 2 }, pattern: [['ironIngot', 'ironIngot'], [null, 'stick'], [null, 'stick']], category: 'outils',
+  },
+  {
+    id: 'diamond_hoe', label: 'Houe en diamant', out: 'diamond_hoe', outN: 1,
+    inputs: { diamond: 2, stick: 2 }, pattern: [['diamond', 'diamond'], [null, 'stick'], [null, 'stick']], category: 'outils',
+  },
+  // Agriculture : le blé se compacte en pain (nourriture).
+  {
+    id: 'bread', label: 'Pain', out: 'bread', outN: 1,
+    inputs: { wheat: 3 }, pattern: [['wheat', 'wheat', 'wheat']], category: 'nourriture',
+  },
   {
     id: 'ironBlock', label: 'Bloc de fer', out: 'ironBlock', outN: 1,
     inputs: { ironIngot: 9 }, pattern: [['ironIngot', 'ironIngot', 'ironIngot'], ['ironIngot', 'ironIngot', 'ironIngot'], ['ironIngot', 'ironIngot', 'ironIngot']], category: 'construction',
@@ -441,4 +506,9 @@ export const RECIPES = [
 export const DIGGABLE_FLOOR = {
   sand: { drop: 'sand', becomes: 'dirt', tool: 'shovel', breakTime: 0.5 },
   dirt: { drop: 'dirt', becomes: 'grass', tool: 'shovel', breakTime: 0.45 },
+  // Les fleurs, fauchées à la pelle, donnent des graines : c'est le point
+  // de départ de l'agriculture avant la première récolte de blé.
+  flowers: { drop: 'seeds', becomes: 'grass', tool: 'shovel', breakTime: 0.3 },
+  // La terre labourée se retransforme en terre nue quand on la creuse.
+  farmland: { drop: 'dirt', becomes: 'dirt', tool: 'shovel', breakTime: 0.45 },
 };
