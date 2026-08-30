@@ -112,7 +112,11 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   Deux commandes structurent l'échange : `/sell [article] [prix]` affiche une
   fiche d'offre avec **Acheter** ou **Continuer à discuter**, et `/out` met le
   joueur dehors s'il insiste trop ou devient insultant — **45 secondes**
-  pendant lesquelles le marchand refuse de lui parler.
+  pendant lesquelles le marchand refuse de lui parler. La commande `/sell`
+  est reconnue même collée en fin de phrase, et si le modèle annonce un prix
+  en prose sans commande, l'offre est quand même proposée. Refermer puis
+  rouvrir le comptoir fait **réapparaître l'offre négociée** : pas besoin de
+  redemander pour revoir les boutons d'achat.
   Le dialogue passe par un modèle si une clé `AVANIA_AI_API_KEY` est
   configurée (relais `POST /api/merchant`), sinon par un **cerveau de
   négociation local** qui applique exactement les mêmes règles.

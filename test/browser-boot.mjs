@@ -424,6 +424,17 @@ async function buyFrom(guy, opts) {
   await frames(4);
   assert(balance() === beforeRefused, 'un achat impossible ne débite rien');
 
+  // --- 1b) Refermer puis rouvrir le comptoir fait RÉAPPARAÎTRE l'offre
+  //         négociée (le joueur qui revient n'a pas à redemander).
+  press('Escape');
+  await frames(3);
+  assert($('merchant-chat').classList.contains('hidden'), 'Échap referme le comptoir');
+  game.uiCallbacks.onTalk(guy);
+  await frames(3);
+  assert(!$('mc-offer').classList.contains('hidden'),
+    'rouvrir le comptoir fait réapparaître les boutons d\'achat');
+  assert(offerPrice() === pricey, `au même prix qu'avant de fermer (${offerPrice()} écus)`);
+
   // --- 2) « Continuer à discuter » referme l'offre sans rien acheter.
   click($('mc-offer-talk'));
   await frames(4);

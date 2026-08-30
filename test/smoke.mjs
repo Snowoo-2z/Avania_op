@@ -917,6 +917,31 @@ console.log('\n▶ Non-régressions (bugs trouvés par le test navigateur)');
     'une réponse nettoyée produit toujours une offre exploitable');
   assert(afterSanitize.offer.price === 42, 'au bon prix');
 
+  // 1b) Un modèle colle parfois /sell en fin de phrase ou derrière un
+  //     tiret, pas en début de ligne : l'offre devait quand même sortir.
+  const inline = parseMerchantReply('C\'est à prendre ou à laisser. /sell mask_filter 120');
+  assert(inline.commands.length === 1 && inline.commands[0].type === 'sell'
+    && inline.commands[0].price === 120,
+    'un /sell en cours de ligne est détecté');
+  assert(inline.speech.includes('prendre ou à laisser'), 'et la prose reste');
+  const dashed = parseMerchantReply('- /sell mask_filter 120');
+  assert(dashed.commands.length === 1, 'un /sell précédé d\'un tiret est détecté');
+
+  // 1c) Repli IA : une annonce de prix SANS commande /sell (source cloud)
+  //     doit quand même produire les boutons d'achat.
+  const stAi = createMerchantState('gaspard', { day: 1, totalPlayers: 1 });
+  const prose = interpretCommands(
+    { text: 'Le masque à filtre, je te le laisse à 120 écus.', source: 'cloud' },
+    stAi, ITEM_DEFS);
+  assert(prose.offer && prose.offer.item === 'mask_filter' && prose.offer.price === 120,
+    'l\'IA qui annonce un prix en prose fait apparaître l\'offre');
+  // Mais le cerveau local, qui émet toujours /sell, ne déclenche pas ce repli.
+  const stLocal = createMerchantState('gaspard', { day: 1, totalPlayers: 1 });
+  const local = interpretCommands(
+    { text: 'La traversée me coûte déjà 18 écus.', source: 'local' },
+    stLocal, ITEM_DEFS);
+  assert(local.offer === null, 'le repli prose est réservé au mode IA');
+
   // 2) Le vocabulaire du joueur, pas seulement les libellés du marchand.
   //    « ta meilleure protection » ne correspondait à rien chez Aldric
   //    (« Tenue / Armure de minage ») : il ne proposait jamais rien.

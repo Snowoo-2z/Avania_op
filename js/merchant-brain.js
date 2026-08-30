@@ -451,7 +451,11 @@ export function merchantGreeting(state, briefing, defs = {}) {
   if (state.cooldownUntil && state.now !== undefined && state.now < state.cooldownUntil) {
     return { text: '' };
   }
-  if (state.id === 'aldric') {
+  // Si une négociation est déjà engagée (le joueur revient), on salue sans
+  // re-proposer l'article le moins cher : cela écraserait l'offre en cours
+  // que le comptoir fait réapparaître à la réouverture.
+  const inNegotiation = !!state.discussing;
+  if (state.id === 'aldric' || inNegotiation) {
     return { text: `${pick(rng, lines.greet)} ${pick(rng, lines.catalog)}` };
   }
   const first = def.items[0];
