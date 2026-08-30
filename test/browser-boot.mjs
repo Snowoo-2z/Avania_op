@@ -194,6 +194,18 @@ function press(k) {
   window.document.dispatchEvent(up);
   window.dispatchEvent(up);
 }
+// `press()` envoie l'évènement DEUX fois (sur document puis sur window) :
+// pratique pour les actions « maintenu/appuyé » du moteur, mais c'est un
+// aller-retour pour une BASCULE (talkie-walkie, téléphone) qui se
+// retrouverait exactement dans son état de départ. Pour celles-là, un seul
+// évènement — ce que fait un vrai navigateur pour une touche.
+function pressOnce(k) {
+  const ev = new window.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true });
+  window.dispatchEvent(ev);
+  const up = new window.KeyboardEvent('keyup', { key: k, bubbles: true, cancelable: true });
+  window.dispatchEvent(up);
+}
+
 function click(el) {
   if (typeof el.onclick === 'function') el.onclick(new window.MouseEvent('click', { bubbles: true }));
   el.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -238,11 +250,24 @@ async function renderOnce(where) {
 await renderOnce('au démarrage');
 
 console.log('\n▶ Interface présente');
-for (const id of ['hud', 'hud-right', 'wallet', 'wallet-amount', 'wallet-delta', 'depth-chip',
+for (const id of ['hud', 'hud-right', 'depth-chip',
   'depth-label', 'gear-chip', 'gear-depth', 'interact-prompt', 'interact-key', 'interact-label',
   'dialog', 'dialog-speaker', 'dialog-text', 'dialog-skip', 'merchant-chat', 'mc-log',
-  'mc-input', 'mc-form', 'mc-offer', 'mc-offer-buy', 'mc-offer-talk', 'mc-offer-price']) {
+  'mc-input', 'mc-form', 'mc-offer', 'mc-offer-buy', 'mc-offer-talk', 'mc-offer-price',
+  // Étape 6 : chat (global + talkie-walkie) et téléphone / réseau social.
+  'global-chat', 'gchat-log', 'gchat-input', 'gchat-form', 'gchat-channel', 'gchat-channel-label',
+  'phone', 'phone-home', 'phone-auth', 'phone-feed', 'phone-auth-handle', 'phone-auth-pass',
+  'social-text', 'social-feed', 'social-publish']) {
   assert(!!$(id), `#${id} présent dans index.html`);
+}
+
+// L'aide des commandes (le panneau de touches en bas à gauche) a été
+// retirée : sa place est prise par la fenêtre du chat global.
+assert(!$('controls-hint'), '#controls-hint a bien été supprimé d\'index.html');
+// Le compteur d'argent non plus : les écus sont des pièces dans
+// l'inventaire (objet `coin`), pas un nombre dans le HUD.
+for (const id of ['wallet', 'wallet-amount', 'wallet-delta']) {
+  assert(!$(id), `#${id} a disparu du HUD (la monnaie vit dans l'inventaire)`);
 }
 
 // Le tutoriel se présente en premier et met le jeu en pause.
@@ -269,9 +294,12 @@ assert($('dialog').classList.contains('hidden'), 'sa bulle de dialogue est refer
 await new Promise((r) => setTimeout(r, 700));
 await frames(4);
 await renderOnce('en surface, après l\'intro');
-const moneyText = $('wallet-amount').textContent;
-const money = parseInt(moneyText.replace(/\D/g, ''), 10);
-assert(money === 150, `le portefeuille affiche la somme de bienvenue (« ${moneyText} » → ${money})`);
+const money = window.__wallet.money;
+assert(money === 150, `la somme de bienvenue est dans l'inventaire (${money} écus)`);
+const coinStack = game.inventory.slots.find((s) => s && s.id === 'coin');
+assert(!!coinStack && coinStack.count === 150,
+  `les écus forment une pile d'objets (${coinStack ? coinStack.count : 'aucune'} pièce(s))`);
+assert(game.inventory.count('coin') === 150, 'et l\'inventaire les compte');
 
 console.log('\n▶ L\'entrée de la grotte');
 // On se place sur le parvis, juste devant l'arche.
@@ -378,7 +406,9 @@ async function buyFrom(guy, opts) {
   };
   const offerPrice = () => parseInt($('mc-offer-price').textContent.replace(/\D/g, ''), 10);
 
-  const balance = () => parseInt($('wallet-amount').textContent.replace(/\D/g, ''), 10);
+  // La bourse n'a plus de compteur dans le HUD : on la lit là où elle
+  // vit désormais, dans les cases de l'inventaire (via le Wallet).
+  const balance = () => window.__wallet.money;
 
   // --- 1) L'article haut de gamme dépasse la bourse : le bouton doit le
   //        dire au lieu de laisser croire à un achat possible.
@@ -614,6 +644,77 @@ console.log('\n▶ Multijoueur : animaux partagés (étape 5)');
   game.uiCallbacks.onMobRespawn = prevOnMobRespawn;
   game.uiCallbacks.isMobCoordinator = prevIsCoordinator;
 }
+
+console.log('\n▶ Chat : fenêtre toujours visible, canal global / talkie-walkie');
+const gchat = window.__globalChat;
+assert(!!gchat, 'js/main.js construit la fenêtre de chat');
+assert(!$('global-chat').classList.contains('hidden'), 'la fenêtre de chat est visible sans aucune touche à presser');
+assert($('global-chat').getAttribute('data-side') === 'left', 'elle est ancrée en bas à gauche par défaut');
+
+// Écrire avec une connexion morte : le message s'affiche quand même (on
+// ne perd pas ce qu'on tape) et l'état est signalé. L'état « déconnecté »
+// est forcé plutôt que déduit de l'environnement : ce test ne doit pas
+// dépendre de ce qui tourne (ou pas) sur le port 3000 à côté de lui.
+const mp = window.__multiplayer;
+const wasConnected = mp.connected;
+mp.connected = false;
+$('gchat-input').value = 'Bonjour le village';
+gchat.submit();
+assert($('gchat-log').textContent.includes('Bonjour le village'), 'le message tapé apparaît dans le journal');
+assert($('gchat-log').textContent.includes('vous'), 'et il est marqué comme venant de nous');
+assert($('gchat-log').textContent.toLowerCase().includes('hors ligne'),
+  'un envoi hors ligne est signalé plutôt que perdu silencieusement');
+assert($('gchat-input').value === '', 'le champ est vidé après l\'envoi');
+mp.connected = wasConnected;
+
+// Le talkie-walkie se bascule à la touche V (ou au bouton du canal).
+pressOnce('v');
+assert(gchat.channel === 'proximity', 'la touche V passe le chat en canal de proximité');
+assert($('global-chat').classList.contains('is-proximity'), 'la fenêtre prend l\'apparence du talkie-walkie');
+assert($('gchat-channel-label').textContent === 'Proximité', 'le bouton du canal annonce « Proximité »');
+pressOnce('v');
+assert(gchat.channel === 'global', 'la touche V rebascule sur le canal global');
+
+// Un message reçu du réseau (ici simulé, comme le ferait js/net.js) doit
+// s'afficher avec son auteur, et une bulle de proximité au-dessus du
+// joueur quand c'est le canal du talkie-walkie.
+gchat.push({ from: 'Margot', text: 'Salut !', channel: 'global' });
+assert($('gchat-log').textContent.includes('Margot'), 'un message distant affiche son auteur');
+game.showLocalBubble('Je suis là');
+assert(!!game.player._bubble && game.player._bubble.text === 'Je suis là',
+  'parler au talkie-walkie affiche une bulle sur notre personnage');
+game.showRemoteBubble(4242, 'Personne');
+assert(!game.otherPlayers.some((p) => p._bubble), 'une bulle pour un joueur inconnu ne crée rien');
+await renderOnce('avec une bulle de talkie-walkie');
+game.player._bubble = null;
+
+console.log('\n▶ Téléphone : réseau social (touche P)');
+const phone = window.__phone;
+assert(!!phone, 'js/main.js construit le téléphone');
+assert($('phone').classList.contains('hidden'), 'le téléphone est fermé au démarrage');
+pressOnce('p');
+assert(!$('phone').classList.contains('hidden'), 'la touche P ouvre le téléphone');
+assert(phone.isOpen === true, 'le panneau se dit ouvert');
+assert(game.paused === true, 'ouvrir le téléphone met le jeu en pause (on y écrit au clavier)');
+assert(!$('phone-auth').classList.contains('hidden'), 'sans compte, l\'écran de connexion s\'affiche');
+
+// Aucune API joignable ici : le refus doit être expliqué, pas silencieux.
+$('phone-auth-handle').value = 'Testeur';
+$('phone-auth-pass').value = 'motdepasse';
+await phone.submitAuth();
+assert($('phone-auth-error').textContent.length > 0,
+  `un échec de connexion est expliqué au joueur (« ${$('phone-auth-error').textContent} »)`);
+assert($('phone-auth').classList.contains('hidden') === false, 'et on reste sur l\'écran de connexion');
+
+// Bascule création de compte <-> connexion.
+const authTitle = $('phone-auth-title').textContent;
+click($('phone-auth-switch'));
+assert($('phone-auth-title').textContent !== authTitle, 'le bouton bascule entre créer un compte et se connecter');
+
+pressOnce('Escape');
+assert($('phone').classList.contains('hidden'), 'Échap raccroche le téléphone');
+assert(game.paused === false, 'et rend la main au jeu');
+await renderOnce('après le téléphone');
 
 console.log(failures === 0 ? '\n✅ Intégration navigateur OK' : `\n❌ ${failures} échec(s)`);
 process.exit(failures === 0 ? 0 : 1);

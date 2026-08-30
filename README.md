@@ -80,9 +80,15 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
 - **💰 L'argent** — à l'arrivée sur l'île, un **monsieur en costume-cravate**
   aborde le joueur, lui remet sa somme de bienvenue (**150 écus**) et lui
   explique les règles, puis repart. Pendant toute la scène le joueur ne peut
-  pas bouger ; la somme n'est versée qu'une seule fois, même si la cinématique
-  est rejouée ou passée. La bourse est affichée en haut à droite, avec la
-  profondeur courante et la profondeur autorisée par l'équipement.
+  pas bouger. Les écus sont **des pièces dans l'inventaire** (objet `coin`,
+  une seule case : le nombre affiché est la somme) — plus de compteur dans
+  le HUD. Comme tout objet, ils peuvent être **lâchés au sol** (`Q`) ou
+  **rangés dans un coffre** (donc perdus ou partagés). Conséquence : la
+  somme de bienvenue est remise à chaque arrivée sur l'île, l'inventaire
+  (et l'argent avec) ne survivant pas à la session. La pile de pièces
+  apparaît directement dans la barre rapide.
+  La profondeur courante et la profondeur autorisée par l'équipement restent
+  affichées en haut à droite.
 - **⛰️ La grotte** — une arche taillée dans la falaise, à un endroit fixe de
   la carte. On entre avec `F`. À l'intérieur, **8 niveaux** qui descendent de
   plus en plus bas, générés de façon déterministe, où l'on ne trouve **que de
@@ -162,7 +168,7 @@ Variables d'environnement :
 | `AVANIA_AI_MODEL` | `mistral-small-latest` | `mistral-large-latest` pour des répliques plus fines |
 | `PORT` | `3000` | port d'écoute |
 
-### 🌐 Multijoueur (étape 1 : présence, étape 2 : monde partagé, étape 3 : coffres, étape 4 : fours)
+### 🌐 Multijoueur (étape 1 : présence, étape 2 : monde partagé, étape 3 : coffres, étape 4 : fours, étape 5 : animaux, étape 6 : chat & réseau social)
 
 **Étape 1 — présence.** Chaque joueur voit les autres se déplacer en
 direct : position, orientation, animation de marche, apparence et nom.
@@ -217,6 +223,54 @@ l'une de l'autre au fil du temps. En solo (jamais de réseau), rien ne
 change : le four devient propriétaire dès la première ouverture et
 continue de cuire normalement, panneau fermé ou pas, exactement comme
 avant cette étape.
+
+**Étape 6 — chat (global + proximité) et réseau social du téléphone.**
+
+*Le chat.* Une fenêtre **toujours visible** en bas de l'écran (aucune
+touche à apprendre : on clique dans le champ, on écrit, `Entrée`), avec
+deux canaux :
+
+| Canal | Portée | Comment |
+| --- | --- | --- |
+| **Global** | tout le serveur, quelle que soit la zone (surface ou grotte) | mode par défaut, on clique dans le champ |
+| **Proximité** (talkie-walkie) | les joueurs à moins de 10 tuiles **de la même zone** | touche `V`, ou le bouton du canal |
+
+Les messages de proximité s'affichent aussi **en bulle au-dessus du
+joueur** qui parle (`Game.showBubble`, `js/game.js`) — désactivable dans
+Paramètres → Communication. Le serveur garde les 25 derniers messages
+globaux en mémoire et les renvoie à chaque arrivant (`chatHistory`) : on
+ne débarque jamais au milieu d'une conversation muette. Le filtrage de
+proximité est fait **côté serveur** (`relayChat`, `net-server.js`) à
+partir des positions qu'il reçoit déjà à chaque tick : un client ne peut
+donc pas s'inventer une portée qu'il n'a pas. Le débit est borné (un
+message toutes les 400 ms, 6 par tranche de 10 s) pour qu'une boucle côté
+client ne puisse pas saturer la bande passante de tout le monde.
+
+*Le téléphone.* Touche `P` : un téléphone pixel art avec une application,
+**Avania Social**. On y crée un compte (**pseudo + mot de passe**), on se
+connecte, on publie sur le fil, on aime les publications des autres et on
+supprime les siennes. **Le fil est unique** : tous les joueurs voient les
+mêmes publications, où qu'ils soient.
+
+Contrairement au reste du multijoueur, le réseau social passe par **HTTP**
+(`POST /api/social/*`, voir `social-server.js`) et non par WebSocket : ce
+sont des requêtes avec réponse (« crée-moi ce compte et dis-moi si le
+pseudo est pris »). Le WebSocket ne sert qu'à **pousser en direct** la
+nouveauté aux autres joueurs (message `social`), pour que le fil se
+rafraîchisse tout seul.
+
+- mot de passe **haché** (scrypt + sel par compte, comparaison en temps
+  constant) — jamais stocké ni renvoyé en clair ;
+- session = jeton aléatoire à durée de vie limitée, gardé en
+  `localStorage` côté client, donc on reste connecté d'une partie à
+  l'autre sur le même navigateur ;
+- débit limité par adresse IP (12 créations/connexions et 20 actions par
+  minute) — le hachage scrypt coûte ~50 ms de CPU, ce n'est pas gratuit ;
+- **aucune persistance** (choix assumé, voir ci-dessous) : comptes et
+  publications vivent en mémoire et repartent à zéro au redémarrage du
+  serveur, comme les journaux de blocs/coffres/fours ;
+- bornes dures : 500 comptes, 200 publications (le fil oublie les plus
+  anciennes), 280 caractères par publication.
 
 Le serveur reste volontairement un simple **relais + mémoire tampon**,
 jamais une autorité qui rejoue les règles du jeu : il ne fait aucune
@@ -304,6 +358,8 @@ Variables d'environnement :
 | `AVANIA_MAX_PLAYERS` | `24` | connexions simultanées maximum |
 | `AVANIA_TICK_HZ` | `12.5` | fréquence de diffusion des positions |
 | `AVANIA_MONTHLY_BYTES_BUDGET` | `3221225472` (3 Go) | seuil de sécurité de bande passante sortante par mois |
+| `AVANIA_SOCIAL_MAX_ACCOUNTS` | `500` | nombre maximal de comptes du réseau social |
+| `AVANIA_SOCIAL_MAX_POSTS` | `200` | publications conservées dans le fil (les plus anciennes sont oubliées) |
 
 ## 🧪 Tests, aperçus & benchmark
 
@@ -313,6 +369,7 @@ npm run test:browser                  # test d'intégration : le jeu démarre da
 npm run test:relay                    # relais marchand contre une API Mistral simulée
 npm run test:multiplayer              # protocole réseau : vrai server.js + vrais clients WebSocket
 npm run test:multiplayer:client       # client réseau (js/net.js) de bout en bout, deux "joueurs"
+npm run test:chat                     # chat (global + proximité) + réseau social du téléphone
 npm run bench                         # benchmark de la boucle de jeu (ms/frame)
 node scripts/render-preview.mjs       # aperçus PNG : monde, personnage, blocs, mobs
 node scripts/preview-mobs.mjs         # planches des mobs (profils, marche, scène en jeu)
@@ -361,6 +418,9 @@ Tous les PNG partent dans `preview/` (ignoré par git).
 | Ouvrir / fermer une porte | Clic droit sur la porte |
 | Ouvrir un four | Clic droit sur le four |
 | Attaquer un animal | Clic gauche sur le mouton / la vache |
+| Écrire dans le chat global | Clic dans le champ en bas de l'écran, puis `Entrée` |
+| Talkie-walkie (chat de proximité) | Touche `V` (bascule global ↔ proximité) |
+| Téléphone / réseau social | Touche `P` |
 
 Astuce : casse les **arbres** (→ bois) et les **rochers** (→ pierre) autour de toi,
 puis construis ta première cabane.
@@ -382,6 +442,13 @@ puis construis ta première cabane.
   restent locaux à chaque client.
 - [x] **Plus de blocs** — planche, brique, sable, verre, terre… (+ craft).
 - [x] **Économie (v2)** — monnaie, achats auprès des marchands, négociation.
+- [x] **Monnaie dans l'inventaire** — les écus sont des pièces (objet
+  `coin`) rangées dans les cases du joueur ; le compteur du HUD a été
+  retiré (voir `js/economy.js`, mode « inventaire » du `Wallet`).
+- [x] **Multijoueur (étape 6 : chat & réseau social)** — fenêtre de chat
+  toujours visible (canal global + talkie-walkie de proximité en `V`),
+  et téléphone (`P`) avec un réseau social partagé : comptes,
+  publications, j'aime, fil poussé en direct à tous les joueurs.
 - [ ] **Économie (suite)** — banque, salaires, taxes, troc entre joueurs.
 - [x] **La grotte** — 8 niveaux souterrains, pierre & fer, équipement exigé.
 - [ ] **Intérieurs** — entrer dans les bâtiments construits.
@@ -411,8 +478,11 @@ Avania_op/
 ├── net-server.js       ★ serveur multijoueur : WebSocket, présence des
 │                         joueurs, diffusion des positions ET journal du
 │                         monde partagé + du contenu des coffres et
-│                         fours par zone (voir la section « Multijoueur »
-│                         plus haut)
+│                         fours par zone, relais du chat (global +
+│                         proximité) — voir la section « Multijoueur »
+├── social-server.js    ★ réseau social du téléphone : comptes (scrypt),
+│                         sessions, fil de publications — HTTP
+│                         /api/social/*, tout en mémoire
 ├── js/                 TOUT le jeu (modules ES natifs, ~9 000 lignes)
 │   ├── main.js         point d'entrée : initialisation & boucle
 │   ├── net.js          ★ client multijoueur : connexion, lissage des
@@ -440,7 +510,8 @@ Avania_op/
 │   ├── furnace.js      logique du four (recettes, combustibles, cuisson)
 │   ├── tutorial.js     petit didacticiel illustré (pages E, C, mobs…)
 │   ├── utils.js        helpers : RNG seed, canvas, détection PC modeste
-│   ├── economy.js      ★ monnaie : Wallet, formatage, journal des mouvements
+│   ├── economy.js      ★ monnaie : Wallet (compteur OU pile de pièces dans
+│   │                     l'inventaire), formatage, journal des mouvements
 │   ├── cave.js         ★ la grotte : entrée, génération BFS des niveaux,
 │   │                     profondeur autorisée selon l'équipement
 │   ├── intro.js        ★ cinématique d'arrivée (le monsieur en costume)
@@ -448,6 +519,9 @@ Avania_op/
 │   ├── merchant-brain.js ★ cerveau de négociation local (règles du rôle)
 │   ├── merchant-ai.js  ★ relais modèle + nettoyage + lecture des commandes
 │   ├── chat.js         ★ comptoir de négociation (panneau de dialogue)
+│   ├── chat-global.js  ★ fenêtre de chat : canal global + talkie-walkie
+│   ├── phone.js        ★ téléphone : client HTTP du réseau social + écran
+│   │                     (accueil, connexion, fil, j'aime)
 │   ├── svgicons.js     icônes vectorielles de l'interface
 │   ├── npc/            ★ les PNJ : un fichier par look
 │   │   ├── base.js         nom, ombre, nuage « … »
@@ -463,7 +537,10 @@ Avania_op/
 │   └── diff-shots.mjs
 ├── test/
 │   ├── smoke.mjs       test de fumée : logique pure importée en Node
-│   └── browser-boot.mjs ★ test d'intégration : le jeu dans un vrai DOM
+│   ├── browser-boot.mjs ★ test d'intégration : le jeu dans un vrai DOM
+│   ├── multiplayer.mjs protocole réseau : vrai serveur + vrais clients WS
+│   ├── multiplayer-client.mjs client réseau (js/net.js) de bout en bout
+│   └── chat-social.mjs ★ chat (global + proximité) et réseau social
 └── preview/            (généré, git-ignoré) PNG de vérification visuelle
 ```
 
@@ -591,7 +668,13 @@ tourné vers la **gauche** (la marche à droite est le miroir automatique),
 | Apparence du personnage (options) | `js/config.js` + `js/character.js` | listes `HAIR_STYLES`… + `drawHair()` |
 | HUD, barre rapide, panneaux | `js/ui.js` + `css/style.css` | classes `HUD`, `Hotbar`, `InventoryPanel`… |
 | Contrôles / touches | `js/input.js` + `js/main.js` + `js/game.js` | mapping touche → action |
+| Fenêtre de chat (canaux, apparence) | `js/chat-global.js` + `css/style.css` | classe `GlobalChat`, bloc `.gchat` |
+| Portée du talkie-walkie | `js/net-protocol.js` | `PROXIMITY_TILES` (filtrage dans `net-server.js`) |
+| Débit / longueur des messages | `net-server.js` + `js/net-protocol.js` | `CHAT_MIN_INTERVAL_MS`, `MAX_CHAT_LEN` |
+| Réseau social (comptes, fil, j'aime) | `social-server.js` + `js/phone.js` | `createSocial()` / `SocialClient`, `PhonePanel` |
+| Écran du téléphone | `index.html` + `css/style.css` | `#phone`, blocs `.phone-*` / `.social-*` |
 | Équilibrage (vitesse, portée, minage) | `js/config.js` + `js/blocks.js` | `PLAYER_SPEED`, `REACH`, `breakTime`… |
+| La monnaie (objet, somme de départ) | `js/blocks.js` + `js/economy.js` | `ITEM_DEFS.coin` / `MONEY_ITEM`, `CURRENCY.startingGrant`, store du `Wallet` |
 
 ## Conventions du code
 

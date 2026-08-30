@@ -15,6 +15,10 @@
 //  mobJournal) — mêmes bêtes au même endroit pour tout le monde, coups
 //  et morts vus par tous ; seul le détail frame par frame de l'errance
 //  (dead reckoning) reste calculé localement par chaque client.
+//  Étape 6 : le chat (global + talkie-walkie de proximité, voir
+//  `chatHistory` et le handler du message 'chat') et la diffusion en
+//  direct du fil du réseau social (message 'social', émis par
+//  social-server.js à travers la fonction `broadcast` retournée ici).
 //  Le monde reste néanmoins « bête » côté serveur : PAS de World.js
 //  ici, PAS de validation des règles du jeu — juste un relais + un
 //  journal mémoire par zone pour resynchroniser les arrivants (voir le
@@ -44,6 +48,8 @@ import {
   sanitizeBlockDiff, sanitizeZone, validTile, sanitizeChestSlots,
   sanitizeFurnaceState, sanitizeMobList, sanitizeMobInfo,
   sanitizeMobStateList, sanitizeMobHit,
+  sanitizeChatText, sanitizeChatChannel, CHAT_GLOBAL, CHAT_PROXIMITY,
+  PROXIMITY_PX, MAX_CHAT_HISTORY,
 } from './js/net-protocol.js';
 
 // --- Réglages, pensés pour Render free ---
@@ -355,6 +361,103 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     sendJson(ws, { t: 'mobSync', zone, mobs });
   }
 
+  // ------------------------------------------------------------
+  //  Chat (étape 6)
+  //
+  //  Deux canaux, un seul relais :
+  //   - GLOBAL : retransmis à tous les joueurs connectés, quelle que
+  //     soit leur zone (on discute aussi bien depuis la grotte). Les
+  //     MAX_CHAT_HISTORY derniers messages sont gardés en mémoire et
+  //     renvoyés à chaque arrivant, pour qu'on ne débarque pas au
+  //     milieu d'une conversation muette.
+  //   - PROXIMITÉ (talkie-walkie) : retransmis uniquement aux joueurs
+  //     de la MÊME zone situés à moins de PROXIMITY_TILES tuiles. Le
+  //     calcul se fait ICI, à partir des positions que le serveur
+  //     reçoit déjà à chaque tick : un client ne peut donc pas
+  //     s'inventer une portée qu'il n'a pas.
+  //
+  //  Dans les deux cas le message n'est PAS renvoyé à son auteur
+  //  (comme pour les blocs/coffres) : le client l'affiche immédiatement
+  //  en local, ce qui évite l'aller-retour visible à l'envoi.
+  // ------------------------------------------------------------
+  const CHAT_MIN_INTERVAL_MS = 400;      // au plus un message toutes les 400 ms
+  const CHAT_BURST_MAX = 6;              // …et au plus 6 par fenêtre
+  const CHAT_BURST_WINDOW_MS = 10_000;
+  /** @type {Array<object>} derniers messages GLOBAUX, plus ancien en premier */
+  const chatHistory = [];
+
+  // Débit de chat d'un joueur : renvoie true s'il peut parler maintenant.
+  // Sans ça, une boucle `for` côté client suffirait à saturer la bande
+  // passante de tout le monde — le reste du protocole est borné par la
+  // fréquence des ticks, le chat ne l'est pas.
+  function chatAllowed(player) {
+    const now = Date.now();
+    if (now - (player.lastChatAt || 0) < CHAT_MIN_INTERVAL_MS) return false;
+    if (!player.chatBurstAt || now - player.chatBurstAt > CHAT_BURST_WINDOW_MS) {
+      player.chatBurstAt = now;
+      player.chatBurst = 0;
+    }
+    if (player.chatBurst >= CHAT_BURST_MAX) return false;
+    player.chatBurst += 1;
+    player.lastChatAt = now;
+    return true;
+  }
+
+  function pushChatHistory(message) {
+    chatHistory.push(message);
+    while (chatHistory.length > MAX_CHAT_HISTORY) chatHistory.shift();
+  }
+
+  // Distance de Manhattan plutôt qu'euclidienne : les deux se valent pour
+  // un rayon de quelques tuiles, et celle-ci évite deux multiplications
+  // et une racine par joueur testé (appelé à chaque message de proximité).
+  // Les positions reçues sont en PIXELS monde (voir net-protocol.js,
+  // PROXIMITY_PX) — comparer des pixels à un nombre de tuiles donnerait
+  // une portée de quelques centimètres.
+  function withinProximity(a, b) {
+    return Math.abs(a.x - b.x) <= PROXIMITY_PX
+      && Math.abs(a.y - b.y) <= PROXIMITY_PX;
+  }
+
+  function relayChat(player, rawText, rawChannel) {
+    const channel = rawChannel === CHAT_PROXIMITY ? CHAT_PROXIMITY : CHAT_GLOBAL;
+    const message = {
+      t: 'chat',
+      id: player.id,
+      from: player.name,
+      text: rawText,
+      channel,
+      ts: Date.now(),
+    };
+    if (channel === CHAT_GLOBAL) {
+      pushChatHistory(message);
+      broadcastJson(message, player.ws);
+      return;
+    }
+    // Proximité : même zone + distance. L'auteur est exclu (il s'affiche
+    // déjà lui-même), d'où le `continue` sur son propre ws.
+    const s = JSON.stringify(message);
+    const size = Buffer.byteLength(s);
+    for (const other of players.values()) {
+      if (other.ws === player.ws) continue;
+      if (other.zone !== player.zone) continue;
+      if (other.ws.readyState !== other.ws.OPEN) continue;
+      if (!withinProximity(player, other)) continue;
+      other.ws.send(s);
+      bytesSentThisMonth += size;
+    }
+  }
+
+  // Poussé aux joueurs connectés par le réseau social du téléphone
+  // (social-server.js) : une publication, un like ou une suppression que
+  // quelqu'un vient de faire, pour rafraîchir le fil en direct. Renvoyé
+  // à TOUT LE MONDE y compris l'auteur — contrairement au chat, l'auteur
+  // n'a pas besoin d'afficher son post lui-même avant la réponse HTTP,
+  // il l'obtient justement de cette réponse (voir js/phone.js).
+  function broadcast(payload) {
+    broadcastJson(payload);
+  }
+
   wss.on('connection', (ws, req) => {
     if (budgetExhausted()) {
       warn('AVANIA multi : quota de bande passante mensuel atteint — connexion refusée');
@@ -374,6 +477,8 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     const player = {
       ws, id, x: 0, y: 0, facing: 'down', moving: false, zone: 'surface',
       name: 'Aventurier', appearance: {}, lastMoveAt: Date.now(),
+      // Débit de chat (étape 6) : voir chatAllowed.
+      lastChatAt: 0, chatBurst: 0, chatBurstAt: 0,
     };
     players.set(id, player);
     log(`AVANIA multi : joueur #${id} connecté (${playerCount()}/${MAX_PLAYERS})`);
@@ -397,6 +502,12 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     sendChestSync(ws, player.zone);
     sendFurnaceSync(ws, player.zone);
     sendMobSync(ws, player.zone);
+    // Étape 6 (chat) : les derniers messages du canal global, pour que
+    // l'arrivant voie la conversation en cours au lieu d'un chat vide.
+    // Message rare (une fois par connexion), donc on ne le filtre pas.
+    if (chatHistory.length > 0) {
+      sendJson(ws, { t: 'chatHistory', messages: chatHistory });
+    }
 
     // 2. On annonce le nouvel arrivant à tout le monde (apparence
     //    encore vide : elle arrive dans le prochain message 'hello').
@@ -442,6 +553,18 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
         sendChestSync(ws, zone);
         sendFurnaceSync(ws, zone);
         sendMobSync(ws, zone);
+        return;
+      }
+      // Étape 6 : un joueur parle. Le canal 'global' traverse tout le
+      // serveur, le canal 'proximity' (talkie-walkie) ne touche que les
+      // joueurs proches de la même zone — voir relayChat ci-dessus.
+      // Un texte vide ou trop bavard (débit, voir chatAllowed) est
+      // simplement ignoré : on ne ferme pas la connexion pour ça.
+      if (msg.t === 'chat') {
+        const text = sanitizeChatText(msg.text);
+        if (!text) return;
+        if (!chatAllowed(player)) return;
+        relayChat(player, text, sanitizeChatChannel(msg.channel));
         return;
       }
       // Un joueur a cassé/posé un bloc ou basculé une porte : on note
@@ -601,6 +724,10 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
   return {
     playerCount,
     bytesSentThisMonth: () => bytesSentThisMonth,
+    // Utilisé par le réseau social du téléphone (social-server.js, monté
+    // dans server.js) pour pousser les nouveautés du fil à tous les
+    // joueurs connectés.
+    broadcast,
     close: () => { clearInterval(tickTimer); clearInterval(janitor); wss.close(); },
   };
 }

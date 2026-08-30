@@ -352,3 +352,153 @@ export function sanitizeMobHit(src) {
   return { id, hp: sanitizeMobHp(src.hp), alive: src.alive !== false };
 }
 
+// ------------------------------------------------------------
+//  Étape 6 : chat (global + proximité) et réseau social du téléphone
+//
+//  Deux canaux de discussion, un seul format de message :
+//   - 'global'    : tout le serveur, quelle que soit la zone (surface
+//                   ou grotte) — la fenêtre de chat toujours visible ;
+//   - 'proximity' : uniquement les joueurs proches, dans la MÊME zone
+//                   (voir PROXIMITY_TILES) — le talkie-walkie (touche V),
+//                   affiché aussi en bulle au-dessus des joueurs.
+//
+//  Le relais reste exactement celui du reste du multijoueur (serveur
+//  « bête ») : il ne modère rien, il borne et il retransmet. Le filtrage
+//  de proximité, lui, est fait CÔTÉ SERVEUR (net-server.js) à partir des
+//  positions qu'il reçoit déjà à chaque tick : un client ne peut donc
+//  pas s'auto-déclarer « proche » de quelqu'un à l'autre bout de la
+//  carte.
+//
+//  Le réseau social du téléphone (comptes, publications) passe par HTTP
+//  (voir social-server.js) et non par WebSocket : ce sont des requêtes
+//  avec réponse (créer un compte, publier, récupérer le fil). Le
+//  WebSocket ne sert qu'à pousser en direct les nouveautés du fil aux
+//  joueurs qui ont le téléphone ouvert (message 'social').
+// ------------------------------------------------------------
+
+export const MAX_CHAT_LEN = 200;
+export const CHAT_GLOBAL = 'global';
+export const CHAT_PROXIMITY = 'proximity';
+
+// Portée du talkie-walkie : 10 TUILLES, soit un peu plus que ce qu'un
+// joueur voit à l'écran au zoom par défaut — on s'entend « à vue », pas
+// à l'autre bout de la carte.
+//
+// ATTENTION aux unités : les positions qui circulent dans ce protocole
+// (encodeInput / encodeState) sont des PIXELS monde, pas des indices de
+// tuile (js/player.js : player.x = world.spawn.x = tuile × TILE + TILE/2).
+// La conversion est donc faite ici une fois pour toutes, avec la taille
+// de tuile dupliquée en dur (même principe que MAX_WORLD_TILE plus haut :
+// ce module ne doit dépendre de rien, surtout pas de js/config.js).
+export const TILE_PX = 32;
+export const PROXIMITY_TILES = 10;
+export const PROXIMITY_PX = PROXIMITY_TILES * TILE_PX;
+
+// Nombre de messages globaux que le serveur garde en mémoire pour
+// resynchroniser un arrivant (une conversation en cours reste lisible
+// quand on rejoint, sans journal qui grossit indéfiniment).
+export const MAX_CHAT_HISTORY = 25;
+
+export function sanitizeChatChannel(v) {
+  return v === CHAT_PROXIMITY ? CHAT_PROXIMITY : CHAT_GLOBAL;
+}
+
+// Nettoie un texte de chat : caractères de contrôle supprimés (ils
+// cassent la mise en page, et un \n dans une bulle n'a aucun sens),
+// blancs de début/fin rognés, longueur bornée. Renvoie '' si le texte
+// est inutilisable — l'appelant ignore alors simplement le message.
+export function sanitizeChatText(src) {
+  if (typeof src !== 'string') return '';
+  // eslint-disable-next-line no-control-regex
+  const clean = src.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  return clean.slice(0, MAX_CHAT_LEN);
+}
+
+// Normalise un message de chat reçu du réseau (ou construit localement
+// avant affichage) : aucune clé reconnue n'est laissée au hasard, et un
+// message sans texte valide devient null.
+export function sanitizeChatMessage(src) {
+  if (!src || typeof src !== 'object') return null;
+  const text = sanitizeChatText(src.text);
+  if (!text) return null;
+  const id = Math.trunc(src.id);
+  return {
+    id: Number.isFinite(id) && id >= 0 && id <= MAX_PLAYER_ID ? id : -1,
+    from: sanitizeChatText(src.from).slice(0, MAX_CHAT_LEN) || 'Aventurier',
+    text,
+    channel: sanitizeChatChannel(src.channel),
+    ts: Number.isFinite(Number(src.ts)) ? Number(src.ts) : Date.now(),
+  };
+}
+
+// --- Réseau social (téléphone) : bornes partagées client/serveur ---
+// Le serveur HTTP (social-server.js) et l'interface (js/phone.js)
+// utilisent les mêmes limites, pour qu'un refus côté serveur ne soit
+// jamais une surprise côté client (le bouton est désactivé avant).
+export const SOCIAL_HANDLE_MIN = 3;
+export const SOCIAL_HANDLE_MAX = 16;
+export const SOCIAL_PASSWORD_MIN = 4;
+export const SOCIAL_PASSWORD_MAX = 64;
+export const SOCIAL_POST_MAX = 280;
+
+// Un pseudo est volontairement restrictif : il s'affiche brut partout
+// (fil, bulles de chat, étiquettes de nom) et sert de clé côté serveur.
+// On accepte les lettres accentuées (\p{L} — c'est un jeu français, « Léa »
+// doit passer) et les chiffres, mais ni espace (remplacé par _), ni
+// ponctuation, ni rien qui puisse ressembler à du markup.
+export function sanitizeSocialHandle(src) {
+  if (typeof src !== 'string') return '';
+  const clean = src.trim().replace(/\s+/g, '_');
+  if (!/^[\p{L}\p{N}_-]+$/u.test(clean)) return '';
+  return clean.slice(0, SOCIAL_HANDLE_MAX);
+}
+
+// Renvoie le mot de passe borné (sa LONGUEUR seulement est vérifiée ici :
+// le hachage et la comparaison vivent côté serveur, jamais dans ce
+// module qui tourne aussi dans le navigateur).
+export function sanitizeSocialPassword(src) {
+  if (typeof src !== 'string') return '';
+  return src.slice(0, SOCIAL_PASSWORD_MAX);
+}
+
+export function sanitizeSocialPostText(src) {
+  if (typeof src !== 'string') return '';
+  // eslint-disable-next-line no-control-regex
+  const clean = src.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim();
+  return clean.slice(0, SOCIAL_POST_MAX);
+}
+
+// Normalise une publication reçue du réseau : un post sans texte ni
+// pseudo valide est rejeté (null), les compteurs sont bornés. C'est la
+// dernière ligne de défense du client avant d'injecter le post dans le
+// DOM (toujours en textContent, jamais en innerHTML — voir js/phone.js).
+export function sanitizeSocialPost(src) {
+  if (!src || typeof src !== 'object') return null;
+  const handle = sanitizeSocialHandle(src.handle);
+  const text = sanitizeSocialPostText(src.text);
+  if (!handle || !text) return null;
+  const id = typeof src.id === 'string' ? src.id.slice(0, 40) : '';
+  if (!id) return null;
+  const likes = Math.trunc(src.likes);
+  return {
+    id,
+    handle,
+    text,
+    ts: Number.isFinite(Number(src.ts)) ? Number(src.ts) : Date.now(),
+    likes: Number.isFinite(likes) && likes > 0 ? Math.min(likes, 10000) : 0,
+    likedBy: Array.isArray(src.likedBy)
+      ? [...new Set(src.likedBy.map(sanitizeSocialHandle).filter(Boolean))].slice(0, 200)
+      : [],
+  };
+}
+
+export function sanitizeSocialPostList(src) {
+  const out = [];
+  if (!Array.isArray(src)) return out;
+  for (let i = 0; i < src.length && out.length < 100; i++) {
+    const post = sanitizeSocialPost(src[i]);
+    if (post) out.push(post);
+  }
+  return out;
+}
+

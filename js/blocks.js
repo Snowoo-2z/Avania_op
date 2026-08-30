@@ -149,6 +149,14 @@ export const ITEM_DEFS = {
   glass: { id: 'glass', label: 'Verre',     color: '#bfe3ea', icon: '◇',  type: 'material', maxStack: 64, place: 'glass' },
   stick: { id: 'stick', label: 'Bâtons',   color: '#c89a5e', icon: '╱',  type: 'material', maxStack: 64 },
 
+  // La monnaie de l'île (js/economy.js). Les écus vivent DANS
+  // l'inventaire, comme n'importe quel objet : une seule case, et le
+  // nombre affiché est la somme. D'où un maxStack très au-dessus des 64
+  // habituels — sinon 150 écus prendraient trois cases (64 + 64 + 22) et
+  // il faudrait faire l'addition à la main pour connaître sa bourse.
+  // Niposable, ni craftable, ni mangeable : pas de `place`, type dédié.
+  coin: { id: 'coin', label: 'Écus', color: '#f2c14e', icon: 'coin', type: 'currency', maxStack: 999 },
+
   wooden_pickaxe: {
     id: 'wooden_pickaxe', label: 'Pioche en bois', color: '#b07a3c', icon: 'pickaxe', type: 'tool', maxStack: 1,
     toolType: 'pickaxe', tier: 'wood', durability: 45, efficiency: 1.8,
@@ -271,6 +279,10 @@ export function blockMinTierIndex(blockId) {
 // lui, connaît tous les ITEM_DEFS ci-dessus.
 export const ITEMS = ['wood', 'stone', 'sand', 'dirt', 'plank', 'brick', 'glass'];
 export const ALL_ITEMS = Object.keys(ITEM_DEFS);
+
+// L'objet qui matérialise la monnaie dans l'inventaire (js/economy.js).
+// Exporté pour que personne n'ait à écrire la chaîne 'coin' en dur.
+export const MONEY_ITEM = 'coin';
 export const HOTBAR_DEFAULTS = [...ITEMS, null, null];
 
 // --- Recettes : ressources -> matériaux / outils ---

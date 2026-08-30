@@ -31,6 +31,13 @@ import {
   DEFAULT_MOB_COUNTS, findMobSpawnSpot, makeMobFromNetwork,
 } from './mobs/index.js';
 import { CAVE, canDescendTo } from './cave.js';
+// Chat de proximité (étape 6) : le nettoyage du texte d'une bulle utilise
+// le même garde-fou que le réseau, pour qu'un message affiché au-dessus
+// d'un joueur ne puisse jamais contenir de caractère de contrôle.
+import { sanitizeChatText } from './net-protocol.js';
+
+// Durée d'affichage d'une bulle de talkie-walkie, en secondes de jeu.
+const BUBBLE_SECONDS = 6;
 
 // Multijoueur (étape 4, fours) : débit d'émission réseau de la
 // progression d'un four possédé localement — voir Game.updateFurnaces
@@ -373,6 +380,11 @@ export class Game {
     this.blockDrawables = [];
     this.blockDrawableCount = 0;
     this.nameTagCache = new Map();
+    // Bulles du talkie-walkie (chat de proximité) : même principe que les
+    // étiquettes de nom — texte pré-rendu en haute résolution, blitté à
+    // sa taille logique. Clé = texte + zoom, donc un même message répété
+    // ne coûte rien.
+    this.bubbleCache = new Map();
     // Sprites pré-rendus : surbrillance de la cible et ombres ovales
     // des objets au sol (clés numériques, aucune allocation par frame).
     this.highlightCache = new Map();
@@ -2912,6 +2924,7 @@ export class Game {
       drawHeldItem(ctx, player.appearance, heldId, player.x, player.y, this.heldDrawOpts(player));
     }
     this.drawNameTag(ctx, player);
+    this.drawSpeechBubble(ctx, player);
   }
 
   getNameTag(name, scale = 1) {
@@ -2957,5 +2970,114 @@ export class Game {
     const tag = this.getNameTag(player.appearance.name, scale);
     // Dessiné à sa taille logique (monde) : le zoom redonne un texte net.
     ctx.drawImage(tag.canvas, player.x - tag.w / 2, player.y - 34, tag.w, tag.h);
+  }
+
+  // ------------------------------------------------------------
+  //  Bulles du talkie-walkie (chat de proximité, étape 6)
+  //
+  //  Le message apparaît au-dessus du joueur qui parle — le sien comme
+  //  celui des autres — pendant BUBBLE_SECONDS. C'est ce qui rend le
+  //  canal de proximité lisible SANS quitter le monde des yeux : la
+  //  fenêtre de chat, elle, reste en bas de l'écran.
+  // ------------------------------------------------------------
+  showBubble(entity, text, seconds = BUBBLE_SECONDS) {
+    if (!entity) return;
+    // Réglage utilisateur (« Bulles de proximité », panneau Paramètres).
+    if (this.settings && this.settings.bubbles === false) return;
+    const clean = sanitizeChatText(text);
+    if (!clean) return;
+    entity._bubble = { text: clean, until: this.time + seconds };
+  }
+
+  // Ce que dit LE JOUEUR LOCAL au talkie-walkie : bulle immédiate sur son
+  // propre personnage (le serveur ne lui renvoie pas son message en écho).
+  showLocalBubble(text) {
+    this.showBubble(this.player, text);
+  }
+
+  // Même chose pour un joueur distant (repéré par son id réseau).
+  showRemoteBubble(id, text) {
+    for (const p of this.otherPlayers) {
+      if (p.id === id) { this.showBubble(p, text); return true; }
+    }
+    return false;
+  }
+
+  // Rendu du texte pré-rendu, avec retour à la ligne automatique : une
+  // bulle trop large déborderait de l'écran et masquerait le décor.
+  getSpeechBubble(text, scale = 1) {
+    const key = `${text}@${scale}`;
+    const cached = this.bubbleCache.get(key);
+    if (cached) return cached;
+    // Le texte d'une bulle est libre (jusqu'à 200 caractères) : le cache
+    // ne doit pas grossir sans borne, on le vide quand il devient gros
+    // (une bulle se re-dessine en quelques dizaines de microsecondes).
+    if (this.bubbleCache.size > 80) this.bubbleCache.clear();
+
+    const px = Math.max(1, Math.round(scale));
+    const pad = 6 * px;
+    const maxChars = 26;
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (candidate.length > maxChars && line) { lines.push(line); line = word; }
+      else line = candidate;
+    }
+    if (line) lines.push(line);
+
+    const font = `bold ${9 * px}px system-ui, sans-serif`;
+    this.ctx.save();
+    this.ctx.font = font;
+    let textW = 0;
+    for (const l of lines) textW = Math.max(textW, Math.ceil(this.ctx.measureText(l).width));
+    this.ctx.restore();
+
+    const lineH = 11 * px;
+    const wPx = textW + pad * 2;
+    const tail = 4 * px;
+    const hPx = lines.length * lineH + pad * 2 + tail;
+
+    const c = makeCanvas(wPx, hPx);
+    const bctx = c.getContext('2d');
+    bctx.font = font;
+    bctx.textAlign = 'center';
+    bctx.textBaseline = 'middle';
+    const bodyH = hPx - tail;
+    bctx.fillStyle = 'rgba(232,244,228,0.94)';
+    if (bctx.roundRect) {
+      bctx.beginPath();
+      bctx.roundRect(0, 0, wPx, bodyH, 6 * px);
+      bctx.fill();
+      // Queue de la bulle, pointée vers le joueur.
+      bctx.beginPath();
+      bctx.moveTo(wPx / 2 - 5 * px, bodyH - 1);
+      bctx.lineTo(wPx / 2, hPx);
+      bctx.lineTo(wPx / 2 + 5 * px, bodyH - 1);
+      bctx.closePath();
+      bctx.fill();
+    } else {
+      bctx.fillRect(0, 0, wPx, bodyH);
+    }
+    bctx.fillStyle = '#1d2a1f';
+    lines.forEach((l, i) => bctx.fillText(l, wPx / 2, pad + lineH * (i + 0.5)));
+
+    const bubble = { canvas: c, w: wPx / px, h: hPx / px };
+    this.bubbleCache.set(key, bubble);
+    return bubble;
+  }
+
+  drawSpeechBubble(ctx, player) {
+    const bubble = player._bubble;
+    if (!bubble) return;
+    // Une bulle expirée est oubliée ici plutôt que dans la boucle de mise
+    // à jour : elle n'a aucune raison d'être tracée, et ça évite de
+    // parcourir tous les joueurs distants à chaque frame pour rien.
+    if (this.time >= bubble.until) { player._bubble = null; return; }
+    const scale = Math.max(1, Math.round(this.camera.zoom));
+    const art = this.getSpeechBubble(bubble.text, scale);
+    // Juste au-dessus de l'étiquette de nom (qui est à -34).
+    ctx.drawImage(art.canvas, player.x - art.w / 2, player.y - 34 - art.h - 3, art.w, art.h);
   }
 }

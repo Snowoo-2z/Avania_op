@@ -549,6 +549,52 @@ assert(purse.history.length === 2, 'les mouvements sont journalisés');
 purse.advanceDay();
 assert(purse.day === 2, 'les jours passés sur l\'île sont comptés');
 
+// --- La monnaie rangée DANS l'inventaire (objet `coin`) ---
+// Le Wallet n'a alors plus de compteur : lire le solde = compter les
+// pièces, ajouter = remplir une case, dépenser = retirer des pièces.
+console.log('▶ Monnaie rangée dans l\'inventaire');
+const { MONEY_ITEM } = await import('../js/blocks.js'); // ITEM_DEFS est déjà importé plus haut
+assert(!!ITEM_DEFS[MONEY_ITEM], 'la monnaie est un objet de l\'inventaire');
+assert(!ITEM_DEFS[MONEY_ITEM].place, 'elle n\'est pas posable dans le monde');
+assert(ITEM_DEFS[MONEY_ITEM].maxStack >= CURRENCY.startingGrant,
+  'la somme de bienvenue tient sur UNE seule case (pas trois piles de 64)');
+
+const purseInv = new Inventory();
+const store = {
+  count: () => purseInv.count(MONEY_ITEM),
+  add: (n) => purseInv.add(MONEY_ITEM, n),
+  remove: (n) => purseInv.remove(MONEY_ITEM, n),
+};
+const bag = new Wallet({ allowStorage: false, store });
+assert(bag.money === 0, 'pas une pièce en poche au départ');
+assert(bag.add(CURRENCY.startingGrant, 'bienvenue') === CURRENCY.startingGrant,
+  'la somme de bienvenue entre dans l\'inventaire');
+assert(bag.money === CURRENCY.startingGrant, 'le solde se lit depuis les cases');
+assert(purseInv.count(MONEY_ITEM) === CURRENCY.startingGrant, 'ce sont bien des pièces empilées');
+assert(purseInv.slots.filter((s) => s && s.id === MONEY_ITEM).length === 1,
+  'et elles tiennent sur une seule case');
+assert(bag.spend(40, 'achat') === true, 'payer retire des pièces');
+assert(purseInv.count(MONEY_ITEM) === CURRENCY.startingGrant - 40,
+  'l\'inventaire reflète la dépense');
+assert(bag.spend(CURRENCY.startingGrant, 'trop cher') === false, 'pas de découvert possible');
+assert(purseInv.count(MONEY_ITEM) === CURRENCY.startingGrant - 40, 'un refus ne retire rien');
+assert(bag.shouldGrant() === true,
+  'la somme de bienvenue est remise à chaque session (l\'argent ne survit pas à l\'inventaire)');
+
+// Inventaire plein : l'argent est un objet, il peut manquer de la place.
+const fullBagInv = new Inventory();
+for (let i = 0; i < fullBagInv.slotCount; i++) fullBagInv.slots[i] = { id: 'wood', count: 1 };
+const fullBag = new Wallet({
+  allowStorage: false,
+  store: {
+    count: () => fullBagInv.count(MONEY_ITEM),
+    add: (n) => fullBagInv.add(MONEY_ITEM, n),
+    remove: (n) => fullBagInv.remove(MONEY_ITEM, n),
+  },
+});
+assert(fullBag.add(50, 'trop tard') === 0, 'un inventaire plein ne peut pas recevoir d\'écus');
+assert(fullBag.money === 0, 'et le solde reste à zéro plutôt que d\'inventer de l\'argent');
+
 // ============================================================
 //  LA GROTTE
 // ============================================================

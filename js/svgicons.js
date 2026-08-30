@@ -65,6 +65,18 @@ export const ICONS = {
   // Armure / plastron.
   armor: wrap('M12 2l7 3v6.2c0 4.6-3 8.6-7 10.8-4-2.2-7-6.2-7-10.8V5z" /><path d="M12 5.6l3.6 1.5v4.1c0 2.6-1.5 5-3.6 6.4-2.1-1.4-3.6-3.8-3.6-6.4V7.1z" fill="rgba(0,0,0,.28)'),
 
+  // Cœur (j'aime du réseau social du téléphone).
+  heart: wrap('M12 21s-7.5-4.7-9.6-9.1C.7 8.4 2.6 5 6 5c2 0 3.4 1.1 4.2 2.3h3.6C14.6 6.1 16 5 18 5c3.4 0 5.3 3.4 3.6 6.9C19.5 16.3 12 21 12 21z'),
+
+  // Talkie-walkie (chat de proximité).
+  radio: wrap('<rect x="3" y="9" width="18" height="12" rx="2.4"/><rect x="6" y="12" width="8" height="6" rx="1.2" fill="rgba(0,0,0,.35)"/><circle cx="17.5" cy="13" r="1.4" fill="rgba(0,0,0,.35)"/><circle cx="17.5" cy="17" r="1.4" fill="rgba(0,0,0,.35)"/><rect x="16.6" y="2.4" width="2" height="6.6" rx="1"/>'),
+
+  // Téléphone du joueur (réseau social).
+  phone: wrap('<rect x="5" y="2" width="14" height="20" rx="3"/><rect x="7" y="5" width="10" height="11" rx="1.4" fill="rgba(0,0,0,.35)"/><circle cx="12" cy="19" r="1.5" fill="rgba(0,0,0,.35)"/>'),
+
+  // Bulle de discussion (chat global).
+  chat: wrap('M4 4h16a1 1 0 011 1v10a1 1 0 01-1 1H9l-5 4V5a1 1 0 011-1z'),
+
   chevronUp: wrap('M12 5l9 9-1.4 1.4L12 7.8 4.4 15.4 3 14z'),
   chevronDown: wrap('M12 19l-9-9 1.4-1.4L12 16.2l7.6-7.6L21 10z'),
   chevronLeft: wrap('M5 12l9-9 1.4 1.4L7.8 12l7.6 7.6L14 21z'),

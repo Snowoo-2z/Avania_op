@@ -244,6 +244,40 @@ function drawIronIngot(ctx) {
   ctx.restore();
 }
 
+// --- Écus : petite pile de pièces d'or (la monnaie de l'île) ---
+// Trois pièces empilées en léger décalage, façon voxel : tranche sombre
+// en bas, face claire dessus, reflet en haut à gauche. Le même dessin
+// sert d'icône d'inventaire et de sprite au sol (objet lâché).
+function drawCoinPile(ctx) {
+  const gold = { base: '#e8b53c', light: '#f7d97a', dark: '#96691c', edge: '#fff2c0' };
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  // Deux pièces au sol, une posée dessus : pile centrée dans la case.
+  const pieces = [
+    { x: -12, y: 1 },
+    { x: -1, y: 4 },
+    { x: -7, y: -9 },
+  ];
+  for (const p of pieces) {
+    // Tranche (épaisseur de la pièce)
+    ctx.fillStyle = gold.dark;
+    ctx.fillRect(p.x, p.y + 4, 14, 4);
+    // Face
+    ctx.fillStyle = gold.base;
+    ctx.fillRect(p.x, p.y, 14, 5);
+    ctx.fillStyle = gold.light;
+    ctx.fillRect(p.x, p.y, 14, 2);
+    ctx.fillRect(p.x, p.y, 2, 5);
+    // Reflet
+    ctx.fillStyle = withAlpha(gold.edge, 0.75);
+    ctx.fillRect(p.x + 2, p.y + 1, 4, 1);
+    // Motif central (l'écusson)
+    ctx.fillStyle = withAlpha(gold.dark, 0.55);
+    ctx.fillRect(p.x + 5, p.y + 2, 4, 2);
+  }
+  ctx.restore();
+}
+
 // --- Laine : boule blanche duveteuse ---
 function drawWool(ctx) {
   ctx.save();
@@ -482,6 +516,7 @@ const TOOL_DRAWERS = {
   stone_sword:    (ctx) => drawSword(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
   iron_sword:     (ctx) => drawSword(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
   stick:          (ctx) => drawStick(ctx, TOOL_COLORS.stick),
+  coin:           (ctx) => drawCoinPile(ctx), // la monnaie (js/economy.js)
   rawIron:        (ctx) => drawRawIron(ctx),
   ironIngot:      (ctx) => drawIronIngot(ctx),
   door:           (ctx) => drawDoorIcon(ctx),

@@ -10,6 +10,22 @@
 //  Ce module est volontairement SANS DOM ni rendu : il est testable
 //  tel quel (test/smoke.mjs) et réutilisable côté serveur quand le
 //  multijoueur arrivera.
+//
+//  OÙ VIT L'ARGENT. Deux modes, au choix de l'appelant :
+//    - sans `store` : la bourse tient son propre compteur (comportement
+//      historique, toujours utilisé par les tests de logique pure) ;
+//    - avec un `store` : l'argent est une PILE D'OBJETS dans
+//      l'inventaire du joueur (l'objet `coin` de js/blocks.js). Il n'y a
+//      plus de compteur interne : `wallet.money` compte les pièces,
+//      `add()` en ajoute, `spend()` en retire. L'argent devient un objet
+//      comme un autre — il prend une case, on peut le lâcher au sol
+//      (touche Q) ou le ranger dans un coffre, donc le perdre ou se le
+//      faire voler.
+//
+//  Conséquence assumée du mode « inventaire » : l'inventaire n'est pas
+//  sauvegardé d'une session à l'autre (le monde non plus), donc l'argent
+//  non plus. La somme de bienvenue est remise à CHAQUE arrivée sur l'île
+//  (voir shouldGrant) au lieu d'une seule fois pour la vie du navigateur.
 // ============================================================
 
 // Unité monétaire. Pas de décimales : les prix sont des entiers, ce
@@ -44,7 +60,10 @@ export class Wallet {
   constructor(options = {}) {
     this.storageKey = options.storageKey || STORAGE_KEY;
     this.allowStorage = options.allowStorage !== false;
-    this.money = 0;
+    // Stockage délégué à l'inventaire : { count(), add(n) -> ajouté,
+    // remove(n) -> bool }. Null = compteur interne (mode historique).
+    this.store = options.store || null;
+    this._money = 0;
     this.day = 1;            // nombre de jours passés sur l'île
     this.totalEarned = 0;
     this.totalSpent = 0;
@@ -73,22 +92,47 @@ export class Wallet {
   }
 
   // ------------------------------------------------------------
+  //  Le solde
+  //
+  //  Accesseur plutôt que champ : tout le code existant (marchands,
+  //  cinématique, tests) lit `wallet.money` et quelques endroits
+  //  l'écrivent. En mode « inventaire », lire = compter les pièces,
+  //  écrire = ajouter/retirer la différence. Personne n'a à savoir où
+  //  l'argent est rangé.
+  // ------------------------------------------------------------
+  get money() {
+    return this.store ? this.store.count() : this._money;
+  }
+
+  set money(value) {
+    const n = Math.max(0, Math.round(Number(value) || 0));
+    if (!this.store) { this._money = n; return; }
+    const delta = n - this.store.count();
+    if (delta > 0) this.store.add(delta);
+    else if (delta < 0) this.store.remove(-delta);
+  }
+
+  // ------------------------------------------------------------
   //  Opérations
   // ------------------------------------------------------------
   canAfford(amount) {
     return amount >= 0 && this.money >= amount;
   }
 
-  // Ajoute de l'argent. Retourne le montant réellement ajouté.
+  // Ajoute de l'argent. Retourne le montant réellement ajouté — en mode
+  // « inventaire » il peut être INFÉRIEUR à la demande si les cases sont
+  // pleines (l'argent est un objet : il lui faut de la place).
   add(amount, reason = '') {
     const n = Math.max(0, Math.round(Number(amount) || 0));
     if (n === 0) return 0;
-    this.money += n;
-    this.totalEarned += n;
-    this._pushHistory(n, reason);
+    const added = this.store ? this.store.add(n) : n;
+    if (!this.store) this._money += n;
+    if (added <= 0) return 0;
+    this.totalEarned += added;
+    this._pushHistory(added, reason);
     this.save();
-    this._emit(n, reason);
-    return n;
+    this._emit(added, reason);
+    return added;
   }
 
   // Dépense de l'argent. Retourne true si la transaction a eu lieu.
@@ -97,7 +141,8 @@ export class Wallet {
     const n = Math.max(0, Math.round(Number(amount) || 0));
     if (n === 0) return true;
     if (this.money < n) return false;
-    this.money -= n;
+    if (this.store) this.store.remove(n);
+    else this._money -= n;
     this.totalSpent += n;
     this._pushHistory(-n, reason);
     this.save();
@@ -129,7 +174,10 @@ export class Wallet {
     try {
       localStorage.setItem(this.storageKey, JSON.stringify({
         v: 1,
-        money: this.money,
+        // En mode « inventaire », l'argent vit dans les cases du joueur :
+        // rien à persister ici (et l'inventaire, lui, ne survit pas à la
+        // session — c'est le compromis assumé de ce mode).
+        money: this.store ? 0 : this._money,
         day: this.day,
         totalEarned: this.totalEarned,
         totalSpent: this.totalSpent,
@@ -145,7 +193,7 @@ export class Wallet {
       if (!raw) return false;
       const data = JSON.parse(raw);
       if (!data || typeof data.money !== 'number' || !Number.isFinite(data.money)) return false;
-      this.money = Math.max(0, Math.round(data.money));
+      if (!this.store) this._money = Math.max(0, Math.round(data.money));
       this.day = Math.max(1, Math.round(data.day) || 1);
       this.totalEarned = Math.max(0, Math.round(data.totalEarned) || 0);
       this.totalSpent = Math.max(0, Math.round(data.totalSpent) || 0);
@@ -153,6 +201,14 @@ export class Wallet {
     } catch {
       return false;
     }
+  }
+
+  // La somme de bienvenue doit-elle être versée maintenant ?
+  // En mode « inventaire », oui à chaque arrivée sur l'île : l'argent
+  // d'une session précédente a disparu avec l'inventaire, refuser la
+  // somme laisserait le joueur définitivement sans un sou.
+  shouldGrant() {
+    return this.store ? true : !this.hasReceivedGrant();
   }
 
   // Le joueur a-t-il déjà reçu sa somme de départ ? (empêche de la
@@ -170,7 +226,7 @@ export class Wallet {
   }
 
   reset() {
-    this.money = 0;
+    this.money = 0; // retire aussi les pièces de l'inventaire, le cas échéant
     this.day = 1;
     this.totalEarned = 0;
     this.totalSpent = 0;
