@@ -100,6 +100,12 @@ export const BLOCK_DEFS = {
     id: 'caveIron', label: 'Filon de fer', kind: 'object', solid: true, breakable: true,
     drop: 'rawIron', dropN: 1, color: '#7a6a62', requiredTool: 'pickaxe', minTier: 'stone', breakTime: 3.2,
   },
+  // Le diamant : beaucoup plus rare que le fer, et absent du niveau 1 —
+  // il faut descendre à la profondeur 2 ou plus pour en croiser (js/cave.js).
+  caveDiamond: {
+    id: 'caveDiamond', label: 'Filon de diamant', kind: 'object', solid: true, breakable: true,
+    drop: 'diamond', dropN: 1, color: '#3fbcd4', requiredTool: 'pickaxe', minTier: 'stone', breakTime: 4.0,
+  },
   // L'entrée de la grotte, à la surface : un arche sombre. On y entre
   // avec la touche d'interaction — elle ne se casse pas.
   caveMouth: {
@@ -135,6 +141,7 @@ export const ITEM_DEFS = {
   sand:  { id: 'sand',  label: 'Sable',     color: '#e2c88a', icon: '▪',  type: 'resource', maxStack: 64, place: 'sandBlock' },
   dirt:  { id: 'dirt',  label: 'Terre',     color: '#8a6a46', icon: '▪',  type: 'resource', maxStack: 64, place: 'dirtBlock' },
   rawIron: { id: 'rawIron', label: 'Fer brut', color: '#b0875f', type: 'resource', maxStack: 64 },
+  diamond: { id: 'diamond', label: 'Diamant', color: '#59d8e8', type: 'resource', maxStack: 64 },
   ironIngot: { id: 'ironIngot', label: 'Lingot de fer', color: '#dfe4e8', type: 'material', maxStack: 64 },
   ironBlock: { id: 'ironBlock', label: 'Bloc de fer', color: '#d8dde2', type: 'material', maxStack: 64, place: 'ironBlock' },
   door: { id: 'door', label: 'Porte en bois', color: '#c89a5e', type: 'material', maxStack: 64, place: 'door' },

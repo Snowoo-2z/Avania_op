@@ -624,11 +624,14 @@ for (const depth of [1, 2, 3, 5, CAVE.maxDepth]) {
   const distDown = Math.abs(cave.ladderDown.ty - cave.spawn.y / TILE)
     + Math.abs(cave.ladderDown.tx - cave.spawn.x / TILE);
   assert(distDown > 12, `prof. ${depth} : le puits descendant est loin de l'arrivée (${distDown} cases)`);
-  // Pierre et fer uniquement, comme demandé.
+  // Pierre, fer et (dès la prof. 2) diamant uniquement, comme demandé.
   const kinds = new Set(cave.blocks.filter(Boolean));
-  const allowed = new Set(['caveStone', 'caveIron', 'caveLadderDown', 'caveLadderUp']);
-  assert([...kinds].every((k) => allowed.has(k)), `prof. ${depth} : uniquement pierre, fer et puits`);
+  const allowed = new Set(['caveStone', 'caveIron', 'caveDiamond', 'caveLadderDown', 'caveLadderUp']);
+  assert([...kinds].every((k) => allowed.has(k)), `prof. ${depth} : uniquement pierre, fer, diamant et puits`);
   assert(kinds.has('caveStone') && kinds.has('caveIron'), `prof. ${depth} : de la pierre ET du fer`);
+  if (depth === 1) {
+    assert(!kinds.has('caveDiamond'), 'prof. 1 : aucun diamant en surface de la grotte');
+  }
   // Déterminisme : deux joueurs descendent dans la même grotte.
   const twin = new World(20260821, { kind: 'cave', depth });
   assert(twin.floor.join('') === cave.floor.join('') && twin.blocks.join('|') === cave.blocks.join('|'),
@@ -638,6 +641,21 @@ for (const depth of [1, 2, 3, 5, CAVE.maxDepth]) {
 // Plus on descend, plus c'est riche (la récompense du risque).
 const ironAt = (d) => new World(20260821, { kind: 'cave', depth: d }).blocks.filter((b) => b === 'caveIron').length;
 assert(ironAt(CAVE.maxDepth) > ironAt(1), 'le fer est plus abondant au fond qu\'à l\'entrée');
+
+// Le diamant : absent du niveau 1, présent en profondeur, bien plus rare
+// que le fer.
+const diamondAt = (d) => new World(20260821, { kind: 'cave', depth: d }).blocks.filter((b) => b === 'caveDiamond').length;
+assert(diamondAt(1) === 0, 'aucun diamant au niveau 1');
+assert(diamondAt(2) > 0, `le diamant apparaît dès la profondeur 2 (${diamondAt(2)} filons)`);
+assert(diamondAt(CAVE.maxDepth) > 0, `et au fond (${diamondAt(CAVE.maxDepth)} filons)`);
+assert(diamondAt(CAVE.maxDepth) < ironAt(CAVE.maxDepth),
+  `le diamant reste bien plus rare que le fer (${diamondAt(CAVE.maxDepth)} < ${ironAt(CAVE.maxDepth)})`);
+
+// Le filon de diamant se mine à la pioche et lâche un diamant.
+assert(BLOCK_DEFS.caveDiamond.breakable === true, 'le filon de diamant se casse');
+assert(BLOCK_DEFS.caveDiamond.requiredTool === 'pickaxe', 'à la pioche');
+assert(BLOCK_DEFS.caveDiamond.drop === 'diamond', 'et il lâche un diamant');
+assert(ITEM_DEFS.diamond, 'le diamant existe comme objet d\'inventaire');
 assert(new World(20260821, { kind: 'cave', depth: 1 }).merchantSpots.length === 2,
   'les deux marchands ont leur emplacement au niveau 1');
 assert(new World(20260821, { kind: 'cave', depth: 3 }).merchantSpots.length === 0,

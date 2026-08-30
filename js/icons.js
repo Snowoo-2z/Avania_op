@@ -225,6 +225,36 @@ function drawRawIron(ctx) {
   ctx.restore();
 }
 
+// --- Diamant : gemme taillée bleu-vert, très brillante ---
+function drawDiamond(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  const GEM = '#4fd6e8', GEM_HI = '#c9f7fc', GEM_MID = '#7ee6f2', GEM_OUT = '#0e5a68';
+  // silhouette de gemme (couronne + pointe), en rectangles chanfreinés
+  ctx.fillStyle = GEM_OUT;
+  ctx.fillRect(-9, -8, 18, 6);      // table
+  ctx.fillRect(-11, -4, 22, 5);     // couronne
+  ctx.fillRect(-8, 1, 16, 5);       // culasse
+  ctx.fillRect(-4, 6, 8, 4);        // pointe
+  // remplissage
+  ctx.fillStyle = GEM;
+  ctx.fillRect(-8, -7, 16, 4);
+  ctx.fillRect(-10, -3, 20, 3);
+  ctx.fillRect(-7, 1, 14, 4);
+  ctx.fillRect(-3, 6, 6, 3);
+  // facettes claires
+  ctx.fillStyle = GEM_MID;
+  ctx.fillRect(-10, -3, 4, 3);
+  ctx.fillRect(2, 1, 5, 4);
+  ctx.fillStyle = GEM_HI;
+  ctx.fillRect(-8, -7, 6, 2);
+  ctx.fillRect(-10, -3, 3, 1);
+  // éclat taillé
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(-6, -6, 2, 2);
+  ctx.restore();
+}
+
 // --- Lingot de fer : barre arrondie au reflet métallique ---
 function drawIronIngot(ctx) {
   ctx.save();
@@ -518,6 +548,7 @@ const TOOL_DRAWERS = {
   stick:          (ctx) => drawStick(ctx, TOOL_COLORS.stick),
   coin:           (ctx) => drawCoinPile(ctx), // la monnaie (js/economy.js)
   rawIron:        (ctx) => drawRawIron(ctx),
+  diamond:        (ctx) => drawDiamond(ctx),
   ironIngot:      (ctx) => drawIronIngot(ctx),
   door:           (ctx) => drawDoorIcon(ctx),
   wool:           (ctx) => drawWool(ctx),

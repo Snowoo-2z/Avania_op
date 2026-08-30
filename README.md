@@ -91,10 +91,11 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   affichées en haut à droite.
 - **⛰️ La grotte** — une arche taillée dans la falaise, à un endroit fixe de
   la carte. On entre avec `F`. À l'intérieur, **8 niveaux** qui descendent de
-  plus en plus bas, générés de façon déterministe, où l'on ne trouve **que de
-  la pierre et du fer** (le fer devient plus abondant en profondeur). Chaque
-  niveau a son échelle de sortie et son puits de descente, toujours
-  atteignables.
+  plus en plus bas, générés de façon déterministe, où l'on trouve **pierre,
+  fer** (plus abondant en profondeur) et — **dès la profondeur 2 uniquement**
+  — du **diamant**, beaucoup plus rare (rocher piqué de gemmes bleu-vert,
+  miné à la pioche, il lâche une gemme). Chaque niveau a son échelle de
+  sortie et son puits de descente, toujours atteignables.
 - **🎭 Masque & protection de minage** — descendre au-delà du niveau 1 exige
   deux équipements achetés : un **masque** et une **protection de minage**.
   Chacun existe en **trois paliers** ; plus c'est cher, plus la profondeur
@@ -449,6 +450,10 @@ puis construis ta première cabane.
 - [x] **Monnaie dans l'inventaire** — les écus sont des pièces (objet
   `coin`) rangées dans les cases du joueur ; le compteur du HUD a été
   retiré (voir `js/economy.js`, mode « inventaire » du `Wallet`).
+- [x] **Diamant** — nouveau minerai de la grotte (`caveDiamond`), absent du
+  niveau 1 et présent dès la profondeur 2, bien plus rare que le fer ;
+  miné à la pioche, il lâche une gemme (`diamond`). Densité réglable dans
+  `CAVE.diamondDensity` (js/cave.js).
 - [x] **Multijoueur (étape 6 : chat & réseau social)** — fenêtre de chat
   toujours visible (canal global + talkie-walkie de proximité en `V`),
   et téléphone (`P`) avec un réseau social partagé : comptes,

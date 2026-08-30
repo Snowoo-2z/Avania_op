@@ -1419,6 +1419,43 @@ function drawCaveIronObjectRaw(ctx, x, y, shadow = true) {
   ctx.fillRect(x - 6, y - 30, 13, 2);
 }
 
+// Filon de diamant : même roche sombre que le fer, mais piquée de gemmes
+// bleu-vert lumineuses. Beaucoup plus rare, réservé à la profondeur 2+.
+function drawCaveDiamondObjectRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 1, 15, 5);
+  voxel(ctx, x - 14, y - 17, 28, 18, '#3f3a47');
+  voxel(ctx, x - 11, y - 25, 22, 18, '#4d4759');
+  voxel(ctx, x - 6, y - 30, 13, 7, '#5d5670');
+
+  const GEM = '#4fd6e8';
+  const GEM_HI = '#b9f4fb';
+  const GEM_OUT = '#0e5a68';
+  const gems = [
+    [x - 10, y - 19, 5, 4], [x + 2, y - 24, 5, 4], [x - 5, y - 27, 4, 3],
+    [x - 2, y - 12, 6, 4], [x + 6, y - 16, 4, 3],
+  ];
+  for (const [gx, gy, gw, gh] of gems) {
+    ctx.fillStyle = GEM_OUT;
+    ctx.fillRect(gx - 1, gy - 1, gw + 2, gh + 2);
+    ctx.fillStyle = GEM;
+    ctx.fillRect(gx, gy, gw, gh);
+    ctx.fillStyle = GEM_HI;
+    ctx.fillRect(gx, gy, gw, 1);
+  }
+  // Gemme centrale facettée, très brillante.
+  ctx.fillStyle = GEM_OUT;
+  ctx.fillRect(x - 4, y - 21, 9, 8);
+  ctx.fillStyle = GEM;
+  ctx.fillRect(x - 3, y - 20, 7, 6);
+  ctx.fillStyle = GEM_HI;
+  ctx.fillRect(x - 3, y - 20, 7, 2);
+  ctx.fillStyle = '#eafeff';
+  ctx.fillRect(x - 2, y - 19, 3, 1);
+
+  ctx.fillStyle = 'rgba(120,220,240,0.30)';
+  ctx.fillRect(x - 6, y - 30, 13, 2);
+}
+
 // Entrée de la grotte (surface) : arche de roche sombre ouvrant sur
 // le noir. Le sprite déborde largement de sa tuile pour qu'on la voie
 // de loin — c'est un point de repère du monde.
@@ -1614,6 +1651,7 @@ function buildObjectSprites() {
   // les fissures de minage déjà pré-rendues continuent de s'appliquer).
   objectCache.caveStone = makeObjectSprite(40, 44, 20, 34, drawCaveStoneObjectRaw);
   objectCache.caveIron = makeObjectSprite(40, 44, 20, 34, drawCaveIronObjectRaw);
+  objectCache.caveDiamond = makeObjectSprite(40, 44, 20, 34, drawCaveDiamondObjectRaw);
   // L'entrée de la grotte déborde largement de sa tuile (point de repère).
   objectCache.caveMouth = makeObjectSprite(76, 88, 38, 80, drawCaveMouthObjectRaw);
   objectCache.caveLadderDown = makeObjectSprite(44, 48, 22, 38, drawCaveLadderDownRaw);
