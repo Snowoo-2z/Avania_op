@@ -22,6 +22,7 @@ const TOOL_COLORS = {
   wood:  { base: '#c48642', light: '#e8b46a', dark: '#7a4a22', mid: '#a86a32', edge: '#f0d090' },
   stone: { base: '#a4a4ac', light: '#d8d8de', dark: '#5a5a64', mid: '#888890', edge: '#f0f0f4' },
   iron:  { base: '#c6ccd2', light: '#eef2f6', dark: '#676f78', mid: '#96a0a9', edge: '#ffffff' },
+  diamond: { base: '#59d8e8', light: '#c9f7fc', dark: '#0e5a68', mid: '#2fb9cf', edge: '#eafeff' },
   stick: { base: '#c89a5e', light: '#e8c888', dark: '#6e4426', mid: '#a87a42', edge: '#f2d8a0' },
   wrap:  { base: '#6a3a1e', light: '#8a5a32', dark: '#3a1e10', mid: '#5a2e16', edge: '#a87848' },
 };
@@ -545,6 +546,10 @@ const TOOL_DRAWERS = {
   wooden_sword:   (ctx) => drawSword(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
   stone_sword:    (ctx) => drawSword(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
   iron_sword:     (ctx) => drawSword(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
+  diamond_pickaxe: (ctx) => drawPickaxe(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
+  diamond_axe:     (ctx) => drawAxe(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
+  diamond_shovel:  (ctx) => drawShovel(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
+  diamond_sword:   (ctx) => drawSword(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
   stick:          (ctx) => drawStick(ctx, TOOL_COLORS.stick),
   coin:           (ctx) => drawCoinPile(ctx), // la monnaie (js/economy.js)
   rawIron:        (ctx) => drawRawIron(ctx),

@@ -40,8 +40,8 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
 - **Établi façon Minecraft** (touche `C` ou bouton 🛠️) : grille 3×3 + résultat,
   **livre de recettes repliable** avec recherche, et l'inventaire du joueur
   affiché en bas. Bois → planches → bâtons, puis pioches, haches, pelles et
-  épées en bois, pierre ou **fer**. Clic (ou maintien) sur le résultat pour
-  fabriquer, shift-clic pour tout fabriquer d'un coup.
+  épées en bois, pierre, **fer** ou **diamant**. Clic (ou maintien) sur le
+  résultat pour fabriquer, shift-clic pour tout fabriquer d'un coup.
 - **🪵 Portes** : 6 planches → 3 portes. Posées comme un bloc, elles se
   ferment au clic droit et laissent passer (ou bloquent) le joueur.
 - **⛏️ Le fer** : du **minerai de fer** (rocher aux pépites beige-rosé
@@ -50,6 +50,10 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   **fer brut** (pépite à facettes), fondu en **lingots** (1:1) puis en
   **bloc de fer** (9 lingots) pour construire, et en **outils en fer** bien
   plus durables.
+- **💎 Outils en diamant** : les gemmes de diamant (minées dès la
+  profondeur 2) se craftent en pioche, hache, pelle et épée — mêmes formes
+  que le fer, mais le palier **diamant** mine plus vite et tient plus
+  longtemps (520 d'usure contre 250).
 - **📦 Lâcher des objets** : touche `Q` pour jeter un objet de ta main,
   `Ctrl+Q` pour toute la pile — ou sors une pile de l'inventaire par-dessus
   le bord de l'écran. Les objets tombent au sol, fusionnent entre eux et

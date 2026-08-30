@@ -296,12 +296,33 @@ assert(ITEM_DEFS.iron_pickaxe.durability === 250, 'la pioche en fer est bien plu
 
 console.log('▶ Niveaux d\'outils');
 const { TOOL_TIERS, toolTierIndex, blockMinTierIndex } = await import('../js/blocks.js');
-assert(TOOL_TIERS.join(',') === 'wood,stone,iron', '3 niveaux d\'outils');
+assert(TOOL_TIERS.join(',') === 'wood,stone,iron,diamond', '4 niveaux d\'outils');
 assert(toolTierIndex(ITEM_DEFS.wooden_pickaxe) === 0, 'bois = niveau 0');
 assert(toolTierIndex(ITEM_DEFS.stone_pickaxe) === 1, 'pierre = niveau 1');
 assert(toolTierIndex(ITEM_DEFS.iron_pickaxe) === 2, 'fer = niveau 2');
+assert(toolTierIndex(ITEM_DEFS.diamond_pickaxe) === 3, 'diamant = niveau 3 (le sommet)');
 assert(blockMinTierIndex('ironOre') === 1, 'le fer demande la pierre');
 assert(blockMinTierIndex('rock') === 0, 'la roche ne demande rien de plus');
+
+// Les outils en diamant : mêmes formes que le fer, en mieux.
+for (const t of ['pickaxe', 'axe', 'shovel', 'sword']) {
+  const id = `diamond_${t}`;
+  const def = ITEM_DEFS[id];
+  assert(def, `l'outil ${id} existe`);
+  assert(def.tier === 'diamond' && def.toolType === t, `${id} : bon palier et bon type`);
+  assert(def.durability > ITEM_DEFS[`iron_${t}`].durability, `${id} tient plus longtemps que le fer`);
+  const recipe = RECIPES.find((r) => r.id === id);
+  assert(recipe && recipe.inputs.diamond, `${id} se crafte avec des gemmes`);
+}
+assert(ITEM_DEFS.diamond_pickaxe.efficiency > ITEM_DEFS.iron_pickaxe.efficiency,
+  'la pioche en diamant mine plus vite que celle en fer');
+// Craft bout en bout : 3 gemmes + 2 bâtons → pioche en diamant.
+const dInv = new Inventory();
+dInv.add('diamond', 3);
+dInv.add('stick', 2);
+assert(dInv.craft(RECIPES.find((r) => r.id === 'diamond_pickaxe')) === true, '3 diamants + 2 bâtons → pioche');
+assert(dInv.count('diamond_pickaxe') === 1, 'la pioche en diamant est fabriquée');
+assert(dInv.count('diamond') === 0 && dInv.count('stick') === 0, 'les ingrédients sont consommés');
 
 console.log('▶ Porte craftable');
 const doorRecipe = RECIPES.find((r) => r.id === 'door');

@@ -213,6 +213,25 @@ export const ITEM_DEFS = {
     toolType: 'sword', tier: 'iron', durability: 250, efficiency: 1,
   },
 
+  // --- Outils en diamant : le palier au-dessus du fer (plus vite, plus
+  //     longtemps). Craftés avec les gemmes minées en profondeur 2+. ---
+  diamond_pickaxe: {
+    id: 'diamond_pickaxe', label: 'Pioche en diamant', color: '#59d8e8', icon: 'pickaxe', type: 'tool', maxStack: 1,
+    toolType: 'pickaxe', tier: 'diamond', durability: 520, efficiency: 7,
+  },
+  diamond_axe: {
+    id: 'diamond_axe', label: 'Hache en diamant', color: '#59d8e8', icon: 'axe', type: 'tool', maxStack: 1,
+    toolType: 'axe', tier: 'diamond', durability: 520, efficiency: 7,
+  },
+  diamond_shovel: {
+    id: 'diamond_shovel', label: 'Pelle en diamant', color: '#59d8e8', icon: 'shovel', type: 'tool', maxStack: 1,
+    toolType: 'shovel', tier: 'diamond', durability: 520, efficiency: 7,
+  },
+  diamond_sword: {
+    id: 'diamond_sword', label: 'Épée en diamant', color: '#59d8e8', icon: 'sword', type: 'tool', maxStack: 1,
+    toolType: 'sword', tier: 'diamond', durability: 520, efficiency: 1,
+  },
+
   // ------------------------------------------------------------
   //  Équipement de la grotte (vendu par les marchands, jamais crafté)
   //
@@ -270,7 +289,9 @@ export function isGear(itemId) {
 
 // Ordre des niveaux d'outils. Un bloc avec `minTier` exige un outil d'au
 // moins ce niveau (ex. le minerai de fer demande une pioche en pierre+).
-export const TOOL_TIERS = ['wood', 'stone', 'iron'];
+// Le diamant, au sommet, mine tout ce que mine le fer — plus vite et plus
+// longtemps.
+export const TOOL_TIERS = ['wood', 'stone', 'iron', 'diamond'];
 
 export function toolTierIndex(def) {
   return def && def.tier ? TOOL_TIERS.indexOf(def.tier) : 0;
@@ -363,6 +384,23 @@ export const RECIPES = [
   {
     id: 'iron_sword', label: 'Épée en fer', out: 'iron_sword', outN: 1,
     inputs: { ironIngot: 2, stick: 1 }, pattern: [['ironIngot'], ['ironIngot'], ['stick']], category: 'outils',
+  },
+  // Outils en diamant : mêmes formes que le fer, gemmes en guise de lingots.
+  {
+    id: 'diamond_pickaxe', label: 'Pioche en diamant', out: 'diamond_pickaxe', outN: 1,
+    inputs: { diamond: 3, stick: 2 }, pattern: [['diamond', 'diamond', 'diamond'], [null, 'stick', null], [null, 'stick', null]], category: 'outils',
+  },
+  {
+    id: 'diamond_axe', label: 'Hache en diamant', out: 'diamond_axe', outN: 1,
+    inputs: { diamond: 3, stick: 2 }, pattern: [['diamond', 'diamond', null], ['diamond', 'stick', null], [null, 'stick', null]], category: 'outils',
+  },
+  {
+    id: 'diamond_shovel', label: 'Pelle en diamant', out: 'diamond_shovel', outN: 1,
+    inputs: { diamond: 1, stick: 2 }, pattern: [['diamond'], ['stick'], ['stick']], category: 'outils',
+  },
+  {
+    id: 'diamond_sword', label: 'Épée en diamant', out: 'diamond_sword', outN: 1,
+    inputs: { diamond: 2, stick: 1 }, pattern: [['diamond'], ['diamond'], ['stick']], category: 'outils',
   },
   {
     id: 'ironBlock', label: 'Bloc de fer', out: 'ironBlock', outN: 1,
