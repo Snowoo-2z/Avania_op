@@ -684,11 +684,12 @@ for (const depth of [1, 2, 3, 5, CAVE.maxDepth]) {
   const distDown = Math.abs(cave.ladderDown.ty - cave.spawn.y / TILE)
     + Math.abs(cave.ladderDown.tx - cave.spawn.x / TILE);
   assert(distDown > 12, `prof. ${depth} : le puits descendant est loin de l'arrivée (${distDown} cases)`);
-  // Pierre, fer et (dès la prof. 2) diamant uniquement, comme demandé.
+  // Pierre, fer, charbon et (dès la prof. 2) diamant uniquement, comme demandé.
   const kinds = new Set(cave.blocks.filter(Boolean));
-  const allowed = new Set(['caveStone', 'caveIron', 'caveDiamond', 'caveLadderDown', 'caveLadderUp']);
-  assert([...kinds].every((k) => allowed.has(k)), `prof. ${depth} : uniquement pierre, fer, diamant et puits`);
+  const allowed = new Set(['caveStone', 'caveIron', 'caveCoal', 'caveDiamond', 'caveLadderDown', 'caveLadderUp']);
+  assert([...kinds].every((k) => allowed.has(k)), `prof. ${depth} : uniquement pierre, fer, charbon, diamant et puits`);
   assert(kinds.has('caveStone') && kinds.has('caveIron'), `prof. ${depth} : de la pierre ET du fer`);
+  assert(kinds.has('caveCoal'), `prof. ${depth} : du charbon dès le niveau 1`);
   if (depth === 1) {
     assert(!kinds.has('caveDiamond'), 'prof. 1 : aucun diamant en surface de la grotte');
   }

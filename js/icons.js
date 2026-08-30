@@ -226,6 +226,48 @@ function drawRawIron(ctx) {
   ctx.restore();
 }
 
+// --- Charbon : pépite noire mate aux reflets gris ---
+function drawCoal(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  const COAL = '#17171c', HI = '#4a4a55', OUT = '#000000';
+  ctx.fillStyle = OUT;
+  ctx.fillRect(-8, -6, 16, 12);
+  ctx.fillRect(-6, -8, 12, 16);
+  ctx.fillStyle = COAL;
+  ctx.fillRect(-7, -5, 14, 10);
+  ctx.fillRect(-5, -7, 10, 14);
+  ctx.fillStyle = HI;
+  ctx.fillRect(-5, -7, 10, 2);
+  ctx.fillRect(-7, -5, 2, 6);
+  ctx.fillStyle = '#6a6a78';
+  ctx.fillRect(-3, -4, 2, 2);
+  ctx.fillRect(2, 1, 2, 1);
+  ctx.restore();
+}
+
+// --- Torche : manche bois + tête en feu ---
+function drawTorchIcon(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  // manche
+  ctx.fillStyle = '#6a4520';
+  ctx.fillRect(-2, -4, 4, 12);
+  ctx.fillStyle = '#8a5f30';
+  ctx.fillRect(-2, -4, 1.5, 12);
+  // ligature
+  ctx.fillStyle = '#3c2c12';
+  ctx.fillRect(-2.5, -6, 5, 2);
+  // flamme
+  ctx.fillStyle = '#e8632c';
+  ctx.fillRect(-3.5, -12, 7, 6);
+  ctx.fillStyle = '#f7a13c';
+  ctx.fillRect(-2.5, -11, 5, 5);
+  ctx.fillStyle = '#ffd979';
+  ctx.fillRect(-1.5, -10, 3, 3);
+  ctx.restore();
+}
+
 // --- Diamant : gemme taillée bleu-vert, très brillante ---
 function drawDiamond(ctx) {
   ctx.save();
@@ -623,6 +665,8 @@ const TOOL_DRAWERS = {
   coin:           (ctx) => drawCoinPile(ctx), // la monnaie (js/economy.js)
   rawIron:        (ctx) => drawRawIron(ctx),
   diamond:        (ctx) => drawDiamond(ctx),
+  coal:           (ctx) => drawCoal(ctx),
+  torch:          (ctx) => drawTorchIcon(ctx),
   ironIngot:      (ctx) => drawIronIngot(ctx),
   door:           (ctx) => drawDoorIcon(ctx),
   wool:           (ctx) => drawWool(ctx),

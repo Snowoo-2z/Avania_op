@@ -9,6 +9,7 @@ import {
   formatTrigger, actionUsingTrigger,
   triggerFromKey, triggerFromMouse, triggerFromWheel,
 } from './keys.js';
+import { isLowPowerDevice } from './utils.js';
 
 const SAVE_KEY = 'avania.settings';
 
@@ -133,6 +134,11 @@ export class Settings {
     // talkie-walkie au-dessus des joueurs.
     this.chatSide = saved.chatSide === 'right' ? 'right' : 'left';
     this.bubbles = saved.bubbles ?? true;
+    // Niveau graphiques : 'low' | 'medium' | 'high'. Par défaut, élevé,
+    // sauf machine modeste détectée automatiquement.
+    this.graphics = ['low', 'medium', 'high'].includes(saved.graphics)
+      ? saved.graphics
+      : (isLowPowerDevice() ? 'low' : 'high');
 
     this.cursorCanvas = document.getElementById('custom-cursor');
     this.cursorCtx = this.cursorCanvas?.getContext('2d');
@@ -161,6 +167,22 @@ export class Settings {
       aimAssist: this.aimAssist,
       chatSide: this.chatSide,
       bubbles: this.bubbles,
+      graphics: this.graphics,
+    });
+  }
+
+  // Trois boutons « Faible / Moyen / Élevé » pour la qualité graphique.
+  _bindGraphics() {
+    const btns = document.querySelectorAll('#graphics-levels .graphics-btn');
+    if (!btns.length) return;
+    const paint = () => btns.forEach((b) => b.classList.toggle('active', b.dataset.level === this.graphics));
+    paint();
+    btns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.graphics = btn.dataset.level;
+        paint();
+        this._save();
+      });
     });
   }
 
@@ -254,6 +276,9 @@ export class Settings {
 
     // Emplacement de la fenêtre du chat global (gauche / droite)
     this._bindChatSide();
+
+    // Niveau de qualité graphique (faible / moyen / élevé)
+    this._bindGraphics();
 
     // Bouton « Réinitialiser les touches »
     document.getElementById('keybinds-reset')?.addEventListener('click', () => {

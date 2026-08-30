@@ -67,9 +67,21 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   minage/marche. La pousse est diffusée en multijoueur comme un diff de bloc.
 - **🌗 Ambiance vivante** : cycle **jour/nuit** (~4 min) — la nuit pose un
   voile bleuté percé par le halo du joueur et la lueur chaude, vacillante,
-  des fours allumés. **Ombres portées directionnelles** (lumière nord-ouest)
-  sous les blocs posés, arbres et mobs. La **caméra anticipe** légèrement le
-  déplacement (parallaxe douce) pour dégager le champ de vision.
+  des fours allumés **et des torches**. **Ombres portées directionnelles**
+  (lumière nord-ouest) sous les blocs posés, arbres et mobs. La **caméra
+  anticipe** légèrement le déplacement (parallaxe douce) pour dégager le
+  champ de vision.
+- **🔥 Torches & charbon** : le **charbon** est le filon le plus commun de
+  la grotte (dès le niveau 1) ; il brûle **30 s** au four (deux fois le
+  bois). La **torche** se craft (1 charbon + 1 bâton → 4), se pose au sol et
+  éclaire la nuit comme les galeries d'une flamme animée.
+- **🚪 Portes refaites** : vantail vertical extrudé comme les murs
+  (planches, pentures de fer, poignée anneau) ; ouverte, la porte devient
+  une embrasure sombre au vantail rabattu — on voit où passer.
+- **🎚️ Niveaux graphiques** : dans les paramètres, **Faible / Moyen /
+  Élevé** — Faible coupe ombres portées, lueurs et vignette (voile de nuit
+  plat) ; Moyen garde ombres et halos ; Élevé ajoute la lueur vacillante
+  des feux et la vignette.
 - **📦 Lâcher des objets** : touche `Q` pour jeter un objet de ta main,
   `Ctrl+Q` pour toute la pile — ou sors une pile de l'inventaire par-dessus
   le bord de l'écran. Les objets tombent au sol, fusionnent entre eux et
@@ -483,6 +495,14 @@ puis construis ta première cabane.
   du joueur et la lueur chaude vacillante des fours allumés.
 - [x] **Parallaxe de caméra** — léger regard anticipé, lissé, dans le sens
   du déplacement.
+- [x] **Torches & charbon** — filon de charbon dès le niveau 1 (combustible
+  30 s), torche craftable posable, source de lumière animée (nuit + grotte).
+- [x] **Portes refaites** — vantail extrudé à planches/pentures/poignée ;
+  l'état ouvert est une embrasure sombre au vantail rabattu.
+- [x] **Niveaux graphiques** — Faible / Moyen / Élevé dans les paramètres
+  (ombres portées, lueurs de nuit, vignette).
+- [x] **Effet 3D renforcé** — extrusion 12 px, dessus plus lumineux, face
+  est dégradée, occlusion au pied des murs.
 - [x] **Multijoueur (étape 6 : chat & réseau social)** — fenêtre de chat
   toujours visible (canal global + talkie-walkie de proximité en `V`),
   et téléphone (`P`) avec un réseau social partagé : comptes,
@@ -643,6 +663,9 @@ Le moteur tient 60 fps sur des PC modestes :
   au sol en O(n) via grille réutilisée.
 - **Mode performance adaptatif** : échantillonnage des frames coûteuses et
   réduction automatique des effets (DPR, ombres) sur les petits appareils.
+- **Niveaux graphiques** (`settings.graphics`) : Faible = voile de nuit plat
+  et sans ombres portées ; Moyen = ombres + halos percés ; Élevé = + lueurs
+  additives vacillantes et vignette. Le mode performance force « Faible ».
 - Les constantes vivent dans `config.js` (`PERFORMANCE`, DPR max 1.5…).
 
 ### Ce que mesure `npm run bench`

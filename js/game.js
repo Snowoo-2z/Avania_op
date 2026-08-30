@@ -535,14 +535,28 @@ export class Game {
     }
   }
 
+  // Niveau graphiques effectif : le choix de l'utilisateur, mais le mode
+  // performance (machine modeste / adaptive) force toujours « low ».
+  //  low    : ni ombres portées, ni lueurs, ni vignette (voile de nuit plat) ;
+  //  medium : ombres + nuit percée de halos, mais sans lueurs additives ;
+  //  high   : tout, y compris la lueur vacillante des feux et la vignette.
+  _gfx() {
+    if (this.performanceMode) return 'low';
+    const g = this.settings ? this.settings.graphics : 'high';
+    return g === 'low' || g === 'medium' ? g : 'high';
+  }
+
   // Particules activées ? (réglage utilisateur ; le mode performance réduit
-  // déjà leur nombre, on ne fait ici que respecter l'interrupteur.)
+  // déjà leur nombre, et le niveau « low » les coupe entièrement.)
   _particlesEnabled() {
+    if (this._gfx() === 'low') return false;
     return this.settings ? this.settings.particles !== false : true;
   }
 
-  // Vignette activée ? (réglage utilisateur ; le mode performance la coupe.)
+  // Vignette activée ? (réglage utilisateur ; le mode performance et le
+  // niveau « low » la coupent.)
   _vignetteOn() {
+    if (this._gfx() === 'low') return false;
     return this.settings ? this.settings.vignette !== false : true;
   }
 
@@ -1299,6 +1313,29 @@ export class Game {
     const veil = Math.min(0.62, 0.34 + depth * 0.035);
     ctx.fillStyle = `rgba(6,5,14,${veil})`;
     ctx.fillRect(0, 0, W, H);
+
+    // Les torches posées éclairent la galerie d'une lueur chaude et
+    // vacillante — visible même en mode performance (c'est du repérage).
+    const zt = this.camera.zoom;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const torches = this._torchPositions();
+    for (let k = 0; k < torches.length; k += 2) {
+      const x = (torches[k] - this.camera.x) * zt;
+      const y = (torches[k + 1] - this.camera.y) * zt;
+      const r = 140 * zt;
+      if (x < -r || x > W + r || y < -r || y > H + r) continue;
+      const flick = 0.8 + Math.sin(this.time * 8 + k) * 0.2;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(255,170,80,${(0.5 * flick).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(255,140,50,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
     if (this.performanceMode || !this._vignetteOn()) return;
 
     const zoom = this.camera.zoom;
@@ -1327,6 +1364,12 @@ export class Game {
   drawNight(ctx, W, H) {
     const m = this.dayNightAmount();
     if (m <= 0.02) { this.nightCanvas = null; return; }
+    // Niveau Faible : un simple voile plat, sans canvas secondaire.
+    if (this._gfx() === 'low') {
+      ctx.fillStyle = `rgba(12,16,48,${(m * 0.5).toFixed(3)})`;
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
     if (!this.nightCanvas || this.nightCanvas.width !== W || this.nightCanvas.height !== H) {
       this.nightCanvas = makeCanvas(W, H);
     }
@@ -1347,9 +1390,14 @@ export class Game {
       const tx = idx % WORLD_W, ty = (idx / WORLD_W) | 0;
       this._punchLight(nctx, sx(tx * TILE + 16), sy(ty * TILE + 14), 120 * zoom, 0.85, W, H);
     }
+    const torches = this._torchPositions();
+    for (let k = 0; k < torches.length; k += 2) {
+      this._punchLight(nctx, sx(torches[k]), sy(torches[k + 1]), 110 * zoom, 0.85, W, H);
+    }
     nctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(this.nightCanvas, 0, 0);
-    // Lueur chaude additive des fours allumés.
+    // Lueur chaude additive des fours allumés (niveau Élevé uniquement).
+    if (this._gfx() !== 'high') return;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const [idx, e] of this.furnaceData) {
@@ -1362,6 +1410,21 @@ export class Game {
       const flick = 0.85 + Math.sin(this.time * 7 + idx) * 0.15;
       const g = ctx.createRadialGradient(x, y, 0, x, y, r);
       g.addColorStop(0, `rgba(255,170,70,${(0.45 * m * flick).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(255,150,60,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Lueur des torches posées, elle aussi vacillante.
+    const torchGlow = this._torchPositions();
+    for (let k = 0; k < torchGlow.length; k += 2) {
+      const x = sx(torchGlow[k]), y = sy(torchGlow[k + 1]);
+      const r = 100 * zoom;
+      if (x < -r || x > W + r || y < -r || y > H + r) continue;
+      const flick = 0.8 + Math.sin(this.time * 8 + k) * 0.2;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(255,180,80,${(0.4 * m * flick).toFixed(3)})`);
       g.addColorStop(1, 'rgba(255,150,60,0)');
       ctx.fillStyle = g;
       ctx.beginPath();
@@ -2502,11 +2565,60 @@ export class Game {
     return cached || this.buildFloorChunk(cx, cy);
   }
 
+  // Positions monde (px) des torches posées, via l'index spatial des blocs
+  // posés : sert à percer le voile de nuit et à éclairer la grotte.
+  _torchPositions() {
+    const out = [];
+    const blocks = this.world.blocks;
+    for (const list of this.placedByChunk.values()) {
+      for (let k = 0; k < list.length; k++) {
+        const i = list[k];
+        if (blocks[i] !== 'torch') continue;
+        const tx = i % WORLD_W;
+        const ty = (i / WORLD_W) | 0;
+        out.push(tx * TILE + TILE / 2, ty * TILE + TILE / 2 - 6);
+      }
+    }
+    return out;
+  }
+
+  // Torche posée : sprite bois/charbon + flamme animée qui vacille.
+  // La phase dépend de la position pour que deux torches ne battent pas
+  // la mesure ensemble.
+  drawTorch(ctx, tx, ty) {
+    const spr = getObjectSprite('torch');
+    const bx = tx * TILE + TILE / 2;
+    const by = ty * TILE + TILE - 2;
+    if (spr) ctx.drawImage(spr.canvas, bx - spr.anchorX, by - spr.anchorY);
+    const fx = bx;
+    const fy = by - 19;
+    const fl = 0.75 + Math.sin(this.time * 9 + tx * 7 + ty * 13) * 0.25;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const r = 9 + 3 * fl;
+    const g = ctx.createRadialGradient(fx, fy, 0, fx, fy, r);
+    g.addColorStop(0, 'rgba(255,190,90,0.55)');
+    g.addColorStop(1, 'rgba(255,120,40,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(fx, fy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // Cœur de flamme.
+    ctx.fillStyle = '#e8632c';
+    ctx.fillRect(fx - 2, fy - 4 - fl * 2, 4, 6);
+    ctx.fillStyle = '#f7a13c';
+    ctx.fillRect(fx - 1.5, fy - 3 - fl * 2, 3, 4);
+    ctx.fillStyle = '#ffd979';
+    ctx.fillRect(fx - 0.5, fy - 2 - fl * 2, 2, 2);
+  }
+
   // Ombres portées directionnelles (lumière venant du nord-ouest) : chaque
   // bloc solide posé projette une pénombre au sol vers le sud-est. Passe
   // dédiée AVANT le tri en profondeur, pour que toutes les ombres restent
   // sous les sprites (un mur ne vient jamais mordre l'ombre de son voisin).
   drawPlacedShadows(ctx, minTx, minTy, maxTx, maxTy) {
+    if (this._gfx() === 'low') return; // niveau Faible : pas d'ombres portées
     const ct = this.chunkTiles;
     const blocks = this.world.blocks;
     const chunkT = Math.floor(minTy / ct);
@@ -2773,6 +2885,7 @@ export class Game {
     const b1 = blocks[i];
     if (b1) {
       if (CROPS.includes(b1)) return true; // les pousses de blé posées
+      if (b1 === 'torch') return true;     // les torches posées
       const kind = BLOCK_DEFS[b1]?.kind;
       if (kind === 'block' || kind === 'door') return true;
     }
@@ -2904,12 +3017,13 @@ export class Game {
           if (block) {
             const def = BLOCK_DEFS[block];
             const isCrop = CROPS.includes(block);
-            if (def.kind === 'block' || def.kind === 'door' || isCrop) {
+            const isTorch = block === 'torch';
+            if (def.kind === 'block' || def.kind === 'door' || isCrop || isTorch) {
               const d = this._takeBlockDrawable();
               d.tx = tx;
               d.ty = ty;
               d.block = block;
-              d.kind = isCrop ? 'crop' : def.kind;
+              d.kind = isCrop ? 'crop' : (isTorch ? 'torch' : def.kind);
               d.layer = 1;
               d.sortY = sortY;
               drawables.push(d);
@@ -3003,7 +3117,7 @@ export class Game {
             ctx.scale(-1, 1);
             ctx.translate(-(tx * TILE + TILE / 2), -(ty * TILE + TILE / 2));
           }
-          ctx.drawImage(getDoorCanvas(isOpen), tx * TILE, ty * TILE);
+          ctx.drawImage(getDoorCanvas(isOpen), tx * TILE, ty * TILE - BLOCK_EXTRUDE);
           ctx.restore();
         } else if (d.kind === 'crop') {
           // Pousse de blé : petit sprite ancré au sol de la tuile.
@@ -3013,6 +3127,8 @@ export class Game {
               tx * TILE + TILE / 2 - spr.anchorX,
               ty * TILE + TILE - 6 - spr.anchorY);
           }
+        } else if (d.kind === 'torch') {
+          this.drawTorch(ctx, tx, ty);
         } else if (block === 'furnace') {
           const entry = this.furnaceData.get(this.world.idx(tx, ty));
           ctx.drawImage(getFurnaceCanvas(Boolean(entry && entry.fuelTime > 0)), tx * TILE, ty * TILE);
@@ -3099,7 +3215,7 @@ export class Game {
     o.swing = Math.sin(this.swingPhase);
     o.time = this.time;
     o.pop = this.equipPop;
-    o.shadow = !this.performanceMode;
+    o.shadow = this._gfx() !== 'low';
     return o;
   }
 
@@ -3120,7 +3236,7 @@ export class Game {
     o.walkPhase = player.moving ? player.walkPhase : 0;
     // Le joueur reste lisible, mais nettement plus petit que l'arbre :
     // une tuile représente désormais un vrai espace autour de lui.
-    o.shadow = !this.performanceMode;
+    o.shadow = this._gfx() !== 'low';
     o.pixelDensity = this.camera.zoom;
     drawCharacter(ctx, player.appearance, player.x, player.y, o);
 

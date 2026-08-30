@@ -30,6 +30,7 @@ export const FUEL = {
   wood: 15,
   plank: 15,
   stick: 5,
+  coal: 30, // le charbon brûle deux fois plus longtemps que le bois
 };
 
 export function isFuel(id) {

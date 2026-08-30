@@ -106,6 +106,12 @@ export const BLOCK_DEFS = {
     id: 'caveDiamond', label: 'Filon de diamant', kind: 'object', solid: true, breakable: true,
     drop: 'diamond', dropN: 1, color: '#3fbcd4', requiredTool: 'pickaxe', minTier: 'stone', breakTime: 4.0,
   },
+  // Le charbon : le filon le plus commun de la grotte, présent dès le
+  // niveau 1 (js/cave.js). Sert de combustible et à fabriquer des torches.
+  caveCoal: {
+    id: 'caveCoal', label: 'Filon de charbon', kind: 'object', solid: true, breakable: true,
+    drop: 'coal', dropN: 1, color: '#2e2e36', requiredTool: 'pickaxe', breakTime: 2.4,
+  },
 
   // ------------------------------------------------------------
   //  Agriculture : les pousses de blé (4 stades). Ce sont des OBJETS
@@ -120,6 +126,10 @@ export const BLOCK_DEFS = {
     drop: 'seeds', dropN: 1, color: '#b8b44a', requiredTool: null, breakTime: 0.15 },
   wheat3: { id: 'wheat3', label: 'Blé (mûr)', kind: 'object', solid: false, breakable: true,
     drop: 'wheat', dropN: 1, color: '#d8c26a', requiredTool: null, breakTime: 0.15 },
+  // Torche : objet non solide posé au sol, source de lumière (nuit et
+  // grotte). Rendue par l'index des blocs posés avec une flamme animée.
+  torch: { id: 'torch', label: 'Torche', kind: 'object', solid: false, breakable: true,
+    drop: 'torch', dropN: 1, color: '#e8a53c', requiredTool: null, breakTime: 0.1 },
   // L'entrée de la grotte, à la surface : un arche sombre. On y entre
   // avec la touche d'interaction — elle ne se casse pas.
   caveMouth: {
@@ -162,6 +172,8 @@ export const ITEM_DEFS = {
   dirt:  { id: 'dirt',  label: 'Terre',     color: '#8a6a46', icon: '▪',  type: 'resource', maxStack: 64, place: 'dirtBlock' },
   rawIron: { id: 'rawIron', label: 'Fer brut', color: '#b0875f', type: 'resource', maxStack: 64 },
   diamond: { id: 'diamond', label: 'Diamant', color: '#59d8e8', type: 'resource', maxStack: 64 },
+  coal: { id: 'coal', label: 'Charbon', color: '#2e2e36', type: 'resource', maxStack: 64 },
+  torch: { id: 'torch', label: 'Torche', color: '#e8a53c', type: 'material', maxStack: 64, place: 'torch' },
   // Agriculture : graines (à semer), blé (récolte), pain (nourriture).
   seeds: { id: 'seeds', label: 'Graines', color: '#9a8a4a', type: 'resource', maxStack: 64, place: 'wheat0' },
   wheat: { id: 'wheat', label: 'Blé', color: '#d8c26a', type: 'resource', maxStack: 64 },
@@ -491,6 +503,10 @@ export const RECIPES = [
   {
     id: 'furnace', label: 'Four', out: 'furnace', outN: 1,
     inputs: { stone: 8 }, pattern: [['stone', 'stone', 'stone'], ['stone', null, 'stone'], ['stone', 'stone', 'stone']], category: 'construction',
+  },
+  {
+    id: 'torch', label: 'Torche', out: 'torch', outN: 4,
+    inputs: { coal: 1, stick: 1 }, pattern: [['coal'], ['stick']], category: 'construction',
   },
   {
     id: 'woolBlock', label: 'Bloc de laine', out: 'woolBlock', outN: 1,

@@ -33,6 +33,9 @@ export const CAVE = {
   // c'est riche — c'est la récompense du risque).
   stoneDensity: (depth) => 0.030 + Math.min(depth, 6) * 0.006,
   ironDensity: (depth) => 0.010 + Math.min(depth, 6) * 0.006,
+  // Le charbon est le minerai le plus commun : présent dès le niveau 1,
+  // un peu plus abondant que le fer (c'est le combustible de base).
+  coalDensity: (depth) => 0.014 + Math.min(depth, 6) * 0.005,
   // Le diamant n'existe JAMAIS au niveau 1 : il faut descendre à la
   // profondeur 2 ou plus. Et il est beaucoup plus rare que le fer
   // (environ un quart de sa densité) — c'est la récompense du fond.
@@ -278,9 +281,10 @@ export function generateCaveLevel(world) {
     }
   }
 
-  // --- 6) les ressources : pierre, fer, et diamant (profondeur 2+) ---
+  // --- 6) les ressources : charbon, pierre, fer, et diamant (prof. 2+) ---
   const stoneP = CAVE.stoneDensity(depth);
   const ironP = CAVE.ironDensity(depth);
+  const coalP = CAVE.coalDensity(depth);
   const diamondP = CAVE.diamondDensity(depth);
   for (let y = M; y < h - M; y++) {
     for (let x = M; x < w - M; x++) {
@@ -291,7 +295,8 @@ export function generateCaveLevel(world) {
       const r = rng();
       if (r < diamondP) blocks[i] = 'caveDiamond';
       else if (r < diamondP + ironP) blocks[i] = 'caveIron';
-      else if (r < diamondP + ironP + stoneP) blocks[i] = 'caveStone';
+      else if (r < diamondP + ironP + coalP) blocks[i] = 'caveCoal';
+      else if (r < diamondP + ironP + coalP + stoneP) blocks[i] = 'caveStone';
     }
   }
 
