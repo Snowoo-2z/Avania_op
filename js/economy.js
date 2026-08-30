@@ -26,6 +26,12 @@
 //  sauvegardé d'une session à l'autre (le monde non plus), donc l'argent
 //  non plus. La somme de bienvenue est remise à CHAQUE arrivée sur l'île
 //  (voir shouldGrant) au lieu d'une seule fois pour la vie du navigateur.
+//
+//  Cette règle est appliquée par `grantStartingFunds()`, ici, et NON par
+//  la cinématique d'arrivée : la scène du représentant se joue une seule
+//  fois par navigateur (drapeau localStorage) alors que l'argent, lui, est
+//  dû à chaque arrivée. Un joueur qui revient sans la scène toucherait un
+//  inventaire vide — voir js/main.js (le filet) et js/intro.js (la scène).
 // ============================================================
 
 // Unité monétaire. Pas de décimales : les prix sont des entiers, ce
@@ -70,6 +76,11 @@ export class Wallet {
     this.history = [];       // derniers mouvements (10 max, pour l'UI)
     this._listeners = [];
     this._loaded = false;
+    // Une bourse = une arrivée sur l'île. Ce marqueur empêche le double
+    // versement (cinématique + filet de js/main.js) SANS jamais refuser la
+    // somme à un joueur qui revient : il vit en mémoire, pas dans
+    // localStorage.
+    this._grantIssued = false;
     if (this.allowStorage) this.load();
   }
 
@@ -211,6 +222,30 @@ export class Wallet {
     return this.store ? true : !this.hasReceivedGrant();
   }
 
+  // ------------------------------------------------------------
+  //  La somme de bienvenue, remise à l'arrivée sur l'île
+  //
+  //  Idempotente par construction : UN versement par arrivée, peu importe
+  //  qui le demande — la cinématique du représentant (js/intro.js) ou le
+  //  filet de js/main.js pour ceux qui arrivent sans scène. Retourne le
+  //  montant réellement entré : 0 si la somme a déjà été remise cette
+  //  arrivée, si les cases sont pleines, ou si le mode compteur l'a déjà
+  //  versée une fois pour toutes.
+  //
+  //  Choix assumé : aucun re-versement à la mort. Un respawn ramène au
+  //  spawn mais conserve l'inventaire — y compris les pièces — donc
+  //  repayer là serait une pompe à écus, pas une dotation.
+  // ------------------------------------------------------------
+  grantStartingFunds() {
+    if (this._grantIssued) return 0;
+    this._grantIssued = true;
+    if (!this.shouldGrant()) return 0;
+    const added = this.add(CURRENCY.startingGrant, 'Somme de bienvenue');
+    // Mode compteur : la somme n'est due qu'une fois par navigateur.
+    if (!this.store) this.markGrantReceived();
+    return added;
+  }
+
   // Le joueur a-t-il déjà reçu sa somme de départ ? (empêche de la
   // redonner à chaque partie — l'argent se gagne, il ne pleut pas)
   hasReceivedGrant() {
@@ -227,6 +262,8 @@ export class Wallet {
 
   reset() {
     this.money = 0; // retire aussi les pièces de l'inventaire, le cas échéant
+    // Une nouvelle partie est une nouvelle arrivée : la somme est de nouveau due.
+    this._grantIssued = false;
     this.day = 1;
     this.totalEarned = 0;
     this.totalSpent = 0;

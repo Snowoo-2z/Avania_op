@@ -301,6 +301,22 @@ assert(!!coinStack && coinStack.count === 150,
   `les écus forment une pile d'objets (${coinStack ? coinStack.count : 'aucune'} pièce(s))`);
 assert(game.inventory.count('coin') === 150, 'et l\'inventaire les compte');
 
+// --- Et pour le joueur QUI REVIENT ? ---------------------------------------
+// La scène est maintenant marquée « vue » dans ce navigateur : elle ne se
+// rejouera plus. Or l'argent est une pile d'objets, morte avec l'inventaire :
+// si le versement dépendait de la cinématique — c'était le bug — tout joueur
+// de retour posait un pied sur l'île avec 0 écu et de quoi n'acheter chez
+// aucun marchand. La règle vit donc dans l'économie (grantStartingFunds) et
+// js/main.js la paie à l'arrivée quand la scène ne vient pas.
+const { IntroSequence } = await import('../js/intro.js');
+const purse = window.__wallet;
+assert(IntroSequence.alreadySeen() === true, 'la cinématique est marquée « vue » : plus de scène pour ce joueur');
+assert(purse.grantStartingFunds() === 0, 'cette arrivée est déjà payée : aucun doublon possible');
+purse.reset(); // = un joueur qui arrive : la bourse et l'inventaire repartent de zéro
+assert(game.inventory.count('coin') === 0, 'l\'arrivant n\'a pas une pièce en poche avant le versement');
+assert(purse.grantStartingFunds() === 150, 'l\'arrivée suivante est payée sans la moindre cinématique');
+assert(game.inventory.count('coin') === 150, 'les écus vont dans l\'inventaire, pas dans un compteur');
+
 console.log('\n▶ L\'entrée de la grotte');
 // On se place sur le parvis, juste devant l'arche.
 game.player.x = 92 * 32 + 16;
