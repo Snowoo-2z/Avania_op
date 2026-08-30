@@ -325,6 +325,9 @@ assert(toolDamage(ITEM_DEFS.wooden_sword) === 3, 'épée bois : 3');
 assert(toolDamage(ITEM_DEFS.stone_sword) === 4, 'épée pierre : 4');
 assert(toolDamage(ITEM_DEFS.iron_sword) === 5, 'épée fer : 5');
 assert(toolDamage(ITEM_DEFS.diamond_sword) === 7, 'épée diamant : 7 (le maximum)');
+assert(toolDamage(ITEM_DEFS.wooden_axe) === 2, 'hache bois : 2 (plus que les mains nues)');
+assert(toolDamage(ITEM_DEFS.iron_axe) === 4, 'hache fer : 4');
+assert(toolDamage(ITEM_DEFS.diamond_axe) === 6, 'hache diamant : 6');
 assert(toolDamage(ITEM_DEFS.diamond_pickaxe) === 1, 'une pioche, même en diamant, frappe à 1');
 // Craft bout en bout : 3 gemmes + 2 bâtons → pioche en diamant.
 const dInv = new Inventory();

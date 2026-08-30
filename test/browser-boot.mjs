@@ -643,6 +643,10 @@ console.log('\n▶ Multijoueur : animaux partagés (étape 5)');
   before = target.hp;
   game.attackMob(target);
   assert(before - target.hp === 7, `l'épée en diamant inflige 7 dégâts (${before} → ${target.hp})`);
+  equip('diamond_axe');
+  before = target.hp;
+  game.attackMob(target);
+  assert(before - target.hp === 6, `la hache en diamant inflige 6 dégâts (${before} → ${target.hp})`);
   inv.setSlot(swordSlot, prevStack || null);
   inv.select(prevSel);
 

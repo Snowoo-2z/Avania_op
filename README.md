@@ -55,8 +55,10 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   que le fer, mais le palier **diamant** mine plus vite et tient plus
   longtemps (520 d'usure contre 250).
 - **⚔️ Dégâts selon l'outil** : une épée tranche d'autant plus fort que son
-  matériau est noble — bois 3, pierre 4, fer 5, **diamant 7** (`toolDamage`,
-  js/blocks.js). Les autres outils et les mains nues frappent à 1.
+  matériau est noble — bois 3, pierre 4, fer 5, **diamant 7** — et la hache,
+  comme dans Minecraft, cogne elle aussi (bois 2 → diamant 6). Pioche, pelle
+  et mains nues frappent à 1 (`toolDamage`, js/blocks.js). Épée et hache
+  s'usent à chaque coup porté.
 - **📦 Lâcher des objets** : touche `Q` pour jeter un objet de ta main,
   `Ctrl+Q` pour toute la pile — ou sors une pile de l'inventaire par-dessus
   le bord de l'écran. Les objets tombent au sol, fusionnent entre eux et

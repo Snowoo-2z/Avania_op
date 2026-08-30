@@ -1332,7 +1332,8 @@ export class Game {
     mob.fleeT = 1.7;
     this.spawnHitParticles(mob.x, mob.y);
 
-    if (sword) {
+    // Une lame ou une hache utilisée comme arme s'use à chaque coup.
+    if (sword || def?.toolType === 'axe') {
       const result = this.inventory.damageSelectedTool(1);
       if (result.broken) this.notify(`${def.label} s'est cassé.`);
     }

@@ -303,12 +303,15 @@ export function blockMinTierIndex(blockId) {
 }
 
 // Dégâts portés à une créature selon l'outil en main.
-// Une épée tranche d'autant plus fort que son matériau est noble ;
-// tout le reste (autre outil, mains nues) frappe à 1, comme avant.
+// Une épée tranche d'autant plus fort que son matériau est noble ; la
+// hache, comme dans Minecraft, cogne elle aussi plus fort que les mains
+// nues (un peu moins que l'épée). Tout le reste frappe à 1.
 const SWORD_DAMAGE = { wood: 3, stone: 4, iron: 5, diamond: 7 };
+const AXE_DAMAGE = { wood: 2, stone: 3, iron: 4, diamond: 6 };
 export function toolDamage(def) {
   if (!def || def.type !== 'tool') return 1;
   if (def.toolType === 'sword') return SWORD_DAMAGE[def.tier] || 3;
+  if (def.toolType === 'axe') return AXE_DAMAGE[def.tier] || 2;
   return 1;
 }
 
