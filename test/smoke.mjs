@@ -655,6 +655,46 @@ const fullBag = new Wallet({
 assert(fullBag.add(50, 'trop tard') === 0, 'un inventaire plein ne peut pas recevoir d\'écus');
 assert(fullBag.money === 0, 'et le solde reste à zéro plutôt que d\'inventer de l\'argent');
 
+// --- LE VERSEMENT D'ARRIVÉE : une règle, pas un lot de consolation ---
+// Le versement était autrefois un effet de bord de la cinématique du
+// représentant, qui ne se joue qu'UNE fois par navigateur. Résultat : le
+// joueur de retour spawnait avec 0 écu — la somme doit donc être payée à
+// chaque arrivée par `grantStartingFunds()`, qui tient le verrou.
+console.log('▶ Somme de bienvenue : une paie par arrivée, jamais deux');
+bag.reset();                                   // un joueur qui arrive : bourse et cases vides
+assert(bag.grantStartingFunds() === CURRENCY.startingGrant,
+  'l\'arrivée verse la somme de bienvenue');
+assert(purseInv.count(MONEY_ITEM) === CURRENCY.startingGrant,
+  'la somme entre bien dans les cases de l\'inventaire');
+assert(bag.grantStartingFunds() === 0,
+  'la même arrivée ne repaie pas (cinématique + filet du point d\'entrée)');
+assert(purseInv.count(MONEY_ITEM) === CURRENCY.startingGrant,
+  'et la case ne déborde pas d\'un second versement');
+assert(bag.totalEarned === CURRENCY.startingGrant,
+  'les totaux ne comptent qu\'un seul versement');
+
+// Le cas qui cassait : une nouvelle bourse (nouvelle arrivée) sur un
+// inventaire reparti de zéro, avec la cinématique déjà vue derrière elle.
+purseInv.remove(MONEY_ITEM, CURRENCY.startingGrant);
+const nextArrival = new Wallet({ allowStorage: false, store });
+assert(nextArrival.grantStartingFunds() === CURRENCY.startingGrant,
+  'à l\'arrivée suivante, l\'inventaire vide est de nouveau doté');
+assert(purseInv.slots.filter((s) => s && s.id === MONEY_ITEM).length === 1,
+  'toujours sur une seule case');
+
+// Pas d'argent inventé : si aucune case n'est libre, la somme n'entre pas.
+assert(fullBag.grantStartingFunds() === 0,
+  'inventaire plein au spawn : rien n\'est versé plutôt que d\'être perdu');
+assert(fullBag.money === 0, 'et le solde ne s\'invente pas');
+
+// Mode compteur (sans inventaire, les tests de logique pure) : la somme
+// reste unique pour la vie du navigateur, comme avant.
+const counterPurse = new Wallet({ allowStorage: false });
+assert(counterPurse.grantStartingFunds() === CURRENCY.startingGrant,
+  'le mode compteur reçoit aussi sa somme de bienvenue');
+assert(counterPurse.grantStartingFunds() === 0,
+  'et ne la reçoit pas deux fois dans la même partie');
+
 // ============================================================
 //  LA GROTTE
 // ============================================================

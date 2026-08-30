@@ -232,22 +232,20 @@ export class IntroSequence {
   _grant() {
     if (this.granted || !this.wallet) return;
     this.granted = true;
-    // La somme n'est versée qu'une seule fois, même si la cinématique
-    // est rejouée : l'argent se gagne, il ne pleut pas. (Quand la bourse
-    // est adossée à l'inventaire, `shouldGrant()` répond vrai à chaque
-    // arrivée sur l'île — voir js/economy.js : l'argent d'une session
-    // précédente a disparu avec l'inventaire.)
-    if (this.wallet.shouldGrant()) {
-      const added = this.wallet.add(CURRENCY.startingGrant, 'Somme de bienvenue');
-      this.wallet.markGrantReceived();
-      if (this.game.notify) {
-        this.game.notify(added === CURRENCY.startingGrant
-          ? `+ ${added} ${CURRENCY.plural.toLowerCase()} remis par ${GENTLEMAN_NAME}`
-          : `Inventaire plein : ${added} ${CURRENCY.plural.toLowerCase()} seulement sur ${CURRENCY.startingGrant}.`);
-      }
-      return;
-    }
-    if (this.game.notify) {
+    // La RÈGLE du versement vit dans l'économie (Wallet.grantStartingFunds,
+    // js/economy.js) : la scène se contente de la déclencher à la réplique
+    // qui tend l'argent. La méthode ne paie qu'une fois PAR ARRIVÉE, donc si
+    // js/main.js a déjà remis la somme — ou si l'inventaire est plein — elle
+    // répond 0 et rien n'est doublé. Le joueur de retour, lui, n'attend pas
+    // une cinématique qui ne se rejoue plus : ses écus l'attendent dans sa
+    // barre rapide dès le spawn.
+    const added = this.wallet.grantStartingFunds();
+    if (!this.game.notify) return;
+    if (added === CURRENCY.startingGrant) {
+      this.game.notify(`+ ${added} ${CURRENCY.plural.toLowerCase()} remis par ${GENTLEMAN_NAME}`);
+    } else if (added > 0) {
+      this.game.notify(`Inventaire plein : ${added} ${CURRENCY.plural.toLowerCase()} seulement sur ${CURRENCY.startingGrant}.`);
+    } else {
       this.game.notify(`${GENTLEMAN_NAME} vous salue.`);
     }
   }

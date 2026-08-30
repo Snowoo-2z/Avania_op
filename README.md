@@ -139,6 +139,12 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   somme de bienvenue est remise à chaque arrivée sur l'île, l'inventaire
   (et l'argent avec) ne survivant pas à la session. La pile de pièces
   apparaît directement dans la barre rapide.
+  Le versement est une **règle d'arrivée** (`Wallet.grantStartingFunds`,
+  appelée par `js/main.js`) et non un effet de bord de la cinématique :
+  celle-ci ne se joue qu'une fois par navigateur, et un joueur qui revient
+  sans croiser le représentant toucherait ses 150 écus quand même. La
+  méthode ne paie qu'une fois par arrivée — la mort, qui conserve
+  l'inventaire, ne la relance pas.
   La profondeur courante et la profondeur autorisée par l'équipement restent
   affichées en haut à droite.
 - **⛰️ La grotte** — une arche taillée dans la falaise, à un endroit fixe de

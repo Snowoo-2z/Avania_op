@@ -503,6 +503,28 @@ async function boot() {
   };
   const wallet = new Wallet({ store: moneyStore });
   window.__wallet = wallet;
+
+  // ------------------------------------------------------------
+  //  La somme de bienvenue est une RÈGLE D'ARRIVÉE, pas un accessoire de
+  //  la cinématique. Le représentant ne se montre qu'une fois par
+  //  navigateur (drapeau localStorage `avania.intro.v1`), alors que son
+  //  argent, lui, est une pile d'objets dans l'inventaire — donc effacée à
+  //  chaque session. Sans ce filet, un joueur qui revient prend le spawn
+  //  avec 0 écu et de quoi n'acheter chez aucun marchand.
+  //
+  //  `grantStartingFunds()` (js/economy.js) est idempotente par arrivée :
+  //  quand la scène doit se jouer, c'est elle qui paie et cet appel ne
+  //  double jamais la somme. En revanche la mort NE re-paie pas — un
+  //  respawn conserve l'inventaire, donc les pièces avec.
+  // ------------------------------------------------------------
+  function grantAtArrival() {
+    const added = wallet.grantStartingFunds();
+    if (added > 0 && game.notify) {
+      game.notify(`Somme de bienvenue : + ${added} ${CURRENCY.plural.toLowerCase()} dans l'inventaire.`);
+    }
+    return added;
+  }
+
   const walletHUD = new WalletHUD(document.getElementById('hud-right'));
   walletHUD.show();
   walletHUD.setGear(game.gear);
@@ -717,6 +739,11 @@ async function boot() {
   });
   intro.onFinish = () => {
     syncPause();
+    // Filet : la scène appelle elle-même Wallet.grantStartingFunds() à la
+    // réplique qui tend l'argent. Si quelque chose l'en a empêchée (scène
+    // interrompue avant cette réplique), on solde la dette à la sortie de
+    // la cinématique — la méthode ne paie qu'une fois par arrivée.
+    grantAtArrival();
     // Pas de compteur d'argent à rafraîchir : la somme remise par le
     // représentant est déjà visible dans la barre rapide (pile de pièces).
   };
@@ -743,6 +770,12 @@ async function boot() {
       document.getElementById('tutorial-start').onclick = closeTutorial;
       document.getElementById('tutorial-close').onclick = closeTutorial;
     }
+  } else {
+    // Le joueur a déjà rencontré le représentant dans ce navigateur : la
+    // scène ne se rejoue PAS, mais la somme de bienvenue lui est quand même
+    // due à cette arrivée (l'argent de la session précédente est parti avec
+    // l'inventaire). C'est ici qu'il récupère ses 150 écus au spawn.
+    grantAtArrival();
   }
 
 
