@@ -2349,7 +2349,7 @@ export class Game {
       }
       // Un étal neuf : propriétaire = poseur, stock vide, prix à définir.
       if (ITEM_DEFS[item]?.place?.startsWith('seller')) {
-        const entry = this.getSellerEntry(this.targetTx, this.targetTy);
+        const entry = this.getSellerEntry(this.targetTx, this.targetTy, true);
         if (this.uiCallbacks.onSellerChange) {
           this.uiCallbacks.onSellerChange(this.targetTx, this.targetTy, entry);
         }
@@ -2550,9 +2550,11 @@ export class Game {
     const key = ty * WORLD_W + tx;
     if (state === null) {
       map.delete(key);
-      return;
+    } else {
+      state._placeholder = false;
+      map.set(key, state);
     }
-    map.set(key, state);
+    this._notifySellerUpdated(tx, ty);
   }
 
   // Resynchronisation complète des étals d'une zone (connexion/arrivée).
@@ -2562,31 +2564,60 @@ export class Game {
     map.clear();
     for (const s of sellers) {
       if (!s || typeof s.tx !== 'number' || typeof s.ty !== 'number') continue;
+      if (s.state) s.state._placeholder = false;
       map.set(s.ty * WORLD_W + s.tx, s.state);
     }
   }
 
-  // Entrée locale d'un étal (créée à la pose ou à la première ouverture) :
-  // le poseur du bloc en est le propriétaire.
-  getSellerEntry(tx, ty) {
+  // Le panneau d'étal ouvert se réaffiche tout seul quand l'offre d'un
+  // autre joueur arrive (dépôt, prix, achat) : l'acheteur voit l'offre
+  // devenir cliquable sans devoir fermer/rouvrir.
+  _notifySellerUpdated(tx, ty) {
+    const cb = this.uiCallbacks && this.uiCallbacks.onSellerUpdated;
+    if (cb) {
+      try { cb(tx, ty); } catch { /* un UI cassé ne gèle pas le réseau */ }
+    }
+  }
+
+  // Entrée locale d'un étal (créée à la pose ou à la première ouverture).
+  // create=true => le joueur local vient de POSER le bloc : il en est le
+  // propriétaire. En lecture seule (create absent), un étal encore
+  // inconnu localement est un étal D'AUTRUI pas encore synchronisé : on
+  // renvoie une coquille en lecture seule propriétaire = personne, pour
+  // qu'un acheteur ne puisse pas se déclarer propriétaire en l'ouvrant
+  // (sinon il voyait les boutons « Déposer / Prix » au lieu de
+  // « Acheter » — et pire, il pouvait vider l'étal).
+  getSellerEntry(tx, ty, create = false) {
     const i = this.world.idx(tx, ty);
     let entry = this.sellerData.get(i);
     if (!entry) {
       const block = this.world.blocks[i];
       const tier = BLOCK_DEFS[block]?.sellerTier || 1;
+      const me = this.uiCallbacks.getOwnerId ? this.uiCallbacks.getOwnerId() : -1;
       entry = {
         tier,
-        owner: this.uiCallbacks.getOwnerId ? this.uiCallbacks.getOwnerId() : -1,
+        owner: create ? me : -2,
         item: null, stock: 0, price: 0, till: 0,
+        _placeholder: !create,
       };
-      this.sellerData.set(i, entry);
+      // On n'enregistre que les vrais étals (ceux qu'on possède) : la
+      // coquille d'autrui ne doit pas polluer le journal local ni être
+      // rediffusée comme si on en était le vendeur.
+      if (create) this.sellerData.set(i, entry);
     }
     return entry;
   }
 
   // Modifie un étal local puis annonce l'état complet à la zone.
   updateSeller(tx, ty, mutate) {
-    const entry = this.getSellerEntry(tx, ty);
+    const i = this.world.idx(tx, ty);
+    // Un étal inconnu localement (jamais reçu du serveur, pas posé par
+    // nous) n'a PAS d'entrée dans le journal : on ne fabrique surtout
+    // pas une coquille qu'on diffuserait — elle écraserait l'état réel
+    // du vendeur chez tous les joueurs. getSellerEntry(..., create=true)
+    // est réservé à la pose par le joueur local.
+    const entry = this.sellerData.get(i);
+    if (!entry) return null;
     mutate(entry);
     entry.stock = Math.max(0, Math.min(9999, entry.stock | 0));
     entry.price = Math.max(0, Math.min(99999, entry.price | 0));
@@ -2952,6 +2983,56 @@ export class Game {
     for (let l = 0; l < lines.length; l++) {
       ctx.fillText(lines[l], left, top + l * 4);
     }
+    ctx.restore();
+  }
+
+  // Étiquette flottante au-dessus d'un étal : l'offre est visible et
+  // lisible DANS LE MONDE, sans ouvrir le panneau — un marchand qui a
+  // déposé des objets et fixé un prix signale son offre de loin ; un étal
+  // vide n'affiche rien (pas de fausse promesse d'achat).
+  drawSellerLabel(ctx, tx, ty) {
+    const entry = this.sellerData.get(this.world.idx(tx, ty));
+    if (!entry || !entry.item || entry.stock <= 0) return;
+    const def = ITEM_DEFS[entry.item];
+    const label = def ? def.label : String(entry.item);
+    // Un prix de 0 = le vendeur n'a rien fixé : on n'annonce pas d'offre.
+    const price = entry.price > 0 ? `${entry.price} é` : 'prix ?';
+    const cx = tx * TILE + TILE / 2;
+    const by = ty * TILE;
+    ctx.save();
+    ctx.font = 'bold 7px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    const nameW = ctx.measureText(label).width;
+    const priceW = ctx.measureText(price).width;
+    const w = Math.max(nameW, priceW) + 8;
+    const h = 17;
+    const top = by - 30;
+    // Pastille fond foncé + liseré clair, façon étiquette de prix.
+    ctx.fillStyle = 'rgba(30,22,10,0.85)';
+    ctx.strokeStyle = 'rgba(240,214,150,0.9)';
+    ctx.lineWidth = 1;
+    const rx = cx - w / 2;
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(rx, top, w, h, 3);
+    } else {
+      ctx.rect(rx, top, w, h);
+    }
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#f3e2b8';
+    ctx.fillText(label.length > 16 ? label.slice(0, 15) + '…' : label, cx, top + 8);
+    ctx.fillStyle = entry.price > 0 ? '#ffd36b' : '#c9b489';
+    ctx.fillText(price, cx, top + 16);
+    // Petit fanion pointant l'étal.
+    ctx.fillStyle = 'rgba(30,22,10,0.85)';
+    ctx.beginPath();
+    ctx.moveTo(cx - 2, top + h);
+    ctx.lineTo(cx + 2, top + h);
+    ctx.lineTo(cx, top + h + 3);
+    ctx.closePath();
+    ctx.fill();
     ctx.restore();
   }
 
@@ -3484,6 +3565,7 @@ export class Game {
               tx * TILE + TILE / 2 - spr.anchorX,
               ty * TILE + TILE - 2 - spr.anchorY);
           }
+          this.drawSellerLabel(ctx, tx, ty);
         } else if (block === 'furnace') {
           const entry = this.furnaceData.get(this.world.idx(tx, ty));
           ctx.drawImage(getFurnaceCanvas(Boolean(entry && entry.fuelTime > 0)), tx * TILE, ty * TILE);

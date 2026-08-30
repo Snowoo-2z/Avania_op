@@ -72,6 +72,15 @@ const LEXICON = {
   ],
   leave: ['au revoir', 'a bientot', 'salut ', 'je pars', 'laisse tomber', 'oubliez', 'oublie', 'ciao', 'bonne journee'],
   discount: ['reduction', 'remise', 'geste', 'un effort', 'moins cher', 'baisser', 'baisse', 'rabais', 'prix d ami', 'cadeau'],
+  // « C'est combien ? » — le joueur demande le prix de l'article en
+  // discussion. Sans cette intention, le marchand partait dans ses
+  // répliques d'ambiance et NE REPROPOSAIT PAS l'offre : le bouton
+  // d'achat disparaissait alors qu'on parlait chiffons.
+  askPrice: [
+    'combien', 'quel prix', 'prix', 'ca coute', 'ca fait combien', 'c est combien',
+    'a combien', 'tarif', 'combien ca', 'le prix', 'ca vaut combien', 'ca vaut',
+    'me le fais', 'me le fait',
+  ],
 };
 
 function hasIntent(text, key) {
@@ -272,13 +281,24 @@ export function merchantReply(state, briefing, message, defs = {}) {
 
   const out = [];
 
+  // Intention « j'achète » calculée EN TÊTE : un client qui accepte
+  // l'offre en cours doit conclure MÊME si ce message vient d'épuiser
+  // la dernière patience. Avant ça, « d'accord je prends » tombait dans
+  // le /out et l'accord n'affichait jamais le bouton d'achat —
+  // « ils tombent d'accord mais l'offre n'arrive jamais ».
+  const wantsBuyEarly = hasIntent(text, 'buy');
+  const closingDeal = wantsBuyEarly
+    && !insulted && state.discussing && state.currentPrice > 0;
+
   // --- 1) il met le joueur dehors ---
-  if (state.patienceLeft <= 0 || (insulted && state.mood <= 0.12)) {
+  // Un accord en cours de conclusion est toujours honoré : on ne vend
+  // pas son client à la porte quand il dit banco.
+  if (!closingDeal && (state.patienceLeft <= 0 || (insulted && state.mood <= 0.12))) {
     state.patienceLeft = 0;
     return { text: `${pick(rng, lines.out)}\n/out` };
   }
 
-  if (insulted) {
+  if (!closingDeal && insulted) {
     push(out, pick(rng, lines.lowball));
     return { text: out.join(' ') };
   }
@@ -292,7 +312,7 @@ export function merchantReply(state, briefing, message, defs = {}) {
   }
 
   const offer = extractLastNumber(text);
-  const wantsBuy = hasIntent(text, 'buy');
+  const wantsBuy = wantsBuyEarly;
   const asksCatalog = hasIntent(text, 'catalog');
   const asksOrigin = hasIntent(text, 'origin');
   const complainsPrice = hasIntent(text, 'tooExpensive');
@@ -300,6 +320,15 @@ export function merchantReply(state, briefing, message, defs = {}) {
   const greets = hasIntent(text, 'greeting');
   const leaves = hasIntent(text, 'leave');
   const asksDiscount = hasIntent(text, 'discount');
+  const asksPrice = hasIntent(text, 'askPrice');
+
+  // --- 2bis) banco sans chiffre : « d'accord je prends » conclut au
+  // prix courant. Évalué AVANT les branches de patience (fermeture de
+  // porte) et avant tout autre bavardage : un accord se conclut.
+  if (closingDeal && offer === null) {
+    push(out, pick(rng, lines.accept));
+    return { text: `${out.join(' ')}\n/sell ${state.discussing} ${state.currentPrice}` };
+  }
 
   // --- 3) premier contact ---
   if (state.messages === 1 && greets) {
@@ -334,6 +363,22 @@ export function merchantReply(state, briefing, message, defs = {}) {
     return { text: out.join(' ') };
   }
 
+  // « C'est combien ? » sur l'article en discussion : il REPROPOSE son
+  // offre (le bouton d'achat peut avoir été masqué par « continuer à
+  // discuter » ou par un message sans proposition). Un refus de baisser
+  // le prix reste un refus — mais le client voit au moins la proposition
+  // cliquable au lieu d'une phrase vague.
+  if (asksPrice && !offer && state.discussing && state.currentPrice) {
+    if (asksDiscount) {
+      push(out, pick(rng, lines.refuse));
+    } else if (state.id === 'aldric') {
+      push(out, `${state.currentPrice} écus.`);
+    } else {
+      push(out, `Je vous le fais à ${state.currentPrice} écus.`);
+    }
+    return { text: `${out.join(' ')}\n/sell ${state.discussing} ${state.currentPrice}` };
+  }
+
   if (asksDepth) {
     push(out, pick(rng, lines.depth));
     if (state.discussing) {
@@ -357,6 +402,14 @@ export function merchantReply(state, briefing, message, defs = {}) {
     const base = costOf(id);
     const floor = Math.round(base * (1 + def.minMargin));
     const current = state.currentPrice || suggestedPrice(id, def.margin);
+
+    // « D'accord je le prends à ce prix » : le client accepte (voire met
+    // plus, pour finir plus vite). C'est l'accord — il se conclut même
+    // si la patience est épuisée ce tour-ci (closingDeal).
+    if (wantsBuy && offer >= current) {
+      push(out, pick(rng, lines.accept));
+      return { text: `${out.join(' ')}\n/sell ${id} ${offer}` };
+    }
 
     // Il accepte dès qu'on atteint son prix courant.
     if (offer >= current) {
@@ -383,7 +436,9 @@ export function merchantReply(state, briefing, message, defs = {}) {
       }
       push(out, pick(rng, lines.refuse));
       state.lowballs = (state.lowballs || 0) + 1;
-      return { text: out.join(' ') };
+      // Il refuse le prix DU JOUEUR mais sa proposition tient toujours :
+      // on la remet en table pour que le bouton d'achat reste visible.
+      return { text: `${out.join(' ')}\n/sell ${id} ${current}` };
     }
 
     // Sous le coût de revient : il s'agace.
@@ -391,7 +446,9 @@ export function merchantReply(state, briefing, message, defs = {}) {
     state.mood = Math.max(0, state.mood - 0.2 * def.temper);
     if (state.lowballs >= 3) state.patienceLeft -= 2;
     push(out, pick(rng, state.lowballs >= 2 ? lines.lowball : lines.refuse));
-    return { text: out.join(' ') };
+    // Même agacé, tant qu'il ne met pas dehors son offre reste valable
+    // et cliquable : « non, mais voilà mon prix ».
+    return { text: `${out.join(' ')}\n/sell ${id} ${current}` };
   }
 
   // --- 8) le joueur accepte le dernier prix proposé ---

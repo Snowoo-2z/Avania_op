@@ -446,6 +446,14 @@ async function boot() {
   game.uiCallbacks.onSignChange = (tx, ty, text, owner) => multiplayer.sendSignChange(tx, ty, text, owner);
   // Diffusion des changements d'étals (stock, prix, cagnotte, casse).
   game.uiCallbacks.onSellerChange = (tx, ty, state) => multiplayer.sendSellerChange(tx, ty, state);
+  // L'offre d'un autre joueur vient d'arriver pendant que le panneau de
+  // l'étal est ouvert : on réaffiche pour faire apparaître le bouton
+  // d'achat sans fermer/rouvrir.
+  game.uiCallbacks.onSellerUpdated = (tx, ty) => {
+    if (sellerPanel && sellerPanel.isOpen && sellerPanel.tx === tx && sellerPanel.ty === ty) {
+      sellerPanel.render();
+    }
+  };
   // Message ciblé vers le propriétaire d'un étal (tentative de vol/alarme).
   game.uiCallbacks.onNotifySend = (to, kind, text, extra) => multiplayer.sendNotify(to, kind, text, extra);
   // PvP : je déclare un coup porté (la victime applique) + j'annonce mes PV.

@@ -254,6 +254,19 @@ export function interpretCommands(reply, state, defs = ITEM_DEFS) {
       state.currentPrice = bounded;
     }
   }
+
+  // Dernier filet (chemin distant UNIQUEMENT) : une négociation est
+  // ouverte avec un prix en table, mais le modèle n'a rien émis de
+  // cliquable ce tour-ci — soit qu'il ait bavardé, soit que sa commande
+  // /sell soit mal formée (mauvais id, prix absent…). Plutôt que de
+  // laisser l'offre disparaître au moment où les joueurs tombent
+  // d'accord, on REPROPOSE le prix courant : le bouton d'achat reste
+  // visible et l'affaire peut se conclure. Le cerveau local gère déjà
+  // ça lui-même, on ne le touche pas.
+  if (!result.offer && reply.source !== 'local' && !result.kicked
+    && state.discussing && state.currentPrice > 0) {
+    result.offer = { item: state.discussing, price: state.currentPrice };
+  }
   return result;
 }
 

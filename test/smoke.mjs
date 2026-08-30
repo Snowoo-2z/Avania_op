@@ -896,6 +896,43 @@ const deal = parseMerchantReply(r.text).commands.find((c) => c.type === 'sell');
 assert(deal && deal.price === his + 10, 'une offre au-dessus du prix est acceptée telle quelle');
 assertInCharacter(r.text, 'acceptation');
 
+// « C'est combien ? » sur l'article en discussion : le marchand REPROPOSE
+// son offre (sinon le bouton d'achat disparaissait quand on parlait prix).
+m = createMerchantState('gaspard', { day: 1, totalPlayers: 1 });
+m.seed = 9137;
+talk(m, 'Bonjour');
+talk(m, 'Je veux le masque à filtre');
+r = talk(m, 'Elle est à combien ?');
+let priceAskSell = parseMerchantReply(r.text).commands.find((c) => c.type === 'sell');
+assert(priceAskSell && priceAskSell.type === 'sell',
+  '« c\'est combien ? » fait (re)sortir une proposition chiffrée');
+assert(priceAskSell.price === m.currentPrice, 'au prix courant du marchand');
+
+// Une offre indécente essuie un refus, mais le marchand garde sa
+// proposition en table : le bouton d'achat ne disparaît pas sous
+// prétexte qu'il a refusé le prix DU JOUEUR.
+r = talk(m, 'Je t\'en donne 5 écus, ça marche ?');
+let refuseSell = parseMerchantReply(r.text).commands.find((c) => c.type === 'sell');
+assert(refuseSell, 'même un refus de marchander laisse l\'offre affichée');
+assert(refuseSell.price >= Math.round(costOf('mask_filter') * (1 + gaspard.minMargin)),
+  'et le prix affiché ne descend jamais sous le plancher');
+
+// BUG : un accord se concluait en /out quand ce message épuisait la
+// dernière patience. « D'accord je prends » doit honorer l'affaire.
+m = createMerchantState('aldric', { day: 1, totalPlayers: 1 });
+m.seed = 4421;
+talk(m, 'Bonjour');
+talk(m, 'Je veux l\'armure intégrale');
+// Plus qu'une unité de patience : le message d'accord va l'épuiser,
+// et c'est justement lui qui doit conclure (pas mettre dehors).
+m.patienceLeft = 1;
+r = talk(m, 'D\'accord je prends');
+const accords = parseMerchantReply(r.text).commands;
+assert(accords.some((c) => c.type === 'sell'),
+  '« d\'accord je prends » conclut la vente (jamais /out) même à court de patience');
+assert(!accords.some((c) => c.type === 'out'),
+  'un client qui accepte l\'offre n\'est jamais mis à la porte');
+
 // Un joueur odieux finit dehors.
 m = createMerchantState('aldric', { day: 1, totalPlayers: 1 });
 m.seed = 4421;
