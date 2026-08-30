@@ -9,7 +9,7 @@
 import { PERFORMANCE, TILE } from './config.js';
 import {
   openCharacterCreation, HUD, WalletHUD, Hotbar, InventoryPanel, Crafting,
-  FurnacePanel, ChestPanel,
+  FurnacePanel, ChestPanel, SignEditor,
 } from './ui.js';
 import { SlotManager } from './slots.js';
 import { initIcons } from './icons.js';
@@ -228,6 +228,11 @@ async function boot() {
     onFurnaceSync: (zone, furnaces) => {
       for (const f of furnaces) game.applyRemoteFurnaceChange(zone, f.tx, f.ty, f.state);
     },
+    // Panneaux partagés : texte + propriétaire, posés/écrits/cassés ailleurs.
+    onSignChange: (zone, tx, ty, text, owner) => {
+      game.applyRemoteSignChange(zone, tx, ty, text, owner);
+    },
+    onSignSync: (zone, signs) => game.applySignSync(zone, signs),
     // Étape 5 (animaux partagés) : un troupeau connu (mobSync) peut
     // être vide — c'est le signal que ce client est probablement le
     // premier à visiter cette zone : il propose alors son propre
@@ -349,6 +354,7 @@ async function boot() {
   let crafting;
   let furnacePanel;
   let chestPanel;
+  let signEditor;
   let merchantChat;
   // Le téléphone met le jeu en pause (comme les autres panneaux) : on y
   // écrit au clavier, donc le personnage ne doit pas partir se promener
@@ -356,8 +362,8 @@ async function boot() {
   // marchant, c'est tout l'intérêt du canal global.
   const syncPause = () => game.setPaused(Boolean(
     inventoryPanel?.isOpen || crafting?.isOpen || furnacePanel?.isOpen
-    || chestPanel?.isOpen || merchantChat?.isOpen || settings?.isOpen
-    || phonePanel?.isOpen,
+    || chestPanel?.isOpen || signEditor?.isOpen || merchantChat?.isOpen
+    || settings?.isOpen || phonePanel?.isOpen,
   ));
   // Fermer les paramètres (croix, fond, Échap) doit aussi dé-pauser le jeu.
   settings.onToggle = syncPause;
@@ -410,6 +416,19 @@ async function boot() {
   // Clic droit sur un four / un coffre posé → ouvre son panneau.
   game.uiCallbacks.openFurnace = (tx, ty) => furnacePanel.open(tx, ty);
   game.uiCallbacks.openChest = (tx, ty) => chestPanel.open(tx, ty);
+
+  // Panneaux : seul le propriétaire écrit (le jeu vérifie entry.owner).
+  signEditor = new SignEditor(
+    document.getElementById('sign-edit'),
+    game,
+    () => syncPause(),
+  );
+  game.uiCallbacks.openSign = (tx, ty) => signEditor.open(tx, ty);
+  // Identité locale pour la propriété des panneaux (-1 tant que non
+  // connecté : en solo, on est toujours « soi-même »).
+  game.uiCallbacks.getOwnerId = () => multiplayer.localId;
+  // Diffusion des poses/écritures/casses de panneaux de la zone.
+  game.uiCallbacks.onSignChange = (tx, ty, text, owner) => multiplayer.sendSignChange(tx, ty, text, owner);
 
   // ============================================================
   //  Communication : chat (global + proximité) et téléphone
@@ -743,6 +762,7 @@ async function boot() {
       crafting.close();
       furnacePanel.close();
       chestPanel.close();
+      signEditor.close();
       if (tutorial.isOpen) closeTutorial();
       syncPause();
       return;

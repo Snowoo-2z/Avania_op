@@ -1309,3 +1309,55 @@ export class Crafting {
     return !this.root.classList.contains('hidden');
   }
 }
+
+// ------------------------------------------------------------
+//  Éditeur de panneau : petite fenêtre où le PROPRIÉTAIRE d'un
+//  panneau posé écrit son message (js/game.js n'ouvre ce panneau
+//  que si l'id local === entry.owner). Le texte est borné à 120
+//  caractères côté protocole (sanitizeSignState).
+// ------------------------------------------------------------
+export class SignEditor {
+  constructor(root, game, onVisibilityChange = () => {}) {
+    this.root = root;
+    this.game = game;
+    this.onVisibilityChange = onVisibilityChange;
+    this.textarea = root.querySelector('#sign-text');
+    this.count = root.querySelector('#sign-count');
+    this.tx = 0;
+    this.ty = 0;
+    root.querySelector('.panel-backdrop')?.addEventListener('pointerdown', () => this.close());
+    root.querySelector('#sign-close')?.addEventListener('click', () => this.close());
+    root.querySelector('#sign-save')?.addEventListener('click', () => this.save());
+    this.textarea?.addEventListener('input', () => this._updateCount());
+  }
+
+  open(tx, ty) {
+    this.tx = tx;
+    this.ty = ty;
+    const entry = this.game.signData.get(this.game.world.idx(tx, ty));
+    this.textarea.value = entry ? entry.text : '';
+    this._updateCount();
+    this.root.classList.remove('hidden');
+    this.onVisibilityChange(true);
+    this.textarea?.focus();
+  }
+
+  _updateCount() {
+    if (this.count) this.count.textContent = `${this.textarea.value.length}/120`;
+  }
+
+  save() {
+    this.game.setSignText(this.tx, this.ty, this.textarea.value);
+    this.close();
+  }
+
+  close() {
+    if (this.root.classList.contains('hidden')) return;
+    this.root.classList.add('hidden');
+    this.onVisibilityChange(false);
+  }
+
+  get isOpen() {
+    return !this.root.classList.contains('hidden');
+  }
+}

@@ -130,6 +130,11 @@ export const BLOCK_DEFS = {
   // grotte). Rendue par l'index des blocs posés avec une flamme animée.
   torch: { id: 'torch', label: 'Torche', kind: 'object', solid: false, breakable: true,
     drop: 'torch', dropN: 1, color: '#e8a53c', requiredTool: null, breakTime: 0.1 },
+  // Panneau : objet non solide posé au sol sur lequel le POSEUR peut
+  // écrire (les autres doivent le casser puis le reposer pour hériter
+  // de la propriété). Texte + propriétaire synchronisés en multijoueur.
+  sign: { id: 'sign', label: 'Panneau', kind: 'object', solid: false, breakable: true,
+    drop: 'sign', dropN: 1, color: '#c89a5e', requiredTool: null, breakTime: 0.3 },
   // L'entrée de la grotte, à la surface : un arche sombre. On y entre
   // avec la touche d'interaction — elle ne se casse pas.
   caveMouth: {
@@ -174,6 +179,7 @@ export const ITEM_DEFS = {
   diamond: { id: 'diamond', label: 'Diamant', color: '#59d8e8', type: 'resource', maxStack: 64 },
   coal: { id: 'coal', label: 'Charbon', color: '#2e2e36', type: 'resource', maxStack: 64 },
   torch: { id: 'torch', label: 'Torche', color: '#e8a53c', type: 'material', maxStack: 64, place: 'torch' },
+  sign: { id: 'sign', label: 'Panneau', color: '#c89a5e', type: 'material', maxStack: 64, place: 'sign' },
   // Agriculture : graines (à semer), blé (récolte), pain (nourriture).
   seeds: { id: 'seeds', label: 'Graines', color: '#9a8a4a', type: 'resource', maxStack: 64, place: 'wheat0' },
   wheat: { id: 'wheat', label: 'Blé', color: '#d8c26a', type: 'resource', maxStack: 64 },
@@ -507,6 +513,10 @@ export const RECIPES = [
   {
     id: 'torch', label: 'Torche', out: 'torch', outN: 4,
     inputs: { coal: 1, stick: 1 }, pattern: [['coal'], ['stick']], category: 'construction',
+  },
+  {
+    id: 'sign', label: 'Panneau', out: 'sign', outN: 2,
+    inputs: { plank: 3, stick: 1 }, pattern: [['plank', 'plank', 'plank'], [null, 'stick', null]], category: 'construction',
   },
   {
     id: 'woolBlock', label: 'Bloc de laine', out: 'woolBlock', outN: 1,

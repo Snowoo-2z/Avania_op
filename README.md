@@ -82,6 +82,12 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   Élevé** — Faible coupe ombres portées, lueurs et vignette (voile de nuit
   plat) ; Moyen garde ombres et halos ; Élevé ajoute la lueur vacillante
   des feux et la vignette.
+- **🪧 Panneaux écrits** : le **panneau** se craft (3 planches + 1 bâton →
+  2) et se pose au sol. **Seul celui qui l'a posé peut y écrire** (clic
+  droit) ; un autre joueur doit le casser puis le reposer pour se
+  l'approprier. Texte (120 car.) et propriétaire **synchronisés** en
+  multijoueur (journal par zone + resync des arrivants), rendu en jeu sur
+  la planche.
 - **📦 Lâcher des objets** : touche `Q` pour jeter un objet de ta main,
   `Ctrl+Q` pour toute la pile — ou sors une pile de l'inventaire par-dessus
   le bord de l'écran. Les objets tombent au sol, fusionnent entre eux et
@@ -503,6 +509,9 @@ puis construis ta première cabane.
   (ombres portées, lueurs de nuit, vignette).
 - [x] **Effet 3D renforcé** — extrusion 12 px, dessus plus lumineux, face
   est dégradée, occlusion au pied des murs.
+- [x] **Panneaux écrits** — craft + pose ; écriture réservée au poseur
+  (casser puis reposer pour hériter) ; texte & propriétaire synchronisés
+  (journal serveur par zone, resync des arrivants).
 - [x] **Multijoueur (étape 6 : chat & réseau social)** — fenêtre de chat
   toujours visible (canal global + talkie-walkie de proximité en `V`),
   et téléphone (`P`) avec un réseau social partagé : comptes,

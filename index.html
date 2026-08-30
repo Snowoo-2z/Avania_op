@@ -379,6 +379,29 @@
   </section>
 
   <!-- Panneau de paramètres -->
+  <!-- Édition d'un panneau posé : seul son propriétaire l'ouvre (js/game.js) -->
+  <section id="sign-edit" class="crafting sign-edit hidden" aria-label="Écrire sur le panneau">
+    <div class="panel-backdrop"></div>
+    <div class="panel-frame panel-frame--sign">
+      <header class="crafting-header">
+        <div>
+          <span class="panel-eyebrow">ÉCRITURE</span>
+          <strong>Panneau</strong>
+        </div>
+        <div class="crafting-header-actions">
+          <button id="sign-close" class="craft-close" title="Fermer"><span class="ic" data-icon="close"></span></button>
+        </div>
+      </header>
+      <div class="sign-body">
+        <textarea id="sign-text" rows="4" maxlength="120" placeholder="Ton message…"></textarea>
+        <div class="sign-actions">
+          <span id="sign-count" class="settings-hint">0/120</span>
+          <button id="sign-save" type="button" class="keybinds-reset">Écrire</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="settings-panel" class="settings-panel hidden" aria-label="Paramètres">
     <div class="panel-backdrop"></div>
     <div class="settings-frame">

@@ -246,6 +246,23 @@ export function sanitizeFurnaceState(src) {
 }
 
 // ------------------------------------------------------------
+//  Panneaux : texte + propriétaire.
+//  text === null signifie « le panneau a été cassé » (on purge le
+//  journal du serveur). Le texte est borné en longueur ; le propriétaire
+//  est l'id numérique du joueur qui a posé le panneau.
+// ------------------------------------------------------------
+export const MAX_SIGN_TEXT = 120;
+
+export function sanitizeSignState(src) {
+  const out = { text: null, owner: -1 };
+  if (!src || typeof src !== 'object') return out;
+  if (typeof src.text === 'string') out.text = src.text.slice(0, MAX_SIGN_TEXT);
+  const o = Number(src.owner);
+  if (Number.isFinite(o)) out.owner = Math.trunc(o);
+  return out;
+}
+
+// ------------------------------------------------------------
 //  Étape 5 : animaux partagés (moutons, vaches)
 //
 //  Contrairement aux coffres/fours (un seul propriétaire logique par

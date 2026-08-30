@@ -26,7 +26,7 @@ import {
   WS_PATH, encodeInput, decodeState, sanitizeBlockDiff, sanitizeChestSlots,
   sanitizeFurnaceState, sanitizeMobList, sanitizeMobStateList, sanitizeMobHit,
   sanitizeChatText, sanitizeChatChannel, sanitizeChatMessage,
-  sanitizeSocialPost,
+  sanitizeSocialPost, sanitizeSignState,
 } from './net-protocol.js';
 
 // Cadence d'envoi de la position locale : inutile d'aller plus vite
@@ -58,6 +58,9 @@ export class MultiplayerClient {
     // Étape 4 (fours partagés) : même principe, un état de four complet.
     onFurnaceChange = null, // (zone, tx, ty, state) — un four distant a changé (contenu ou cuisson)
     onFurnaceSync = null,   // (zone, furnaces[]) — resynchronisation des fours connus de la zone
+    // Panneaux : texte + propriétaire d'un panneau distant, et resync.
+    onSignChange = null,    // (zone, tx, ty, text|null, owner) — panneau posé/écrit/cassé ailleurs
+    onSignSync = null,      // (zone, signs[]) — resynchronisation des panneaux connus de la zone
     // Étape 5 (animaux partagés) : voir js/game.js pour l'usage exact
     // de chacun de ces rappels (établissement du troupeau, réapparition,
     // correctif de position, coups portés).
@@ -86,6 +89,8 @@ export class MultiplayerClient {
     this.onChestSync = onChestSync;
     this.onFurnaceChange = onFurnaceChange;
     this.onFurnaceSync = onFurnaceSync;
+    this.onSignChange = onSignChange;
+    this.onSignSync = onSignSync;
     this.onMobSync = onMobSync;
     this.onMobSpawn = onMobSpawn;
     this.onMobState = onMobState;
@@ -274,6 +279,19 @@ export class MultiplayerClient {
       if (this.onFurnaceSync) this.onFurnaceSync(msg.zone, msg.furnaces);
       return;
     }
+    // Panneau posé / écrit / cassé par un autre joueur de la zone.
+    if (msg.t === 'sign') {
+      if (typeof msg.tx !== 'number' || typeof msg.ty !== 'number') return;
+      const s = sanitizeSignState(msg);
+      if (this.onSignChange) this.onSignChange(this.zone, msg.tx, msg.ty, s.text, s.owner);
+      return;
+    }
+    // Resynchronisation des panneaux connus d'une zone (connexion / arrivée).
+    if (msg.t === 'signSync') {
+      if (!Array.isArray(msg.signs)) return;
+      if (this.onSignSync) this.onSignSync(msg.zone, msg.signs);
+      return;
+    }
     // Troupeau connu du serveur pour une zone (connexion / arrivée) —
     // peut être VIDE : c'est le signal que personne n'a encore établi
     // de troupeau ici, voir js/game.js pour la suite (le jeu appelle
@@ -394,6 +412,12 @@ export class MultiplayerClient {
   sendFurnaceChange(tx, ty, state) {
     if (!this.connected) return;
     this.ws.send(JSON.stringify({ t: 'furnace', tx, ty, state: sanitizeFurnaceState(state) }));
+  }
+
+  // Panneau : text === null annonce une casse (purge côté serveur).
+  sendSignChange(tx, ty, text, owner) {
+    if (!this.connected) return;
+    this.ws.send(JSON.stringify({ t: 'sign', tx, ty, text, owner }));
   }
 
   _onBinary(data) {

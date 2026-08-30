@@ -1507,6 +1507,35 @@ function drawTorchRaw(ctx, x, y, shadow = true) {
   ctx.restore();
 }
 
+// Panneau de bois posé : poteau + planche claire encadrée, volontairement
+// vierge — le texte est dessiné par-dessus à chaque frame (js/game.js).
+function drawSignRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 1, 8, 3);
+  // Poteau.
+  ctx.fillStyle = '#6a4520';
+  ctx.fillRect(x - 1.5, y - 12, 3, 12);
+  ctx.fillStyle = '#8a5f30';
+  ctx.fillRect(x - 1.5, y - 12, 1, 12);
+  // Planche : cadre sombre + fond clair lisible pour le texte.
+  ctx.fillStyle = '#5a3818';
+  ctx.fillRect(x - 14, y - 26, 28, 16);
+  ctx.fillStyle = '#d8b878';
+  ctx.fillRect(x - 13, y - 25, 26, 14);
+  // Veines horizontales discrètes.
+  ctx.fillStyle = 'rgba(106,69,32,0.25)';
+  ctx.fillRect(x - 13, y - 21, 26, 1);
+  ctx.fillRect(x - 13, y - 16, 26, 1);
+  // Reflet haut.
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(x - 13, y - 25, 26, 1);
+  // Clous aux coins.
+  ctx.fillStyle = '#3c2c12';
+  ctx.fillRect(x - 12, y - 24, 1.5, 1.5);
+  ctx.fillRect(x + 10.5, y - 24, 1.5, 1.5);
+  ctx.fillRect(x - 12, y - 13, 1.5, 1.5);
+  ctx.fillRect(x + 10.5, y - 13, 1.5, 1.5);
+}
+
 // Entrée de la grotte (surface) : arche de roche sombre ouvrant sur
 // le noir. Le sprite déborde largement de sa tuile pour qu'on la voie
 // de loin — c'est un point de repère du monde.
@@ -1705,6 +1734,7 @@ function buildObjectSprites() {
   objectCache.caveDiamond = makeObjectSprite(40, 44, 20, 34, drawCaveDiamondObjectRaw);
   objectCache.caveCoal = makeObjectSprite(40, 44, 20, 34, drawCaveCoalObjectRaw);
   objectCache.torch = makeObjectSprite(16, 24, 8, 21, drawTorchRaw);
+  objectCache.sign = makeObjectSprite(30, 30, 15, 27, drawSignRaw);
   // Les quatre stades du blé (agriculture), petits et lisibles.
   objectCache.wheat0 = makeObjectSprite(32, 36, 16, 30, makeWheatRaw(0));
   objectCache.wheat1 = makeObjectSprite(32, 36, 16, 30, makeWheatRaw(1));

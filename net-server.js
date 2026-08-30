@@ -47,7 +47,7 @@ import {
   WS_PATH, MAX_PLAYER_ID, encodeState, decodeInput,
   sanitizeBlockDiff, sanitizeZone, validTile, sanitizeChestSlots,
   sanitizeFurnaceState, sanitizeMobList, sanitizeMobInfo,
-  sanitizeMobStateList, sanitizeMobHit,
+  sanitizeMobStateList, sanitizeMobHit, sanitizeSignState,
   sanitizeChatText, sanitizeChatChannel, CHAT_GLOBAL, CHAT_PROXIMITY,
   PROXIMITY_PX, MAX_CHAT_HISTORY,
 } from './js/net-protocol.js';
@@ -237,6 +237,37 @@ function recordFurnaceState(zone, tx, ty, state) {
   j.set(key, { tx, ty, state });
 }
 
+// --- Panneaux partagés : texte + propriétaire par tuile, même principe
+//     que chestJournal / furnaceJournal. text === null purge l'entrée
+//     (panneau cassé). ---
+const signJournal = new Map();
+const MAX_SIGNS_PER_ZONE = 500;
+
+function zoneSignJournal(zone) {
+  let j = signJournal.get(zone);
+  if (!j) {
+    if (signJournal.size >= MAX_ZONES) {
+      const oldest = signJournal.keys().next().value;
+      if (oldest !== undefined) signJournal.delete(oldest);
+    }
+    j = new Map();
+    signJournal.set(zone, j);
+  }
+  return j;
+}
+
+function recordSignState(zone, tx, ty, text, owner) {
+  const j = zoneSignJournal(zone);
+  const key = ty * MAX_WORLD_TILE_STRIDE + tx;
+  if (text === null) {
+    // Panneau cassé : plus rien à resynchroniser.
+    j.delete(key);
+    return;
+  }
+  if (!j.has(key) && j.size >= MAX_SIGNS_PER_ZONE) return; // zone pleine : on arrête d'enregistrer, sans planter
+  j.set(key, { tx, ty, text, owner });
+}
+
 function sanitizeAppearance(app) {
   // On ne fait AUCUNE hypothèse sur les valeurs valides ici (elles
   // vivent dans js/config.js, côté rendu) : on se contente de brider
@@ -348,6 +379,13 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     const j = furnaceJournal.get(zone);
     const furnaces = j ? [...j.values()] : [];
     sendJson(ws, { t: 'furnaceSync', zone, furnaces });
+  }
+
+  // Idem, pour les panneaux connus de la zone (texte + propriétaire).
+  function sendSignSync(ws, zone) {
+    const j = signJournal.get(zone);
+    const signs = j ? [...j.values()] : [];
+    sendJson(ws, { t: 'signSync', zone, signs });
   }
 
   // Idem, pour le troupeau connu de la zone (étape 5). Un tableau VIDE
@@ -501,6 +539,7 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     sendWorldSync(ws, player.zone);
     sendChestSync(ws, player.zone);
     sendFurnaceSync(ws, player.zone);
+    sendSignSync(ws, player.zone);
     sendMobSync(ws, player.zone);
     // Étape 6 (chat) : les derniers messages du canal global, pour que
     // l'arrivant voie la conversation en cours au lieu d'un chat vide.
@@ -552,6 +591,7 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
         sendWorldSync(ws, zone);
         sendChestSync(ws, zone);
         sendFurnaceSync(ws, zone);
+        sendSignSync(ws, zone);
         sendMobSync(ws, zone);
         return;
       }
@@ -608,6 +648,17 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
         const state = sanitizeFurnaceState(msg.state);
         recordFurnaceState(player.zone, tx, ty, state);
         broadcastToZone(player.zone, { t: 'furnace', tx, ty, state }, ws);
+        return;
+      }
+      // Un joueur pose / écrit / casse un panneau : texte + propriétaire
+      // sont journalisés par zone (resync des arrivants) et rediffusés.
+      if (msg.t === 'sign') {
+        const tx = Math.trunc(msg.tx);
+        const ty = Math.trunc(msg.ty);
+        if (!validTile(tx) || !validTile(ty)) return;
+        const s = sanitizeSignState(msg);
+        recordSignState(player.zone, tx, ty, s.text, s.owner);
+        broadcastToZone(player.zone, { t: 'sign', tx, ty, text: s.text, owner: s.owner }, ws);
         return;
       }
       // Un joueur (le premier arrivé dans une zone vide de troupeau,

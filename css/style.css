@@ -3536,3 +3536,36 @@ html.low-power .dialog-frame {
   cursor: pointer;
 }
 .chat-side-btn.active { color: #14240f; background: var(--accent); border-color: var(--accent); }
+
+/* ============================================================
+   Panneau d'écriture (sign) : petite fenêtre bois & parchemin
+   ============================================================ */
+.panel-frame--sign {
+  width: min(420px, calc(100vw - 24px));
+}
+.sign-body {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sign-body textarea {
+  width: 100%;
+  resize: none;
+  border: 2px solid #5a3818;
+  border-radius: 6px;
+  background: #d8b878;
+  color: #4a2f14;
+  font-family: monospace;
+  font-size: 14px;
+  padding: 8px;
+  outline: none;
+}
+.sign-body textarea:focus {
+  border-color: #c9a44a;
+}
+.sign-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}

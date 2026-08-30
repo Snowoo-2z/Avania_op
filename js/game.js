@@ -299,10 +299,14 @@ export class Game {
     this.furnaceData = new Map();
     // Coffres posés : 27 cases de rangement (clé = index de tuile).
     this.chestData = new Map();
+    // Panneaux posés : { text, owner } (clé = index de tuile). Seul le
+    // joueur dont l'id === owner peut écrire dessus.
+    this.signData = new Map();
     // Rappels branchés par l'UI (ex. ouvrir le panneau du four / du coffre).
     this.uiCallbacks = {
       openFurnace: null,
       openChest: null,
+      openSign: null,
       onMoney: null,
       onEnterCave: null,
       onExitCave: null,
@@ -1156,6 +1160,7 @@ export class Game {
     this.dimStates.set(world.id, {
       furnaceData: this.furnaceData,
       chestData: this.chestData,
+      signData: this.signData,
       droppedItems: this.droppedItems,
       mobs: this.mobs,
     });
@@ -1166,11 +1171,13 @@ export class Game {
     if (saved) {
       this.furnaceData = saved.furnaceData;
       this.chestData = saved.chestData;
+      this.signData = saved.signData || new Map();
       this.droppedItems = saved.droppedItems;
       this.mobs = saved.mobs;
     } else {
       this.furnaceData = new Map();
       this.chestData = new Map();
+      this.signData = new Map();
       this.droppedItems = [];
       // Pas d'animaux sous terre.
       this.mobs = world.kind === 'cave' ? [] : spawnMobs(world);
@@ -1699,6 +1706,21 @@ export class Game {
       this.actionCooldown = 0.25;
       return;
     }
+    if (targetBlock === 'sign') {
+      // Seul le poseur écrit : les autres lisent (et peuvent casser puis
+      // reposer pour hériter du panneau).
+      const entry = this.signData.get(this.world.idx(this.targetTx, this.targetTy));
+      const me = this.uiCallbacks.getOwnerId ? this.uiCallbacks.getOwnerId() : -1;
+      if (entry && entry.owner === me) {
+        if (this.uiCallbacks.openSign) this.uiCallbacks.openSign(this.targetTx, this.targetTy);
+      } else {
+        this.notify(entry && entry.text
+          ? 'Panneau d\'un autre joueur : casse-le puis repose-le pour écrire.'
+          : 'Ce panneau appartient à quelqu\'un d\'autre.');
+      }
+      this.actionCooldown = 0.25;
+      return;
+    }
 
     // Labour : la houe retourne herbe / terre en terre labourée, prête à
     // semer. (Clic droit, comme poser — mais ça transforme le SOL.)
@@ -1895,6 +1917,14 @@ export class Game {
           if (stack) this.spawnDrop(this.targetTx, this.targetTy, stack.id, stack.count);
         }
         this._announceFurnaceChange(this.targetTx, this.targetTy, makeFurnaceEntry());
+      }
+    }
+    // Panneau cassé : le texte part avec (comme dans Minecraft), et on
+    // purge le journal du serveur pour qu'un futur panneau posé ici
+    // reparte vierge.
+    if (existingBlock === 'sign') {
+      if (this.signData.delete(i)) {
+        this._announceSignChange(this.targetTx, this.targetTy, null, -1);
       }
     }
     if (drop) {
@@ -2194,6 +2224,13 @@ export class Game {
       if (this.world.blocks[i] !== oldBlock) diff.blocks = this.world.blocks[i];
       if (this.world.blocks2 && this.world.blocks2[i] !== oldBlock2) diff.blocks2 = this.world.blocks2[i];
       if (Object.keys(diff).length > 0) this._announceBlockChange(this.targetTx, this.targetTy, diff);
+      // Un panneau neuf appartient à celui qui le pose : il sera le seul
+      // à pouvoir y écrire. Les autres devront le casser puis le reposer.
+      if (item === 'sign') {
+        const owner = this.uiCallbacks.getOwnerId ? this.uiCallbacks.getOwnerId() : -1;
+        this.signData.set(i, { text: '', owner });
+        this._announceSignChange(this.targetTx, this.targetTy, '', owner);
+      }
     }
   }
 
@@ -2212,6 +2249,21 @@ export class Game {
   // ne l'a pas branché (ou si le réseau n'a jamais pu se connecter).
   _announceBlockChange(tx, ty, diff) {
     if (this.uiCallbacks.onBlockChange) this.uiCallbacks.onBlockChange(tx, ty, diff);
+  }
+
+  // Panneau posé / écrit (text) ou cassé (text === null) : relais réseau.
+  _announceSignChange(tx, ty, text, owner) {
+    if (this.uiCallbacks.onSignChange) this.uiCallbacks.onSignChange(tx, ty, text, owner);
+  }
+
+  // Le joueur local écrit sur SON panneau (UI) : met à jour l'état local
+  // puis annonce aux autres joueurs de la zone.
+  setSignText(tx, ty, text) {
+    const i = this.world.idx(tx, ty);
+    const entry = this.signData.get(i);
+    if (!entry) return;
+    entry.text = String(text ?? '').slice(0, 120);
+    this._announceSignChange(tx, ty, entry.text, entry.owner);
   }
 
   // Même principe pour le contenu d'un coffre (étape 3) : appelé
@@ -2264,6 +2316,8 @@ export class Game {
       if (map) map.delete(world.idx(tx, ty));
       const furnaceMap = this.furnaceDataMapForZone(world.id);
       if (furnaceMap) furnaceMap.delete(world.idx(tx, ty));
+      const signMap = this.signDataMapForZone(world.id);
+      if (signMap) signMap.delete(world.idx(tx, ty));
     }
     if (!world.applyBlockDiff(tx, ty, diff)) return;
     if (world !== this.world) return; // zone pas affichée : rien d'autre à faire pour l'instant
@@ -2332,6 +2386,36 @@ export class Game {
     if (this.world && zone === this.world.id) return this.furnaceData;
     const saved = this.dimStates.get(zone);
     return saved ? saved.furnaceData : null;
+  }
+
+  signDataMapForZone(zone) {
+    if (this.world && zone === this.world.id) return this.signData;
+    const saved = this.dimStates.get(zone);
+    return saved ? (saved.signData || null) : null;
+  }
+
+  // Un AUTRE joueur a posé / écrit / cassé un panneau de la zone actuelle.
+  // text === null : le panneau n'existe plus (cassé).
+  applyRemoteSignChange(zone, tx, ty, text, owner) {
+    const map = this.signDataMapForZone(zone);
+    if (!map) return; // zone jamais visitée localement : rien à raccrocher
+    const key = ty * WORLD_W + tx;
+    if (text === null) {
+      map.delete(key);
+      return;
+    }
+    map.set(key, { text, owner });
+  }
+
+  // Resynchronisation complète des panneaux d'une zone (connexion/arrivée).
+  applySignSync(zone, signs) {
+    const map = this.signDataMapForZone(zone);
+    if (!map) return;
+    map.clear();
+    for (const s of signs) {
+      if (!s || typeof s.tx !== 'number' || typeof s.ty !== 'number') continue;
+      map.set(s.ty * WORLD_W + s.tx, { text: String(s.text ?? ''), owner: Number(s.owner) });
+    }
   }
 
   // Un AUTRE joueur a modifié un four de la zone actuelle (contenu, ou
@@ -2613,6 +2697,33 @@ export class Game {
     ctx.fillRect(fx - 0.5, fy - 2 - fl * 2, 2, 2);
   }
 
+  // Panneau posé : sprite bois + texte du propriétaire, découpé en trois
+  // lignes courtes qui tiennent dans la planche.
+  drawSign(ctx, tx, ty) {
+    const spr = getObjectSprite('sign');
+    const bx = tx * TILE + TILE / 2;
+    const by = ty * TILE + TILE - 2;
+    if (spr) ctx.drawImage(spr.canvas, bx - spr.anchorX, by - spr.anchorY);
+    const entry = this.signData.get(this.world.idx(tx, ty));
+    const text = entry ? entry.text : '';
+    if (!text) return;
+    // Zone utile de la planche (voir drawSignRaw dans js/tileset.js).
+    const left = bx - 12;
+    const top = by - 24;
+    ctx.save();
+    ctx.font = '4px monospace';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#4a2f14';
+    const lines = [];
+    for (let k = 0; k < text.length && lines.length < 3; k += 11) {
+      lines.push(text.slice(k, k + 11));
+    }
+    for (let l = 0; l < lines.length; l++) {
+      ctx.fillText(lines[l], left, top + l * 4);
+    }
+    ctx.restore();
+  }
+
   // Ombres portées directionnelles (lumière venant du nord-ouest) : chaque
   // bloc solide posé projette une pénombre au sol vers le sud-est. Passe
   // dédiée AVANT le tri en profondeur, pour que toutes les ombres restent
@@ -2886,6 +2997,7 @@ export class Game {
     if (b1) {
       if (CROPS.includes(b1)) return true; // les pousses de blé posées
       if (b1 === 'torch') return true;     // les torches posées
+      if (b1 === 'sign') return true;      // les panneaux posés
       const kind = BLOCK_DEFS[b1]?.kind;
       if (kind === 'block' || kind === 'door') return true;
     }
@@ -3018,12 +3130,13 @@ export class Game {
             const def = BLOCK_DEFS[block];
             const isCrop = CROPS.includes(block);
             const isTorch = block === 'torch';
-            if (def.kind === 'block' || def.kind === 'door' || isCrop || isTorch) {
+            const isSign = block === 'sign';
+            if (def.kind === 'block' || def.kind === 'door' || isCrop || isTorch || isSign) {
               const d = this._takeBlockDrawable();
               d.tx = tx;
               d.ty = ty;
               d.block = block;
-              d.kind = isCrop ? 'crop' : (isTorch ? 'torch' : def.kind);
+              d.kind = isCrop ? 'crop' : (isTorch ? 'torch' : (isSign ? 'sign' : def.kind));
               d.layer = 1;
               d.sortY = sortY;
               drawables.push(d);
@@ -3129,6 +3242,8 @@ export class Game {
           }
         } else if (d.kind === 'torch') {
           this.drawTorch(ctx, tx, ty);
+        } else if (d.kind === 'sign') {
+          this.drawSign(ctx, tx, ty);
         } else if (block === 'furnace') {
           const entry = this.furnaceData.get(this.world.idx(tx, ty));
           ctx.drawImage(getFurnaceCanvas(Boolean(entry && entry.fuelTime > 0)), tx * TILE, ty * TILE);

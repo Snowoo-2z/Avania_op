@@ -268,6 +268,22 @@ function drawTorchIcon(ctx) {
   ctx.restore();
 }
 
+// --- Panneau : planche claire sur poteau ---
+function drawSignIcon(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.fillStyle = '#6a4520';
+  ctx.fillRect(-1.5, -2, 3, 10);
+  ctx.fillStyle = '#5a3818';
+  ctx.fillRect(-9, -9, 18, 10);
+  ctx.fillStyle = '#d8b878';
+  ctx.fillRect(-8, -8, 16, 8);
+  ctx.fillStyle = 'rgba(106,69,32,0.5)';
+  ctx.fillRect(-6, -6, 12, 1);
+  ctx.fillRect(-6, -3, 9, 1);
+  ctx.restore();
+}
+
 // --- Diamant : gemme taillée bleu-vert, très brillante ---
 function drawDiamond(ctx) {
   ctx.save();
@@ -667,6 +683,7 @@ const TOOL_DRAWERS = {
   diamond:        (ctx) => drawDiamond(ctx),
   coal:           (ctx) => drawCoal(ctx),
   torch:          (ctx) => drawTorchIcon(ctx),
+  sign:           (ctx) => drawSignIcon(ctx),
   ironIngot:      (ctx) => drawIronIngot(ctx),
   door:           (ctx) => drawDoorIcon(ctx),
   wool:           (ctx) => drawWool(ctx),
