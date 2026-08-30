@@ -612,6 +612,11 @@ Le moteur tient 60 fps sur des PC modestes :
   tranches pour le passage « derrière »), personnages (par apparence ×
   orientation × clignement), mobs (espèce × côté × flash × étape de marche),
   icônes d'items, fissures de minage, surbrillance, ombres.
+- **Rendu « 2.5D » volumétrique** : les blocs sont des cubes extrudés
+  (dessus + face avant + face est) avec ombrage par face — dessus éclairé
+  nord-est, avant assombri vers le bas, droite plus foncée, pli ombré sous le
+  dessus — et auto-tiling qui fusionne les murs voisins. L'extrusion
+  (`BLOCK_EXTRUDE`) donne de la hauteur aux constructions.
 - **Zéro allocation par frame** dans la boucle de rendu : tags de profondeur
   numériques portés par les entités, objets d'options réutilisés, clés de
   cache numériques — pas de pression sur le GC.

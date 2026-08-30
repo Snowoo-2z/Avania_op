@@ -1893,6 +1893,35 @@ function drawBlockTileConnected(ctx, x, y, color, texture, faces, opts = {}) {
     paintFace('right', S - RIGHT_FACE_W, rightY0, RIGHT_FACE_W, BLOCK_H - rightY0);
   }
 
+  // Ombrage volumétrique (le cube « sort » de l'écran) :
+  //  - dessus : léger dégradé diagonal, lumière venant du nord-est ;
+  //  - avant : dégradé vertical, plus sombre vers le bas ;
+  //  - droite : teinte un peu plus foncée que l'avant (deux plans distincts) ;
+  //  - pli ombré à la jonction dessus ↔ avant.
+  if (showTop && fw > 0 && topH > 0) {
+    const tg = ctx.createLinearGradient(x0, topY0, x1, topBottom);
+    tg.addColorStop(0, 'rgba(255,255,255,0.09)');
+    tg.addColorStop(1, 'rgba(0,0,0,0.07)');
+    ctx.fillStyle = tg;
+    ctx.fillRect(x0, topY0, fw, topH);
+  }
+  if (fw > 0 && fh > 0) {
+    const fg = ctx.createLinearGradient(0, fy0, 0, BLOCK_H);
+    fg.addColorStop(0, 'rgba(255,255,255,0.10)');
+    fg.addColorStop(0.3, 'rgba(255,255,255,0)');
+    fg.addColorStop(1, 'rgba(0,0,0,0.24)');
+    ctx.fillStyle = fg;
+    ctx.fillRect(x0, fy0, fw, fh);
+  }
+  if (!rightSame) {
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(S - RIGHT_FACE_W, rightY0, RIGHT_FACE_W, BLOCK_H - rightY0);
+  }
+  if (showTop && !southSame && fw > 0) {
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(x0, topBottom, fw, 1);
+  }
+
   // 5. Silhouette : uniquement les arêtes libres, pixels à .5 pour un trait net.
   ctx.strokeStyle = shade(color, 0.48);
   ctx.lineWidth = 1;
