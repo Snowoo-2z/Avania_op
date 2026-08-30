@@ -25,7 +25,7 @@ import { drawCharacter } from './character.js';
 import { drawNpc } from './npc/index.js';
 import { getItemSprite } from './icons.js';
 import { drawHeldItem, heldItemIsBehind } from './held.js';
-import { isLowPowerDevice, makeCanvas } from './utils.js';
+import { isLowPowerDevice, makeCanvas, lerp } from './utils.js';
 import { updateFurnace, makeFurnaceEntry } from './furnace.js';
 import {
   MOB_DEFS, Mob, spawnMobs, updateMob, drawMob, mobDrops,
@@ -275,6 +275,14 @@ export class Game {
     this.cropAge = new Map();
     // Bonus temporaire après avoir mangé (secondes restantes).
     this.wellFedT = 0;
+    // Décalage de caméra (parallaxe) : la caméra « anticipe » légèrement la
+    // direction de déplacement pour dégager le champ de vision.
+    this.camLeadX = 0;
+    this.camLeadY = 0;
+    // Cycle jour/nuit (en secondes de jeu pour un tour complet) + canvas
+    // hors-écran qui reçoit le voile nocturne percé de lueurs.
+    this.dayLength = 240;
+    this.nightCanvas = null;
     this.pickupFullCooldown = 0;
     // Animaux (moutons, vaches) qui se baladent dans le monde.
     this.mobs = spawnMobs(this.world);
@@ -609,7 +617,14 @@ export class Game {
     // contrôle plus rien : on ignore simplement ses entrées.
     const dir = this.cutscene ? this._zeroDir : this.input.getDirection();
     this.player.update(dir, dt, this.world, this.wellFedBoost());
-    this.camera.follow(this.player.x, this.player.y, dt);
+    // Parallaxe : on lisse un léger décalage vers la direction de
+    // déplacement, puis on suit ce point (pas exactement le joueur) pour
+    // dégager la vue dans le sens du mouvement.
+    const LEAD = 46;
+    const lk = 1 - Math.pow(0.002, dt);
+    this.camLeadX = lerp(this.camLeadX, dir.x * LEAD, lk);
+    this.camLeadY = lerp(this.camLeadY, dir.y * LEAD, lk);
+    this.camera.follow(this.player.x + this.camLeadX, this.player.y + this.camLeadY, dt);
     // Pré-construit par petits lots les chunks qui vont entrer dans la vue :
     // c'est le correctif des saccades au déplacement (plus de rasterisation
     // synchrone de chunk dans la boucle de rendu).
@@ -1294,6 +1309,79 @@ export class Game {
     ctx.globalCompositeOperation = 'lighter';
     ctx.drawImage(this.getCaveGlow(), sx - r, sy - r, r * 2, r * 2);
     ctx.restore();
+  }
+
+  // Quantité de nuit (0 = plein jour, 1 = pleine nuit) déduite du cycle.
+  // t : 0 aube, 0.25 midi, 0.5 crépuscule, 0.75 minuit.
+  dayNightAmount() {
+    const t = (this.time % this.dayLength) / this.dayLength;
+    if (t < 0.42) return 0;                       // journée
+    if (t < 0.55) return (t - 0.42) / 0.13;       // crépuscule
+    if (t < 0.90) return 1;                        // nuit
+    return 1 - (t - 0.90) / 0.10;                  // aube
+  }
+
+  // Voile nocturne en surface : un bleu profond percé de lueurs chaudes
+  // autour du joueur et des fours allumés (canvas hors-écran +
+  // destination-out), plus une lueur additive sur les fours.
+  drawNight(ctx, W, H) {
+    const m = this.dayNightAmount();
+    if (m <= 0.02) { this.nightCanvas = null; return; }
+    if (!this.nightCanvas || this.nightCanvas.width !== W || this.nightCanvas.height !== H) {
+      this.nightCanvas = makeCanvas(W, H);
+    }
+    const nctx = this.nightCanvas.getContext('2d');
+    nctx.setTransform(1, 0, 0, 1, 0, 0);
+    nctx.globalCompositeOperation = 'source-over';
+    nctx.clearRect(0, 0, W, H);
+    nctx.fillStyle = `rgba(12,16,48,${(m * 0.55).toFixed(3)})`;
+    nctx.fillRect(0, 0, W, H);
+    // Percer des trous de lumière.
+    nctx.globalCompositeOperation = 'destination-out';
+    const zoom = this.camera.zoom;
+    const sx = (wx) => (wx - this.camera.x) * zoom;
+    const sy = (wy) => (wy - this.camera.y) * zoom;
+    this._punchLight(nctx, sx(this.player.x), sy(this.player.y - 6), 150 * zoom, 0.72, W, H);
+    for (const [idx, e] of this.furnaceData) {
+      if (!(e && e.fuelTime > 0)) continue;
+      const tx = idx % WORLD_W, ty = (idx / WORLD_W) | 0;
+      this._punchLight(nctx, sx(tx * TILE + 16), sy(ty * TILE + 14), 120 * zoom, 0.85, W, H);
+    }
+    nctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(this.nightCanvas, 0, 0);
+    // Lueur chaude additive des fours allumés.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const [idx, e] of this.furnaceData) {
+      if (!(e && e.fuelTime > 0)) continue;
+      const tx = idx % WORLD_W, ty = (idx / WORLD_W) | 0;
+      const x = sx(tx * TILE + 16), y = sy(ty * TILE + 12);
+      const r = 110 * zoom;
+      if (x < -r || x > W + r || y < -r || y > H + r) continue;
+      // Petit vacillement de flamme pour une lueur vivante.
+      const flick = 0.85 + Math.sin(this.time * 7 + idx) * 0.15;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(255,170,70,${(0.45 * m * flick).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(255,150,60,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Troue le voile nocturne d'un dégradé radial (force = opacité effacée).
+  _punchLight(nctx, x, y, r, strength, W, H) {
+    if (x < -r || x > W + r || y < -r || y > H + r) return;
+    const g = nctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(0,0,0,${strength})`);
+    g.addColorStop(0.5, `rgba(0,0,0,${(strength * 0.4).toFixed(3)})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    nctx.fillStyle = g;
+    nctx.beginPath();
+    nctx.arc(x, y, r, 0, Math.PI * 2);
+    nctx.fill();
   }
 
   // Trouve un mob sous le curseur (dans la portée d'interaction).
@@ -2251,6 +2339,9 @@ export class Game {
     // 1) sols par chunks
     this.drawFloorChunks(ctx, viewL, viewT, viewR, viewB);
 
+    // 1b) ombres portées des blocs posés, sous TOUT le reste (tri inclus)
+    this.drawPlacedShadows(ctx, minTx, minTy, maxTx, maxTy);
+
     // 2) objets (arbres, rochers, blocs posés, portes, fours) + joueurs, triés par profondeur
     this.drawDepthSorted(ctx, minTx, minTy, maxTx, maxTy);
 
@@ -2267,6 +2358,8 @@ export class Game {
 
     // 6) obscurité souterraine (voile + halo autour du joueur)
     if (this.world.kind === 'cave') this.drawCaveDarkness(ctx, W, H);
+    // 6b) cycle jour/nuit : voile nocturne percé par le joueur et les fours.
+    else this.drawNight(ctx, W, H);
 
     // 7) vignette d'ambiance. Cachée en mode performance ou si le joueur
     // l'a désactivée dans les paramètres. Pré-rendue sinon.
@@ -2409,30 +2502,33 @@ export class Game {
     return cached || this.buildFloorChunk(cx, cy);
   }
 
-  drawPlacedBlocks(ctx, minTx, minTy, maxTx, maxTy) {
+  // Ombres portées directionnelles (lumière venant du nord-ouest) : chaque
+  // bloc solide posé projette une pénombre au sol vers le sud-est. Passe
+  // dédiée AVANT le tri en profondeur, pour que toutes les ombres restent
+  // sous les sprites (un mur ne vient jamais mordre l'ombre de son voisin).
+  drawPlacedShadows(ctx, minTx, minTy, maxTx, maxTy) {
+    const ct = this.chunkTiles;
     const blocks = this.world.blocks;
-    const doorOpen = this.world.doorOpen;
-    for (let ty = minTy; ty <= maxTy; ty++) {
-      let i = this.world.idx(minTx, ty);
-      for (let tx = minTx; tx <= maxTx; tx++, i++) {
-        const block = blocks[i];
-        if (!block) continue;
-        const def = BLOCK_DEFS[block];
-        if (def.kind === 'door') {
-          ctx.drawImage(getDoorCanvas(doorOpen[i] === 1), tx * TILE, ty * TILE);
-        } else if (block === 'furnace') {
-          const entry = this.furnaceData.get(i);
-          ctx.drawImage(getFurnaceCanvas(Boolean(entry && entry.fuelTime > 0)), tx * TILE, ty * TILE);
-        } else if (CROPS.includes(block)) {
-          // Une pousse de blé : petit sprite ancré au sol de la tuile.
-          const spr = getObjectSprite(block);
-          if (spr) {
-            ctx.drawImage(spr.canvas,
-              tx * TILE + TILE / 2 - spr.anchorX,
-              ty * TILE + TILE - 6 - spr.anchorY);
-          }
-        } else if (def.kind === 'block') {
-          ctx.drawImage(getTileCanvas(block), tx * TILE, ty * TILE);
+    const chunkT = Math.floor(minTy / ct);
+    const chunkB = Math.floor(maxTy / ct);
+    const chunkL = Math.floor(minTx / ct);
+    const chunkR = Math.floor(maxTx / ct);
+    ctx.fillStyle = 'rgba(8,10,18,0.16)';
+    for (let cy = chunkT; cy <= chunkB; cy++) {
+      const rowBase = cy * 256;
+      for (let cx = chunkL; cx <= chunkR; cx++) {
+        const list = this.placedByChunk.get(rowBase + cx);
+        if (!list) continue;
+        for (let k = 0; k < list.length; k++) {
+          const i = list[k];
+          const def = BLOCK_DEFS[blocks[i]];
+          if (!def || !def.solid) continue;
+          const tx = i % WORLD_W;
+          const ty = (i / WORLD_W) | 0;
+          if (tx < minTx || tx > maxTx || ty < minTy || ty > maxTy) continue;
+          // Bande au sud + bande à l'est : l'ombre « tombe » en bas à droite.
+          ctx.fillRect(tx * TILE + 3, (ty + 1) * TILE - 3, TILE - 3, 5);
+          ctx.fillRect((tx + 1) * TILE - 3, ty * TILE + 4, 5, TILE - 4);
         }
       }
     }
@@ -2802,16 +2898,18 @@ export class Game {
           if (tx < minTx || tx > maxTx || ty < minTy || ty > maxTy) continue;
           const sortY = (ty + 1) * TILE; // trié par le bas de sa tuile
 
-          // Couche 1 (base)
+          // Couche 1 (base) — les pousses de culture (kind « object » mais
+          // posées dans world.blocks) passent aussi par ici pour être vues.
           const block = blocks[i];
           if (block) {
             const def = BLOCK_DEFS[block];
-            if (def.kind === 'block' || def.kind === 'door') {
+            const isCrop = CROPS.includes(block);
+            if (def.kind === 'block' || def.kind === 'door' || isCrop) {
               const d = this._takeBlockDrawable();
               d.tx = tx;
               d.ty = ty;
               d.block = block;
-              d.kind = def.kind;
+              d.kind = isCrop ? 'crop' : def.kind;
               d.layer = 1;
               d.sortY = sortY;
               drawables.push(d);
@@ -2907,6 +3005,14 @@ export class Game {
           }
           ctx.drawImage(getDoorCanvas(isOpen), tx * TILE, ty * TILE);
           ctx.restore();
+        } else if (d.kind === 'crop') {
+          // Pousse de blé : petit sprite ancré au sol de la tuile.
+          const spr = getObjectSprite(block);
+          if (spr) {
+            ctx.drawImage(spr.canvas,
+              tx * TILE + TILE / 2 - spr.anchorX,
+              ty * TILE + TILE - 6 - spr.anchorY);
+          }
         } else if (block === 'furnace') {
           const entry = this.furnaceData.get(this.world.idx(tx, ty));
           ctx.drawImage(getFurnaceCanvas(Boolean(entry && entry.fuelTime > 0)), tx * TILE, ty * TILE);

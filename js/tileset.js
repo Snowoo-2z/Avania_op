@@ -1262,13 +1262,16 @@ export function getWaterFrame(frame) {
 // ------------------------------------------------------------
 
 export function softShadow(ctx, cx, cy, w, h) {
-  const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, w);
+  // Lumière venant du nord-ouest : l'ombre de contact se décale un peu
+  // vers le sud-est et s'y étire, pour un ancrage directionnel cohérent.
+  const ox = 2, oy = 1.5;
+  const g = ctx.createRadialGradient(cx + ox, cy + oy, 2, cx + ox, cy + oy, w);
   g.addColorStop(0, 'rgba(0,0,0,0.32)');
   g.addColorStop(0.7, 'rgba(0,0,0,0.18)');
   g.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.ellipse(cx, cy, w, h, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx + ox, cy + oy, w, h, 0, 0, Math.PI * 2);
   ctx.fill();
 }
 

@@ -65,6 +65,11 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   **blé** mûr. Récolter rend du blé + des graines ; 3 blés → 1 **pain**.
   Pain et steak se mangent (clic droit) et donnent un bonus temporaire de
   minage/marche. La pousse est diffusée en multijoueur comme un diff de bloc.
+- **🌗 Ambiance vivante** : cycle **jour/nuit** (~4 min) — la nuit pose un
+  voile bleuté percé par le halo du joueur et la lueur chaude, vacillante,
+  des fours allumés. **Ombres portées directionnelles** (lumière nord-ouest)
+  sous les blocs posés, arbres et mobs. La **caméra anticipe** légèrement le
+  déplacement (parallaxe douce) pour dégager le champ de vision.
 - **📦 Lâcher des objets** : touche `Q` pour jeter un objet de ta main,
   `Ctrl+Q` pour toute la pile — ou sors une pile de l'inventaire par-dessus
   le bord de l'écran. Les objets tombent au sol, fusionnent entre eux et
@@ -471,6 +476,13 @@ puis construis ta première cabane.
   `CAVE.diamondDensity` (js/cave.js).
 - [x] **Agriculture** — houe (4 paliers), terre labourée, graines → blé en
   4 stades, pain nourrissant. Croissance diffusée en multijoueur.
+- [x] **Ombres portées directionnelles** — lumière nord-ouest : ombre au sol
+  sud-est sous chaque bloc posé (passe dédiée avant le tri en profondeur) et
+  ombres de contact décalées sous arbres, mobs et cultures.
+- [x] **Cycle jour/nuit** — ~4 min : voile bleuté nocturne percé par le halo
+  du joueur et la lueur chaude vacillante des fours allumés.
+- [x] **Parallaxe de caméra** — léger regard anticipé, lissé, dans le sens
+  du déplacement.
 - [x] **Multijoueur (étape 6 : chat & réseau social)** — fenêtre de chat
   toujours visible (canal global + talkie-walkie de proximité en `V`),
   et téléphone (`P`) avec un réseau social partagé : comptes,
@@ -617,6 +629,13 @@ Le moteur tient 60 fps sur des PC modestes :
   nord-est, avant assombri vers le bas, droite plus foncée, pli ombré sous le
   dessus — et auto-tiling qui fusionne les murs voisins. L'extrusion
   (`BLOCK_EXTRUDE`) donne de la hauteur aux constructions.
+- **Éclairage directionnel & nuit** : passe d'ombres portées sud-est sous
+  les blocs posés, dessinée AVANT le tri en profondeur (`drawPlacedShadows`)
+  ; ombres de contact orientées nord-ouest→sud-est (`softShadow`) ; voile
+  nocturne sur canvas hors-écran percé en `destination-out` (halo joueur,
+  fours) puis lueur additive vacillante des fours allumés.
+- **Parallaxe caméra** : décalage lissé vers la direction de déplacement
+  (`camLeadX/Y` dans `update`), ajouté à la cible de `camera.follow`.
 - **Zéro allocation par frame** dans la boucle de rendu : tags de profondeur
   numériques portés par les entités, objets d'options réutilisés, clés de
   cache numériques — pas de pression sur le GC.
