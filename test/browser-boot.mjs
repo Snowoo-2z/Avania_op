@@ -624,6 +624,28 @@ console.log('\n▶ Multijoueur : animaux partagés (étape 5)');
   assert(hitEvents[0].hp === cow.hp, 'avec les PV restants après le coup');
   game.uiCallbacks.onMobHit = prevOnMobHit;
 
+  // --- Dégâts selon l'outil : plus le matériau est noble, plus ça tranche ---
+  game.applyMobSpawn(game.world.id, [{ id: 200, kind: 'cow', x: 500, y: 500, hp: 100, alive: true }]);
+  const target = game.mobs.find((m) => m.id === 200);
+  const inv = game.inventory;
+  const prevSel = inv.selected;
+  const swordSlot = inv.hotbarStart + 8;
+  const prevStack = inv.getSlot(swordSlot);
+  const equip = (id) => {
+    inv.setSlot(swordSlot, { id, count: 1 });
+    inv.select(8);
+  };
+  equip('wooden_sword');
+  let before = target.hp;
+  game.attackMob(target);
+  assert(before - target.hp === 3, `l'épée en bois inflige 3 dégâts (${before} → ${target.hp})`);
+  equip('diamond_sword');
+  before = target.hp;
+  game.attackMob(target);
+  assert(before - target.hp === 7, `l'épée en diamant inflige 7 dégâts (${before} → ${target.hp})`);
+  inv.setSlot(swordSlot, prevStack || null);
+  inv.select(prevSel);
+
   // --- Coup distant (mobHit) : mort et butin appliqués localement ---
   const dropsBefore = game.droppedItems.length;
   game.applyMobHit(game.world.id, { id: 100, hp: 0, alive: false });

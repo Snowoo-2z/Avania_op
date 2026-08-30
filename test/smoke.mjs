@@ -316,6 +316,16 @@ for (const t of ['pickaxe', 'axe', 'shovel', 'sword']) {
 }
 assert(ITEM_DEFS.diamond_pickaxe.efficiency > ITEM_DEFS.iron_pickaxe.efficiency,
   'la pioche en diamant mine plus vite que celle en fer');
+
+// Dégâts : plus le matériau de l'épée est noble, plus elle tranche.
+const { toolDamage } = await import('../js/blocks.js');
+assert(toolDamage(null) === 1, 'mains nues : 1 dégât');
+assert(toolDamage(ITEM_DEFS.wood) === 1, 'un matériau ne frappe pas');
+assert(toolDamage(ITEM_DEFS.wooden_sword) === 3, 'épée bois : 3');
+assert(toolDamage(ITEM_DEFS.stone_sword) === 4, 'épée pierre : 4');
+assert(toolDamage(ITEM_DEFS.iron_sword) === 5, 'épée fer : 5');
+assert(toolDamage(ITEM_DEFS.diamond_sword) === 7, 'épée diamant : 7 (le maximum)');
+assert(toolDamage(ITEM_DEFS.diamond_pickaxe) === 1, 'une pioche, même en diamant, frappe à 1');
 // Craft bout en bout : 3 gemmes + 2 bâtons → pioche en diamant.
 const dInv = new Inventory();
 dInv.add('diamond', 3);

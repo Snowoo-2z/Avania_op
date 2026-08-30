@@ -302,6 +302,16 @@ export function blockMinTierIndex(blockId) {
   return def && def.minTier ? TOOL_TIERS.indexOf(def.minTier) : 0;
 }
 
+// Dégâts portés à une créature selon l'outil en main.
+// Une épée tranche d'autant plus fort que son matériau est noble ;
+// tout le reste (autre outil, mains nues) frappe à 1, comme avant.
+const SWORD_DAMAGE = { wood: 3, stone: 4, iron: 5, diamond: 7 };
+export function toolDamage(def) {
+  if (!def || def.type !== 'tool') return 1;
+  if (def.toolType === 'sword') return SWORD_DAMAGE[def.tier] || 3;
+  return 1;
+}
+
 // Cette liste historique alimente l'API simple et reste volontairement
 // stable pour les anciennes sauvegardes / extensions. L'inventaire réel,
 // lui, connaît tous les ITEM_DEFS ci-dessus.

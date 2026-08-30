@@ -54,6 +54,9 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   profondeur 2) se craftent en pioche, hache, pelle et épée — mêmes formes
   que le fer, mais le palier **diamant** mine plus vite et tient plus
   longtemps (520 d'usure contre 250).
+- **⚔️ Dégâts selon l'outil** : une épée tranche d'autant plus fort que son
+  matériau est noble — bois 3, pierre 4, fer 5, **diamant 7** (`toolDamage`,
+  js/blocks.js). Les autres outils et les mains nues frappent à 1.
 - **📦 Lâcher des objets** : touche `Q` pour jeter un objet de ta main,
   `Ctrl+Q` pour toute la pile — ou sors une pile de l'inventaire par-dessus
   le bord de l'écran. Les objets tombent au sol, fusionnent entre eux et

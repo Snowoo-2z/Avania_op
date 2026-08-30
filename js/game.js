@@ -6,7 +6,7 @@ import {
   TILE, WORLD_W, WORLD_H, REACH, PERFORMANCE, PLAYER_RENDER_SCALE, BLOCK_EXTRUDE,
 } from './config.js';
 import {
-  BLOCK_DEFS, ITEM_DEFS, TOOL_TIERS, toolTierIndex, blockMinTierIndex,
+  BLOCK_DEFS, ITEM_DEFS, TOOL_TIERS, toolTierIndex, blockMinTierIndex, toolDamage,
 } from './blocks.js';
 import { World } from './world.js';
 import { Player } from './player.js';
@@ -1325,7 +1325,7 @@ export class Game {
     const selected = this.inventory.getSelectedStackRef();
     const def = selected && ITEM_DEFS[selected.id];
     const sword = def?.toolType === 'sword';
-    const damage = sword ? 3 : 1;
+    const damage = toolDamage(def);
 
     mob.hp -= damage;
     mob.hitFlash = 0.18;
