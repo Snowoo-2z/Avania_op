@@ -17,6 +17,11 @@ export class Player {
     this.hp = 20;
     this.maxHp = 20;
     this.lastHurtAt = -99; // dernière blessure (this.time du jeu)
+    // Faim : 20 = repu. Elle se vide avec l'activité (voir js/game.js) :
+    // trop vide, elle bloque la régénération des PV, puis les ronge.
+    this.hunger = 20;
+    this.maxHunger = 20;
+    this.starveT = 0; // compteur interne de famine (1 PV perdus par palier)
   }
 
   // tente de déplacer le joueur ; gère les collisions avec le monde

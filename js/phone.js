@@ -79,8 +79,14 @@ export class SocialClient {
     if (typeof fetch !== 'function') return { ok: false, reason: 'offline' };
     const headers = { 'Content-Type': 'application/json' };
     if (this.token) headers['X-Avania-Token'] = this.token;
+    // GET sans corps : le jeton part aussi dans la query, ceinture et
+    // bretelles — certains proxys s'amusent à retirer des en-têtes
+    // personnalisés, et perdre le jeton ici déconnecterait le joueur à
+    // chaque rafraîchissement du fil.
+    const url = `${this.baseUrl}/api/social${path}`
+      + (!body && this.token ? `?token=${encodeURIComponent(this.token)}` : '');
     try {
-      const res = await fetch(`${this.baseUrl}/api/social${path}`, {
+      const res = await fetch(url, {
         method: body ? 'POST' : 'GET',
         headers,
         body: body ? JSON.stringify(body) : undefined,

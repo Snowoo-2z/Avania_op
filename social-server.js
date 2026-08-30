@@ -175,6 +175,7 @@ export function createSocial({ broadcast = () => {}, log = console.log } = {}) {
   }
 
   function login({ handle, password }) {
+    sweepSessions();
     const clean = sanitizeSocialHandle(handle);
     if (!clean) return { ok: false, reason: 'invalid' };
     const account = accounts.get(clean.toLowerCase());
@@ -306,6 +307,18 @@ export function createSocial({ broadcast = () => {}, log = console.log } = {}) {
   }
 
   function clientIp(req) {
+    // Derrière un reverse proxy (Render, nginx…), remoteAddress est le
+    // proxy : TOUS les joueurs partagent alors le même seau du limiteur,
+    // et douze connexions toutes joueurs confondues suffisent à se faire
+    // jeter (429). On retient le DERNIER maillon de X-Forwarded-For :
+    // le PREMIER est écrit par le client lui-même (forgeable à volonté,
+    // donc inutile comme clé de limiteur) ; le dernier est celui
+    // qu'ajoute le proxy de confiance. Sans proxy, pas d'en-tête → socket.
+    const forwarded = req.headers?.['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.trim()) {
+      const hops = forwarded.split(',').map((h) => h.trim()).filter(Boolean);
+      if (hops.length) return hops[hops.length - 1];
+    }
     return req.socket?.remoteAddress || 'inconnue';
   }
 
@@ -314,7 +327,15 @@ export function createSocial({ broadcast = () => {}, log = console.log } = {}) {
 
     if (req.method === 'GET') {
       if (pathname === '/api/social/feed') {
-        return sendJson(res, 200, feed(query.get?.('token') || ''));
+        // Le jeton peut arriver dans l'en-tête X-Avania-Token (le client
+        // du jeu) OU dans la query (appels externes). Avant, la query
+        // seule était lue : le jeton du jeu n'était jamais vu, le fil
+        // répondait account:null, et le client se déconnectait aussitôt —
+        // « la création de compte ne marche pas », alors qu'elle avait
+        // réussi : c'est le fil qui perdait la session.
+        const headerToken = tokenFrom(req, null);
+        const queryToken = query.get?.('token') || '';
+        return sendJson(res, 200, feed(headerToken || queryToken));
       }
       return sendJson(res, 404, { ok: false, reason: 'not-found' });
     }

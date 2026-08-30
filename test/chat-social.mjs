@@ -274,6 +274,21 @@ try {
   assert(feed.data.ok === true && feed.data.posts.length === 1, 'le fil est lisible par tout le monde');
   assert(feed.data.account === null, 'sans jeton, le fil ne révèle aucun compte');
 
+  // BUG (retour joueur : « la création de compte ne fonctionnait pas ») :
+  // GET /feed ne lisait le jeton QUE dans la query — jamais dans
+  // l'en-tête X-Avania-Token que le jeu envoie. Le fil répondait
+  // account:null, le client se déconnectait aussitôt après l'inscription
+  // et revenait à l'écran « Créer un compte » (pseudo ensuite « pris »).
+  const feedAuth = await api('/feed', null, tokenA);
+  assert(feedAuth.data.ok === true && feedAuth.data.account?.handle === 'Alice',
+    'le fil lu avec le jeton du client (en-tête) reconnaît la session');
+  const feedQuery = await api(`/feed?token=${encodeURIComponent(tokenA)}`);
+  assert(feedQuery.data.ok === true && feedQuery.data.account?.handle === 'Alice',
+    'le fil lu avec le jeton en query aussi (appels externes)');
+  const feedDead = await api('/feed?token=jeton-invente');
+  assert(feedDead.data.ok === true && feedDead.data.account === null,
+    'un jeton inconnu ne révèle toujours aucun compte');
+
   const liked = await api('/like', { id: posted.data.post.id }, tokenB);
   assert(liked.data.ok === true && liked.data.post.likes === 1, 'aimer une publication incrémente son compteur');
   assert(liked.data.post.likedBy.includes('Bob'), 'et note qui l\'a aimée');
@@ -314,7 +329,52 @@ try {
   assert(sanitizeSocialPost({ id: 'x', handle: '', text: 'sans auteur' }) === null,
     'une publication sans auteur valide est rejetée côté client');
 
+  // Le VRAI client du téléphone, bout en bout : c'est le scénario exact
+  // du bug — l'inscription réussissait, puis le premier rafraîchissement
+  // du fil perdait la session et ramenait l'écran de connexion.
+  console.log('\n▶ Réseau social : le client du téléphone bout en bout');
+  const { SocialClient } = await import('../js/phone.js');
+  const phone = new SocialClient({ baseUrl: base, token: '' });
+  const created = await phone.signup('Carole', 'motdepasse');
+  assert(created.ok === true, 'le client du téléphone crée le compte');
+  assert(phone.hasSession && phone.account?.handle === 'Carole',
+    'la session est gardée côté client');
+  const seen = await phone.feed();
+  assert(seen.ok === true && seen.account?.handle === 'Carole',
+    'après inscription, le fil reconnaît toujours la session (bug de la session perdue)');
+  const republished = await phone.post('Salut le village !');
+  assert(republished.ok === true,
+    'et le nouveau compte peut publier sans se reconnecter');
+
   assert(aliceInboxBefore >= 0, 'les messages de chat et les évènements sociaux ne se mélangent pas');
+
+  // ------------------------------------------------------------
+  //  Fichiers statiques : aucune sortie du répertoire racine
+  //
+  //  Le filtre de sécurité doit exiger le SÉPARATEUR après ROOT, sans
+  //  quoi un dossier VOISIN dont le nom partage le préfixe
+  //  (« Avania_op-voisin » pour « Avania_op ») serait servi.
+  // ------------------------------------------------------------
+  console.log('\n▶ Statics : aucune sortie du répertoire racine');
+  const fs = await import('node:fs');
+  const sibling = `${ROOT}-voisin`;
+  fs.mkdirSync(sibling, { recursive: true });
+  fs.writeFileSync(path.join(sibling, 'secret.txt'), 'top secret', 'utf8');
+  try {
+    // ..%2f devient « /../ » APRÈS le décodage : le parseur d'URL ne
+    // normalise pas ce segment point, seul le filtre de fichiers peut
+    // le bloquer. C'est le vrai vecteur de sortie de racine.
+    const leak = await fetch(`${base}/..%2f${path.basename(sibling)}%2fsecret.txt`);
+    const body = await leak.text();
+    assert(leak.status === 403 && !body.includes('top secret'),
+      `un dossier voisin au nom préfixé n'est pas servi (${leak.status})`);
+    const classic = await fetch(`${base}/..%2f..%2fetc%2fpasswd`);
+    assert(classic.status !== 200, 'et ../etc/passwd non plus');
+    const normal = await fetch(`${base}/index.html`);
+    assert(normal.status === 200, 'les fichiers du jeu restent servis normalement');
+  } finally {
+    fs.rmSync(sibling, { recursive: true, force: true });
+  }
 } catch (err) {
   console.error('\n❌ exception pendant le test :\n' + (err && err.stack || err));
   failures++;

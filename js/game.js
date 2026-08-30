@@ -79,6 +79,17 @@ function mobToNetInfo(mob) {
 }
 
 const REACH_SQ = REACH * REACH;
+// --- Faim (jauge au-dessus de la barre rapide, à côté de la vie) ---
+// Le ventre se vide avec l'activité : ~10 min de marche continue, plus
+// vite en minant, presque rien au repos. Trop vide (HUNGER_REGEN_MIN),
+// la régénération des PV s'arrête ; à zéro, la famine ronge les PV
+// lentement — sans jamais tuer (plancher, voir HUNGER_STARVE_FLOOR).
+const HUNGER_DRAIN_IDLE = 0.012;   // par seconde au repos (~28 min de ventre plein à vide)
+const HUNGER_DRAIN_MOVE = 0.033;   // par seconde en marchant (~10 min)
+const HUNGER_DRAIN_MINE = 0.07;    // supplément pendant un minage en cours
+const HUNGER_REGEN_MIN = 13;       // en dessous (65 %), plus de régénération des PV
+const HUNGER_STARVE_EVERY = 3;     // ventre vide : 1 PV perdus toutes les 3 s
+const HUNGER_STARVE_FLOOR = 1;     // …mais on ne meurt pas de faim
 const SORT_BY_Y = (a, b) => {
   const diff = a.sortY - b.sortY;
   if (diff !== 0) return diff;
@@ -594,10 +605,29 @@ export class Game {
     if (this.uiCallbacks.onNetUpdate) this.uiCallbacks.onNetUpdate(dt, this.player);
     this.actionCooldown = Math.max(0, this.actionCooldown - dt);
     this.pvpCooldown = Math.max(0, this.pvpCooldown - dt);
-    // Régén PvP : hors de tout coup récent, les PV remontent doucement.
+    // Faim : le ventre se vide (marcher et miner creusent davantage).
     const lp = this.player;
-    if (lp.hp < lp.maxHp && this.time - lp.lastHurtAt > 6) {
+    const hungerDrain = (lp.moving ? HUNGER_DRAIN_MOVE : HUNGER_DRAIN_IDLE)
+      + (this.mining.progress > 0 ? HUNGER_DRAIN_MINE : 0);
+    lp.hunger = Math.max(0, lp.hunger - hungerDrain * dt);
+    // Régén PvP : hors de tout coup récent ET assez nourri — à ventre
+    // trop vide, le corps ne se répare plus.
+    if (lp.hunger >= HUNGER_REGEN_MIN && lp.hp < lp.maxHp && this.time - lp.lastHurtAt > 6) {
       lp.hp = Math.min(lp.maxHp, lp.hp + dt * 1.2);
+    }
+    // Famine : ventre complètement vide, les PV fondent lentement —
+    // jusqu'au plancher (on ne meurt pas de faim, on reste à 1 PV).
+    if (lp.hunger <= 0 && lp.hp > HUNGER_STARVE_FLOOR) {
+      lp.starveT += dt;
+      if (lp.starveT >= HUNGER_STARVE_EVERY) {
+        lp.starveT = 0;
+        lp.hp = Math.max(HUNGER_STARVE_FLOOR, lp.hp - 1);
+        lp.lastHurtAt = this.time;
+        this.notify('Tu meurs de faim : trouve quelque chose à manger !');
+        if (this.uiCallbacks.onPlayerHp) this.uiCallbacks.onPlayerHp(lp.hp);
+      }
+    } else if (lp.hunger > 0) {
+      lp.starveT = 0;
     }
     // Les fours cuisent en continu, même panneau ouvert (la barre avance).
     this.updateFurnaces(dt);
@@ -1540,8 +1570,10 @@ export class Game {
     p.lastHurtAt = this.time;
     this.spawnBreakParticles(Math.floor(p.x / TILE), Math.floor(p.y / TILE), 'player');
     if (p.hp <= 0) {
-      // Mort : retour au spawn de surface, PV rendus.
+      // Mort : retour au spawn de surface, PV et faim rendus.
       p.hp = p.maxHp;
+      p.hunger = p.maxHunger;
+      p.starveT = 0;
       const surface = this.surfaceWorld;
       const sp = surface ? { x: surface.spawn.x, y: surface.spawn.y } : { x: p.x, y: p.y };
       if (this.world !== surface && surface) this.switchWorld(surface, sp.x, sp.y);
@@ -1853,15 +1885,26 @@ export class Game {
     this.placeSelectedBlock();
   }
 
-  // Consomme l'aliment sélectionné et applique le bonus « bien nourri ».
+  // Consomme l'aliment sélectionné : remplit la faim (la jauge au-dessus
+  // de la barre rapide) ET laisse le bonus « bien nourri » existant.
   eatSelectedFood() {
     const idx = this.inventory.selectedSlotIndex();
     const stack = this.inventory.getSlot(idx);
     const def = stack && ITEM_DEFS[stack.id];
     if (!def?.food) return;
+    const lp = this.player;
+    // Repu : inutile de gaspiller la nourriture (comme dans Minecraft).
+    if (lp.hunger >= lp.maxHunger) {
+      this.notify('Tu n\'as pas faim pour le moment.');
+      this.actionCooldown = 0.25;
+      return;
+    }
     this.inventory.takeSlot(idx, 1);
+    lp.hunger = Math.min(lp.maxHunger, lp.hunger + def.food);
     this.wellFedT = Math.min(120, this.wellFedT + def.food * 10);
-    this.notify(`Miam ! ${def.label} : bien nourri ${Math.round(this.wellFedT)} s.`);
+    this.actionCooldown = 0.35; // un repas, ça se mâche
+    this.notify(`Miam ! ${def.label} : faim ${Math.round(lp.hunger)}/${lp.maxHunger}`
+      + `, bien nourri ${Math.round(this.wellFedT)} s.`);
   }
 
   // Bonus tant que le joueur est bien nourri (mine et marche un peu mieux).

@@ -18,6 +18,11 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
 
 - 🧱 **Bac à sable** : on récupère des blocs (bois, pierre…), on les stocke et on construit.
 - 🎒 **Inventaire** : une barre rapide pour choisir quoi poser.
+- ❤️ **Barre de vie** : au-dessus de la barre rapide — dégâts PvP, régénération
+  continue, pulsation d'alerte sous 25 % de vie.
+- 🍗 **Jauge de faim** : se vide en jouant (marcher, miner creusent plus).
+  Manger du pain ou du steak la remplit (clic droit) ; ventre trop vide =
+  plus de régénération, ventre vide = famine (jamais mortelle, plancher à 1 PV).
 - 🪙 **Économie** (à venir) : une monnaie, des métiers, des boutiques.
 - 🏦 **Des rôles** (à venir) : policier, commerçant, banquier, voleur…
 - 📹 **Surveillance** (à venir) : poser des caméras pour protéger ses biens.
@@ -177,8 +182,9 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   rouvrir le comptoir fait **réapparaître l'offre négociée** : pas besoin de
   redemander pour revoir les boutons d'achat.
   Le dialogue passe par un modèle si une clé `AVANIA_AI_API_KEY` est
-  configurée (relais `POST /api/merchant`), sinon par un **cerveau de
-  négociation local** qui applique exactement les mêmes règles.
+  configurée (relais `POST /api/merchant`) — accueil du comptoir compris :
+  c'est le modèle qui salue et pose la première proposition. Sans clé,
+  un **cerveau de négociation local** applique exactement les mêmes règles.
 
 ## 🚀 Lancer le jeu
 

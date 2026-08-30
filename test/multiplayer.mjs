@@ -228,6 +228,33 @@ try {
   assert(appearanceMsg.name === 'Bobby', `le nom de Bob est propagé (${appearanceMsg.name})`);
   assert(appearanceMsg.appearance.skin === 'peche', 'son apparence aussi');
 
+  console.log('\n▶ Quota de messages JSON (anti-amplification)');
+  {
+    // Chaque message JSON est rediffusé à N joueurs : sans quota, un
+    // script trivial sature la bande passante de tous. On inonde, puis
+    // on compte ce qu'Alice a réellement reçu.
+    let appearances = 0;
+    const onCount = (data, isBinary) => {
+      if (isBinary) return;
+      try { if (JSON.parse(data.toString('utf8')).t === 'appearance') appearances += 1; } catch { /* pas du JSON */ }
+    };
+    alice.on('message', onCount);
+    for (let i = 0; i < 150; i++) {
+      bob.send(JSON.stringify({ t: 'hello', name: `Flood${i}`, appearance: {} }));
+    }
+    await sleep(700);
+    alice.off('message', onCount);
+    assert(appearances > 0, `un usage normal passe toujours (${appearances} reçues)`);
+    assert(appearances <= 60,
+      `mais l'inondation est plafonnée (${appearances} <= 60, seau de 60 rafale comprise)`);
+    // Le seau se remplit à nouveau : Bob peut reparler normalement.
+    await sleep(1100);
+    const afterFlood = waitForJson(alice, (m) => m.t === 'appearance' && m.name === 'Après la pluie');
+    bob.send(JSON.stringify({ t: 'hello', name: 'Après la pluie', appearance: {} }));
+    const quiet = await afterFlood;
+    assert(quiet.name === 'Après la pluie', 'et une seconde plus tard, tout refonctionne');
+  }
+
   console.log('\n▶ Diffusion des positions (trame binaire compacte)');
   bob.send(encodeInput(400, 250, 'right', true));
   // On filtre sur la présence du VRAI mouvement de Bob : le premier

@@ -254,6 +254,9 @@ for (const id of ['hud', 'hud-right', 'depth-chip',
   'depth-label', 'gear-chip', 'gear-depth', 'interact-prompt', 'interact-key', 'interact-label',
   'dialog', 'dialog-speaker', 'dialog-text', 'dialog-skip', 'merchant-chat', 'mc-log',
   'mc-input', 'mc-form', 'mc-offer', 'mc-offer-buy', 'mc-offer-talk', 'mc-offer-price',
+  // Barres de vie et de faim (au-dessus de la barre rapide).
+  'health-hud', 'health-fill', 'health-text',
+  'hunger-hud', 'hunger-fill', 'hunger-text',
   // Étape 6 : chat (global + talkie-walkie) et téléphone / réseau social.
   'global-chat', 'gchat-log', 'gchat-input', 'gchat-form', 'gchat-channel', 'gchat-channel-label',
   'phone', 'phone-home', 'phone-auth', 'phone-feed', 'phone-auth-handle', 'phone-auth-pass',
@@ -316,6 +319,96 @@ purse.reset(); // = un joueur qui arrive : la bourse et l'inventaire repartent d
 assert(game.inventory.count('coin') === 0, 'l\'arrivant n\'a pas une pièce en poche avant le versement');
 assert(purse.grantStartingFunds() === 150, 'l\'arrivée suivante est payée sans la moindre cinématique');
 assert(game.inventory.count('coin') === 150, 'les écus vont dans l\'inventaire, pas dans un compteur');
+
+console.log('\n▶ Barre de vie');
+{
+  // La barre existe, est visible une fois le jeu lancé, et pleine au départ.
+  const healthHud = $('health-hud');
+  assert(!!healthHud && !healthHud.classList.contains('hidden'), 'la barre de vie est visible au-dessus de la barre rapide');
+  assert($('health-fill').style.width === '100%', `pleine au départ (${$('health-fill').style.width})`);
+  assert($('health-text').textContent === '20/20', `avec le compte affiché (« ${$('health-text').textContent} »)`);
+
+  // Un coup (PvP côté serveur, voir applyPlayerAttack) : la barre suit,
+  // et sous 25 % elle passe en mode « blessé » (pulsation).
+  game.player.hp = 4;
+  game.player.lastHurtAt = game.time;
+  await frames(4);
+  assert($('health-fill').style.width === '20%', `la barre suit les dégâts (${$('health-fill').style.width})`);
+  assert($('health-text').textContent === '4/20', `et le compte aussi (« ${$('health-text').textContent} »)`);
+  assert(healthHud.classList.contains('is-low'), 'sous 25 % de vie, la classe is-low pulse');
+
+  // La régénération (après 6 s sans dégât, +1,2 PV/s) fait remonter la
+  // barre TOUTE SEULE : le HUD est mis à jour à chaque frame.
+  game.player.lastHurtAt = game.time - 7;
+  const before = parseFloat($('health-fill').style.width);
+  await frames(40);
+  const after = parseFloat($('health-fill').style.width);
+  assert(after > before, `la régénération la fait remonter (${before} % → ${after} %)`);
+  // Remise à neuf pour la suite du scénario (descente, achats…).
+  game.player.hp = game.player.maxHp;
+  game.player.lastHurtAt = -99;
+  await frames(3);
+  assert($('health-fill').style.width === '100%', 'et revenue pleine une fois soignée');
+}
+
+console.log('\n▶ Jauge de faim');
+{
+  const hungerHud = $('hunger-hud');
+  assert(!!hungerHud && !hungerHud.classList.contains('hidden'), 'la jauge de faim est visible au-dessus de la barre de vie');
+  assert($('hunger-fill').style.width === '100%', `pleine au départ (${$('hunger-fill').style.width})`);
+  assert($('hunger-text').textContent === '20/20', `avec le compte affiché (« ${$('hunger-text').textContent} »)`);
+
+  // La régénération des PV exige un ventre assez plein : à 10/20 (65 %),
+  // même loin de tout coup, les PV ne remontent plus.
+  game.player.hunger = 10;
+  game.player.hp = 15;
+  game.player.lastHurtAt = game.time - 7;
+  await frames(50);
+  assert(game.player.hp === 15, `ventre trop vide : plus aucune régénération (${game.player.hp}/20)`);
+  assert(!hungerHud.classList.contains('is-low'), 'à 10/20, la jauge ne pulse pas encore (50 %)');
+
+  // Repu : la régénération repart toute seule.
+  game.player.hunger = 18;
+  await frames(50);
+  assert(game.player.hp > 15, `repu, la régénération reprend (${game.player.hp.toFixed(1)}/20)`);
+
+  // Manger : le pain (+6) remplit la jauge et part de l'inventaire.
+  // add() range d'abord dans la barre rapide — on sélectionne la case
+  // qui contient VRAIMENT le pain (la case 0 porte les écus ici).
+  game.inventory.add('bread', 2);
+  const breadSlot = game.inventory.slots.findIndex((s) => s && s.id === 'bread');
+  assert(breadSlot >= game.inventory.hotbarStart,
+    `le pain est bien dans la barre rapide (case ${breadSlot})`);
+  game.inventory.selected = breadSlot - game.inventory.hotbarStart;
+  const breadBefore = game.inventory.count('bread');
+  game.player.hunger = 8;
+  game.eatSelectedFood();
+  assert(game.inventory.count('bread') === breadBefore - 1, `le pain est consommé (${game.inventory.count('bread')} restant)`);
+  assert(game.player.hunger === 14, `la faim remonte de la valeur « food » du pain (8 → ${game.player.hunger})`);
+  await frames(2); // le HUD se met à jour à la frame suivante
+  assert($('hunger-text').textContent === '14/20', `et la jauge l'affiche (« ${$('hunger-text').textContent} »)`);
+
+  // Repu à bloc : refus de manger, rien n'est gaspillé.
+  game.player.hunger = game.player.maxHunger;
+  game.eatSelectedFood();
+  assert(game.inventory.count('bread') === breadBefore - 1, 'repu, on ne mange pas : le pain reste dans l\'inventaire');
+
+  // Famine : ventre vide, les PV fondent tout seuls (jusqu'au plancher).
+  game.player.hunger = 0;
+  game.player.hp = 10;
+  game.player.lastHurtAt = -99;
+  const starved = await until(() => game.player.hp < 10, 6000);
+  assert(starved, 'ventre vide : la famine ronge les PV toute seule');
+  assert(game.player.hp >= 1, `mais on ne meurt pas de faim (plancher à 1, ici ${game.player.hp})`);
+  assert(hungerHud.classList.contains('is-low'), 'jauge vide : pulsation d\'alerte');
+
+  // Remise à neuf pour la suite du scénario.
+  game.player.hunger = game.player.maxHunger;
+  game.player.hp = game.player.maxHp;
+  game.player.starveT = 0;
+  game.player.lastHurtAt = -99;
+  await frames(3);
+}
 
 console.log('\n▶ L\'entrée de la grotte');
 // On se place sur le parvis, juste devant l'arche.
@@ -688,7 +781,9 @@ console.log('\n▶ Multijoueur : animaux partagés (étape 5)');
   game.inventory.setSlot(foodSlot, { id: 'bread', count: 1 });
   game.inventory.select(7);
   game.wellFedT = 0;
+  game.player.hunger = 10; // avoir faim : repu, le jeu refuse de gaspiller
   game.eatSelectedFood();
+  assert(game.player.hunger === 16, `manger remplit la faim (10 → ${game.player.hunger})`);
   assert(game.wellFedT > 0, 'manger rend bien nourri');
   assert(game.inventory.count('bread') === 0, 'le pain est consommé');
   assert(game.wellFedBoost() === 1.1, 'et le bonus de minage s\'applique');

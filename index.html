@@ -123,6 +123,25 @@
   <!-- Barre rapide (inventaire) -->
   <div id="hotbar" class="hotbar"></div>
 
+  <!-- Barre de vie : au-dessus de la barre rapide. Cachée au chargement,
+       montrée avec le reste du HUD au démarrage (js/main.js). Les PV
+       existaient déjà (PvP, régénération) mais n'étaient affichés nulle
+       part pour le joueur local. -->
+  <div id="health-hud" class="health-hud hidden" title="Points de vie">
+    <span class="health-icon" data-icon="heart"></span>
+    <div class="health-track"><div id="health-fill" class="health-fill"></div></div>
+    <span id="health-text" class="health-text">20/20</span>
+  </div>
+
+  <!-- Jauge de faim : empilée au-dessus de la barre de vie. Se vide avec
+       l'activité (marcher, miner) ; pain et steak la remplissent. Ventre
+       vide = plus de régénération, puis famine (jamais mortelle). -->
+  <div id="hunger-hud" class="hunger-hud hidden" title="Faim">
+    <span class="hunger-icon" data-icon="drumstick"></span>
+    <div class="hunger-track"><div id="hunger-fill" class="hunger-fill"></div></div>
+    <span id="hunger-text" class="hunger-text">20/20</span>
+  </div>
+
   <!-- Actions d'interface -->
   <button id="craft-btn" class="craft-btn hidden" title="Fabriquer"><span class="ic" data-icon="hammer"></span> <span>Fabriquer</span><kbd>C</kbd></button>
 

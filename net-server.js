@@ -56,6 +56,10 @@ import {
 const MAX_PLAYERS = Number(process.env.AVANIA_MAX_PLAYERS || 24);
 const BROADCAST_HZ = Number(process.env.AVANIA_TICK_HZ || 12.5);
 const BROADCAST_INTERVAL_MS = Math.round(1000 / BROADCAST_HZ);
+// Quota de messages JSON par connexion et par seconde (voir le handler
+// 'message' : seau à jetons, rafale comprise).
+const JSON_RATE_PER_SEC = 30;
+const JSON_BURST = JSON_RATE_PER_SEC * 2;
 // Nom + apparence : mis à jour rarement, en JSON (simple, coût négligeable).
 const MAX_NAME_LEN = 20;
 
@@ -604,6 +608,20 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
         player.lastMoveAt = Date.now();
         return;
       }
+      // Quota de messages JSON par connexion : chaque message est
+      // rediffusé à N joueurs (amplification ×N), et les rares ('block',
+      // 'chest'…) le sont par design. Sans quota, un script de 50
+      // lignes saturait la bande passante de tout le monde et le CPU
+      // du plan gratuit. Un seau à jetons simple : 30 messages/s,
+      // rafale de 60 — très au-dessus de tout usage réel du jeu (un
+      // clic = un message). Au-delà : ignoré, pas de déconnexion.
+      const nowMs = Date.now();
+      if (nowMs - (player.jsonWinAt || 0) >= 1000) {
+        player.jsonWinAt = nowMs;
+        player.jsonBudget = JSON_BURST;
+      }
+      if ((player.jsonBudget || 0) <= 0) return;
+      player.jsonBudget -= 1;
       // Messages JSON, rares : identité (nom + apparence).
       let msg;
       try { msg = JSON.parse(data.toString('utf8')); } catch { return; }
@@ -803,6 +821,7 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     ws.on('close', () => {
       players.delete(id);
       releaseId(id);
+      lastSentPositions.delete(id); // pas de signature périmée réutilisée avec un id recyclé
       broadcastJson({ t: 'leave', id });
       log(`AVANIA multi : joueur #${id} déconnecté (${playerCount()}/${MAX_PLAYERS})`);
     });

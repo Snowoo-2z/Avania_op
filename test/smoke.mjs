@@ -788,8 +788,10 @@ const {
   merchantBriefing, parseMerchantReply, resolveItemId, extractLastNumber,
 } = merchantMod;
 const {
-  accountMessage, merchantReply, isMerchantAvailable,
+  accountMessage, merchantReply, merchantGreeting, isMerchantAvailable,
 } = await import('../js/merchant-brain.js');
+const { sanitize, interpretCommands, greetMerchant, buildSystemPrompt } =
+  await import('../js/merchant-ai.js');
 
 assert(Object.keys(MERCHANTS).length === 2, 'deux marchands');
 const gaspard = MERCHANTS.gaspard;
@@ -945,6 +947,119 @@ assert(outAt >= 0, 'à force d\'insultes, Aldric met le joueur dehors (/out)');
 assert(outAt <= 5, `et il ne se laisse pas faire longtemps (au message ${outAt + 1})`);
 assert(!isMerchantAvailable(m), 'il n\'est plus disponible ensuite');
 assert(MERCHANTS.aldric.cooldown === 45, 'le refroidissement est bien de 45 secondes');
+
+// BUG (retour joueur) : « quand on parle à Aldric, il met jamais d'achat ».
+// 1) L'ouverture du comptoir DOIT poser une proposition sur la table,
+//    comme Gaspard — le cas spécial Aldric l'en empêchait.
+m = createMerchantState('aldric', { day: 1, totalPlayers: 1 });
+m.seed = 4421;
+r = merchantGreeting(m, merchantBriefing(m, ITEM_DEFS), ITEM_DEFS);
+assert(parseMerchantReply(r.text).commands.some((c) => c.type === 'sell'),
+  'Aldric propose un article dès l\'ouverture du comptoir');
+// 2) Une conversation d'achat ordinaire doit conclure, jamais finir dehors.
+m = createMerchantState('aldric', { day: 1, totalPlayers: 1 });
+m.seed = 4421;
+let kickedDuringSale = false;
+let offeredDuringSale = false;
+for (const line of ['bonjour', 'tu vends quoi ?', 'la moins chère',
+  'c\'est combien ?', 'ok je la prends']) {
+  r = talk(m, line);
+  const cmds = parseMerchantReply(r.text).commands;
+  if (cmds.some((c) => c.type === 'sell')) offeredDuringSale = true;
+  if (cmds.some((c) => c.type === 'out')) { kickedDuringSale = true; break; }
+}
+assert(!kickedDuringSale, 'un client qui discute puis accepte n\'est jamais mis dehors');
+assert(offeredDuringSale, 'et une proposition chiffrée est bien passée sur la table');
+// 3) Les questions d'information n'usent pas la patience : on ne peut
+//    plus être jeté dehors pour avoir demandé combien ça coûte.
+m = createMerchantState('aldric', { day: 1, totalPlayers: 1 });
+const patienceBefore = m.patienceLeft;
+for (const q of ['bonjour', 'tu vends quoi', 'c\'est fait où ?',
+  'jusqu\'où ça tient ?', 'c\'est combien ?']) talk(m, q);
+assert(m.patienceLeft === patienceBefore,
+  'poser des questions (prix, catalogue, origine) n\'use pas la patience');
+// 4) « C'est combien ? » sans article nommé propose quand même l'entrée
+//    de gamme — avant, la réponse n'affichait rien de cliquable.
+m = createMerchantState('aldric', { day: 1, totalPlayers: 1 });
+m.seed = 4421;
+r = talk(m, 'c\'est combien ?');
+const entryOffer = parseMerchantReply(r.text).commands.find((c) => c.type === 'sell');
+assert(entryOffer && entryOffer.price === suggestedPrice('armor_leather', aldric.margin),
+  '« c\'est combien ? » sans article → l\'entrée de gamme est proposée');
+assert(m.discussing === 'armor_leather' && m.currentPrice === entryOffer.price,
+  'et la négociation est armée sur cet article');
+// 5) « je prends la renforcée » conclut sur la RENFORCÉE, pas sur
+//    l'article resté en discussion du message précédent.
+m = createMerchantState('aldric', { day: 1, totalPlayers: 1 });
+m.seed = 4421;
+talk(m, 'c\'est combien ?');               // table : entrée de gamme
+r = talk(m, 'je prends la renforcée');
+const switched = parseMerchantReply(r.text).commands.find((c) => c.type === 'sell');
+assert(switched && switched.rawItem !== '' && m.discussing === 'armor_reinforced',
+  '« je prends la renforcée » bascule la vente sur la renforcée');
+
+console.log('\n▶ L\'accueil du comptoir passe par l\'IA (repli local sinon)');
+{
+  const savedFetch = globalThis.fetch;
+  try {
+    // a) Sans serveur IA : l'accueil local porte l'offre d'ouverture et
+    //    n'use aucune patience (il ne passe PAS par accountMessage).
+    globalThis.fetch = async () => { throw new TypeError('fetch failed'); };
+    m = createMerchantState('aldric', { day: 1, totalPlayers: 1 });
+    let gr = await greetMerchant(m, ITEM_DEFS, 0);
+    assert(gr.source === 'local', 'sans serveur IA, l\'accueil vient du cerveau local');
+    assert(parseMerchantReply(gr.text).commands.some((c) => c.type === 'sell'),
+      'l\'accueil local ouvre avec une offre /sell');
+    assert(m.patienceLeft === MERCHANTS.aldric.patience,
+      'l\'accueil n\'use aucune patience');
+
+    // b) L'IA est configurée : sa réplique d'ouverture est utilisée, la
+    //    consigne d'ouverture est dans la requête, et si elle salue sans
+    //    /sell l'offre d'ouverture est adjointe à sa réplique.
+    let seenBody = null;
+    globalThis.fetch = async (url, opts) => {
+      seenBody = JSON.parse(opts.body);
+      return {
+        ok: true,
+        json: async () => ({
+          ok: true, source: 'cloud',
+          text: 'Aldric. Approchez. La cuir tient jusqu à la profondeur 12.',
+        }),
+      };
+    };
+    m = createMerchantState('aldric', { day: 1, totalPlayers: 1 });
+    gr = await greetMerchant(m, ITEM_DEFS, 0);
+    assert(gr.source === 'cloud', 'l\'accueil vient de l\'IA quand elle est configurée');
+    assert(seenBody && seenBody.greeting === true
+      && seenBody.system.includes('OUVERTURE'),
+      'la requête d\'accueil porte la consigne d\'ouverture');
+    let sellCmd = parseMerchantReply(gr.text).commands.find((c) => c.type === 'sell');
+    assert(sellCmd && sellCmd.rawItem === 'armor_leather'
+      && sellCmd.price === suggestedPrice('armor_leather', aldric.margin),
+      'l\'IA qui salue sans /sell reçoit quand même l\'offre d\'ouverture');
+
+    // c) L'IA propose elle-même : son /sell passe tel quel, on n'y touche pas.
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true, source: 'cloud',
+        text: 'La renforcée, pour le milieu. /sell armor_reinforced 170',
+      }),
+    });
+    m = createMerchantState('aldric', { day: 1, totalPlayers: 1 });
+    gr = await greetMerchant(m, ITEM_DEFS, 0);
+    const cmdsAi = parseMerchantReply(gr.text).commands;
+    assert(cmdsAi.length === 1 && cmdsAi[0].type === 'sell'
+      && cmdsAi[0].rawItem === 'armor_reinforced' && cmdsAi[0].price === 170,
+      'l\'offre d\'ouverture de l\'IA passe telle quelle');
+
+    // d) Et la consigne d'ouverture n'existe que pour l'accueil.
+    assert(!buildSystemPrompt(merchantBriefing(m, ITEM_DEFS)).includes('OUVERTURE'),
+      'la consigne d\'ouverture n\'envahit pas les tours de parole');
+  } finally {
+    if (savedFetch === undefined) delete globalThis.fetch; else globalThis.fetch = savedFetch;
+  }
+}
 
 
 console.log('\n▶ Le monsieur en costume');

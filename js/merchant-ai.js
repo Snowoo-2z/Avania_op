@@ -30,7 +30,7 @@ const TIMEOUT_MS = 12000;
 //  La consigne de rôle, identique côté serveur et côté client.
 //  Elle est exportée pour que le serveur n'ait pas à la dupliquer.
 // ------------------------------------------------------------
-export function buildSystemPrompt(briefing) {
+export function buildSystemPrompt(briefing, { opening = false } = {}) {
   const catalog = briefing.catalog.map((c) => (
     `- ${c.label} (id: ${c.id}) : profondeur max ${c.maxDepth}. `
     + `Coût de fabrication ${c.production} écus, transport ${c.transport} écus, `
@@ -78,7 +78,13 @@ NÉGOCIATION
   ou si la journée est calme. Tu refuses net toute offre sous ton prix plancher :
   en dessous, tu travailles à perte.
 - Si le joueur t'insulte, te menace ou négocie indéfiniment, tu perds patience.
-
+${opening
+? `OUVERTURE — CONSIGNE UNIQUE
+Le joueur vient d'arriver à votre étal. Salue-le dans ton rôle et propose-lui TOUT DE SUITE
+ton article d'appel (le premier du catalogue) au prix d'appel : écris la ligne /sell avec
+l'id exact et le prix. N'attends pas qu'il demande, n'envoie personne dehors à l'arrivée.
+`
+:''}
 COMMANDES — une par ligne, au début de la ligne, sans markdown
 /sell <id> <prix>   → tu proposes l'article à ce prix. Utilise TOUJOURS l'id exact du catalogue.
                       N'écris cette ligne que quand tu fais une vraie proposition.
@@ -167,11 +173,72 @@ export async function askMerchant(options) {
 }
 
 // Message d'ouverture (le joueur vient d'engager la conversation).
-export function greetMerchant(state, defs = ITEM_DEFS, now = 0) {
+//
+// C'est l'IA qui produit l'accueil ET la première proposition quand un
+// fournisseur est configuré sur le serveur — le cerveau local n'est là
+// qu'en repli (pas de clé, serveur absent, délai dépassé). Le comptoir
+// doit ouvrir avec une offre cliquable dans TOUS les cas : si le modèle
+// salue sans écrire de /sell exploitable, on adjoint à sa réplique la
+// proposition d'ouverture du comptoir.
+const GREETING_STAGE = '(Le joueur arrive à votre étal. Saluez-le et proposez-lui un article.)';
+const GREETING_TIMEOUT_MS = 6000;
+
+export async function greetMerchant(state, defs = ITEM_DEFS, now = 0) {
   if (!isMerchantAvailable(state, now)) return { text: '' };
   const briefing = merchantBriefing(state, defs);
-  const res = merchantGreeting(state, briefing, defs);
-  return { text: res.text, source: 'local', briefing };
+  const local = merchantGreeting(state, briefing, defs);
+
+  // --- 1) Le serveur (qui relaie un modèle si une clé est configurée) ---
+  if (typeof fetch === 'function') {
+    try {
+      const controller = new AbortController();
+      // Plus court que le tour de parole : l'accueil ne doit pas laisser
+      // le joueur devant trois points de suspension pendant douze secondes.
+      const timer = setTimeout(() => controller.abort(), GREETING_TIMEOUT_MS);
+      let res = null;
+      try {
+        res = await fetch(ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            merchant: state.id,
+            greeting: true,
+            system: buildSystemPrompt(briefing, { opening: true }),
+            history: [],
+            message: GREETING_STAGE,
+            briefing,
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data && data.ok && typeof data.text === 'string' && data.text.trim()) {
+          const text = sanitize(data.text);
+          const sell = parseMerchantReply(text).commands.find((c) => c.type === 'sell');
+          const usable = sell && sell.price > 0
+            && resolveItemId(sell.rawItem, MERCHANTS[state.id].items, defs);
+          if (!usable) {
+            const entry = briefing.catalog[0];
+            return {
+              text: `${text}\n/sell ${entry.id} ${entry.suggested}`,
+              source: data.source || 'cloud',
+              briefing,
+            };
+          }
+          return { text, source: data.source || 'cloud', briefing };
+        }
+      }
+    } catch {
+      // réseau indisponible, serveur absent, délai dépassé : on bascule.
+    }
+  }
+
+  // --- 2) Le cerveau local ---
+  return { text: local.text, source: 'local', briefing };
 }
 
 // ------------------------------------------------------------
@@ -185,12 +252,17 @@ export function sanitize(text) {
   // Les lignes de commande sont du protocole, pas de la prose : les
   // « nettoyer » casserait les identifiants d'objet (mask_cloth deviendrait
   // maskcloth) et l'offre n'arriverait jamais jusqu'au joueur. On les met
-  // de côté, on nettoie le reste, on les remet telles quelles.
+  // de côté, on nettoie le reste, on les remet telles quelles. Une commande
+  // collée EN FIN DE PHRASE (« Tiens. /sell mask_cloth 42 ») est découpée :
+  // la prose part au nettoyage, la commande reste intacte.
   const speech = [];
   const commands = [];
   for (const line of raw.split('\n')) {
-    if (/^\s*\/(?:sell|out)\b/.test(line)) commands.push(line.trim());
-    else speech.push(line);
+    if (/^\s*\/(?:sell|out)\b/.test(line)) { commands.push(line.trim()); continue; }
+    const cmdIndex = line.search(/\/(?:sell|out)\b/);
+    if (cmdIndex === -1) { speech.push(line); continue; }
+    speech.push(line.slice(0, cmdIndex));
+    commands.push(line.slice(cmdIndex).trim());
   }
   const clean = speech.join('\n')
     // enlève les blocs de code
