@@ -1519,6 +1519,10 @@ export class SellerPanel {
     const entry = g.getSellerEntry(this.tx, this.ty);
     const me = g.uiCallbacks.getOwnerId ? g.uiCallbacks.getOwnerId() : -1;
     const owner = entry.owner === me;
+    // Un étal dont l'état n'est pas encore connu (poseur hors ligne ou
+    // synchro en cours) : coquille propriétaire = personne. On n'affiche
+    // PAS les boutons du vendeur — on attend l'offre.
+    const syncing = Boolean(entry._placeholder);
     const idx = g.world.idx(this.tx, this.ty);
     const lock = g.stealLockUntil(entry.owner, idx);
     const locked = lock > g.time;
@@ -1526,6 +1530,12 @@ export class SellerPanel {
 
     let html = `<div class="seller-line"><strong>${owner ? 'Ton étal' : 'Étal'}</strong>
       <span class="settings-hint">niv. ${entry.tier}</span></div>`;
+    if (syncing) {
+      html += `<div class="seller-line"><span>Offre en cours de préparation…</span></div>`;
+      html += `<div class="seller-line"><span class="settings-hint">Le marchand n'a pas encore déposé d'objet. Re ouvre l'étal dans un instant.</span></div>`;
+      this.body.innerHTML = html;
+      return;
+    }
     html += `<div class="seller-line">
       ${itemDef ? `<img class="seller-item-img" alt="" src="${getItemIconURL(entry.item)}" />` : ''}
       <span>${itemDef ? itemDef.label : 'Aucun objet en vente'}</span>
@@ -1542,8 +1552,14 @@ export class SellerPanel {
         <button id="seller-price-ok" type="button" class="keybinds-reset">Définir le prix</button>
         <button id="seller-collect" type="button" class="keybinds-reset">Encaisser (${entry.till} écus)</button></div>`;
     } else {
+      const canBuy = entry.item && entry.stock > 0 && entry.price > 0;
+      const buyLabel = !entry.item || entry.stock <= 0
+        ? 'Rien à vendre pour le moment'
+        : (entry.price > 0
+          ? `Acheter 1 (${entry.price} écus)`
+          : 'Le marchand n\'a pas fixé de prix');
       html += `<div class="sign-actions">
-        <button id="seller-buy" type="button" class="keybinds-reset">Acheter 1 (${entry.price} écus)</button>
+        <button id="seller-buy" type="button" class="keybinds-reset" ${canBuy ? '' : 'disabled'}>${buyLabel}</button>
         <button id="seller-steal" type="button" class="keybinds-reset" ${locked || !entry.item || entry.stock <= 0 ? 'disabled' : ''}>
           ${locked ? `Verrouillé (${Math.ceil(lock - g.time)} s)` : 'Tenter de voler'}</button></div>`;
     }
