@@ -1536,6 +1536,49 @@ function drawSignRaw(ctx, x, y, shadow = true) {
   ctx.fillRect(x + 10.5, y - 13, 1.5, 1.5);
 }
 
+// Étals de vente (sellers) : comptoir + auvent rayé, déclinés en trois
+// niveaux de matériau (bois → fer → diamant). Le contenu et le prix sont
+// gérés par le panneau (js/ui.js), le sprite reste décoratif.
+function drawSellerRaw(tier) {
+  const AWNING = { 1: ['#c89a5e', '#a87940'], 2: ['#9aa3ab', '#6d7880'], 3: ['#4fd6e8', '#2a92a6'] }[tier];
+  return (ctx, x, y, shadow = true) => {
+    if (shadow) softShadow(ctx, x, y + 1, 14, 4);
+    // Pieds du comptoir.
+    ctx.fillStyle = '#5a3818';
+    ctx.fillRect(x - 12, y - 8, 3, 8);
+    ctx.fillRect(x + 9, y - 8, 3, 8);
+    // Corps du comptoir.
+    ctx.fillStyle = tier === 1 ? '#8a5f30' : tier === 2 ? '#7d8890' : '#2a92a6';
+    ctx.fillRect(x - 13, y - 14, 26, 7);
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fillRect(x - 13, y - 9, 26, 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(x - 13, y - 14, 26, 1);
+    // Marchandise posée : trois petits tas.
+    ctx.fillStyle = '#d8c26a';
+    ctx.fillRect(x - 10, y - 17, 5, 3);
+    ctx.fillStyle = '#b0875f';
+    ctx.fillRect(x - 2, y - 17, 5, 3);
+    ctx.fillStyle = '#9aa83a';
+    ctx.fillRect(x + 6, y - 17, 4, 3);
+    // Poteaux de l'auvent.
+    ctx.fillStyle = '#5a3818';
+    ctx.fillRect(x - 13, y - 30, 2, 16);
+    ctx.fillRect(x + 11, y - 30, 2, 16);
+    // Auvent rayé, bord festonné.
+    for (let i = 0; i < 6; i++) {
+      ctx.fillStyle = AWNING[i % 2];
+      ctx.fillRect(x - 14 + i * 5, y - 30, 5, 6);
+      ctx.fillRect(x - 14 + i * 5, y - 24, 3, 2);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.fillRect(x - 14, y - 30, 30, 1);
+    // Écusson de niveau sur le comptoir.
+    ctx.fillStyle = tier === 3 ? '#b9f4fb' : tier === 2 ? '#d3dade' : '#e8c44e';
+    ctx.fillRect(x - 2, y - 12, 4, 3);
+  };
+}
+
 // Entrée de la grotte (surface) : arche de roche sombre ouvrant sur
 // le noir. Le sprite déborde largement de sa tuile pour qu'on la voie
 // de loin — c'est un point de repère du monde.
@@ -1735,6 +1778,9 @@ function buildObjectSprites() {
   objectCache.caveCoal = makeObjectSprite(40, 44, 20, 34, drawCaveCoalObjectRaw);
   objectCache.torch = makeObjectSprite(16, 24, 8, 21, drawTorchRaw);
   objectCache.sign = makeObjectSprite(30, 30, 15, 27, drawSignRaw);
+  objectCache.seller1 = makeObjectSprite(32, 34, 16, 31, drawSellerRaw(1));
+  objectCache.seller2 = makeObjectSprite(32, 34, 16, 31, drawSellerRaw(2));
+  objectCache.seller3 = makeObjectSprite(32, 34, 16, 31, drawSellerRaw(3));
   // Les quatre stades du blé (agriculture), petits et lisibles.
   objectCache.wheat0 = makeObjectSprite(32, 36, 16, 30, makeWheatRaw(0));
   objectCache.wheat1 = makeObjectSprite(32, 36, 16, 30, makeWheatRaw(1));

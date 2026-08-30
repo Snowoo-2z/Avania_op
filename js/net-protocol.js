@@ -263,6 +263,30 @@ export function sanitizeSignState(src) {
 }
 
 // ------------------------------------------------------------
+//  Sellers (étals de vente) : état complet d'un étal.
+//  tier 1..3, owner = id du poseur, item = id de l'objet vendu (ou
+//  null), stock = unités en vente, price = prix à l'unité, till =
+//  écus accumulés à encaisser. Tout est borné.
+// ------------------------------------------------------------
+export const MAX_SELLER_STOCK = 9999;
+export const MAX_SELLER_PRICE = 99999;
+
+export function sanitizeSellerState(src) {
+  const out = { tier: 1, owner: -1, item: null, stock: 0, price: 0, till: 0 };
+  if (!src || typeof src !== 'object') return out;
+  const tier = Math.trunc(Number(src.tier));
+  if (tier >= 1 && tier <= 3) out.tier = tier;
+  const o = Number(src.owner);
+  if (Number.isFinite(o)) out.owner = Math.trunc(o);
+  if (typeof src.item === 'string' && src.item.length > 0 && src.item.length <= 24) out.item = src.item;
+  for (const [key, max] of [['stock', MAX_SELLER_STOCK], ['price', MAX_SELLER_PRICE], ['till', MAX_SELLER_PRICE]]) {
+    const n = Math.trunc(Number(src[key]));
+    if (Number.isFinite(n)) out[key] = Math.max(0, Math.min(max, n));
+  }
+  return out;
+}
+
+// ------------------------------------------------------------
 //  Étape 5 : animaux partagés (moutons, vaches)
 //
 //  Contrairement aux coffres/fours (un seul propriétaire logique par

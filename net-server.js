@@ -47,7 +47,7 @@ import {
   WS_PATH, MAX_PLAYER_ID, encodeState, decodeInput,
   sanitizeBlockDiff, sanitizeZone, validTile, sanitizeChestSlots,
   sanitizeFurnaceState, sanitizeMobList, sanitizeMobInfo,
-  sanitizeMobStateList, sanitizeMobHit, sanitizeSignState,
+  sanitizeMobStateList, sanitizeMobHit, sanitizeSignState, sanitizeSellerState,
   sanitizeChatText, sanitizeChatChannel, CHAT_GLOBAL, CHAT_PROXIMITY,
   PROXIMITY_PX, MAX_CHAT_HISTORY,
 } from './js/net-protocol.js';
@@ -268,6 +268,36 @@ function recordSignState(zone, tx, ty, text, owner) {
   j.set(key, { tx, ty, text, owner });
 }
 
+// --- Sellers partagés : état complet d'un étal (stock, prix, cagnotte,
+//     propriétaire), même principe que chestJournal. ---
+const sellerJournal = new Map();
+const MAX_SELLERS_PER_ZONE = 500;
+
+function zoneSellerJournal(zone) {
+  let j = sellerJournal.get(zone);
+  if (!j) {
+    if (sellerJournal.size >= MAX_ZONES) {
+      const oldest = sellerJournal.keys().next().value;
+      if (oldest !== undefined) sellerJournal.delete(oldest);
+    }
+    j = new Map();
+    sellerJournal.set(zone, j);
+  }
+  return j;
+}
+
+function recordSellerState(zone, tx, ty, state) {
+  const j = zoneSellerJournal(zone);
+  const key = ty * MAX_WORLD_TILE_STRIDE + tx;
+  if (state === null) {
+    // Étal cassé : plus rien à resynchroniser.
+    j.delete(key);
+    return;
+  }
+  if (!j.has(key) && j.size >= MAX_SELLERS_PER_ZONE) return;
+  j.set(key, { tx, ty, state });
+}
+
 function sanitizeAppearance(app) {
   // On ne fait AUCUNE hypothèse sur les valeurs valides ici (elles
   // vivent dans js/config.js, côté rendu) : on se contente de brider
@@ -386,6 +416,13 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     const j = signJournal.get(zone);
     const signs = j ? [...j.values()] : [];
     sendJson(ws, { t: 'signSync', zone, signs });
+  }
+
+  // Idem, pour les étals de vente connus de la zone.
+  function sendSellerSync(ws, zone) {
+    const j = sellerJournal.get(zone);
+    const sellers = j ? [...j.values()] : [];
+    sendJson(ws, { t: 'sellerSync', zone, sellers });
   }
 
   // Idem, pour le troupeau connu de la zone (étape 5). Un tableau VIDE
@@ -513,7 +550,7 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     }
 
     const player = {
-      ws, id, x: 0, y: 0, facing: 'down', moving: false, zone: 'surface',
+      ws, id, x: 0, y: 0, facing: 'down', moving: false, zone: 'surface', hp: 20,
       name: 'Aventurier', appearance: {}, lastMoveAt: Date.now(),
       // Débit de chat (étape 6) : voir chatAllowed.
       lastChatAt: 0, chatBurst: 0, chatBurstAt: 0,
@@ -540,6 +577,7 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     sendChestSync(ws, player.zone);
     sendFurnaceSync(ws, player.zone);
     sendSignSync(ws, player.zone);
+    sendSellerSync(ws, player.zone);
     sendMobSync(ws, player.zone);
     // Étape 6 (chat) : les derniers messages du canal global, pour que
     // l'arrivant voie la conversation en cours au lieu d'un chat vide.
@@ -592,6 +630,7 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
         sendChestSync(ws, zone);
         sendFurnaceSync(ws, zone);
         sendSignSync(ws, zone);
+        sendSellerSync(ws, zone);
         sendMobSync(ws, zone);
         return;
       }
@@ -659,6 +698,53 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
         const s = sanitizeSignState(msg);
         recordSignState(player.zone, tx, ty, s.text, s.owner);
         broadcastToZone(player.zone, { t: 'sign', tx, ty, text: s.text, owner: s.owner }, ws);
+        return;
+      }
+      // Un étal de vente change (stock, prix, cagnotte, pose, casse) :
+      // journalisé par zone et rediffusé aux voisins.
+      if (msg.t === 'seller') {
+        const tx = Math.trunc(msg.tx);
+        const ty = Math.trunc(msg.ty);
+        if (!validTile(tx) || !validTile(ty)) return;
+        if (msg.state === null) {
+          recordSellerState(player.zone, tx, ty, null);
+          broadcastToZone(player.zone, { t: 'seller', tx, ty, state: null }, ws);
+          return;
+        }
+        const state = sanitizeSellerState(msg.state);
+        recordSellerState(player.zone, tx, ty, state);
+        broadcastToZone(player.zone, { t: 'seller', tx, ty, state }, ws);
+        return;
+      }
+      // Message ciblé (tentative de vol, alarme…) : relayé UNIQUEMENT au
+      // joueur dont l'id est visé, jamais au reste de la zone.
+      if (msg.t === 'notify') {
+        const to = Math.trunc(Number(msg.to));
+        const target = players.get(to);
+        if (!target || target.ws.readyState !== target.ws.OPEN) return;
+        const payload = { t: 'notify', kind: String(msg.kind || '').slice(0, 16), text: String(msg.text || '').slice(0, 140) };
+        if (typeof msg.zone === 'string') payload.zone = sanitizeZone(msg.zone);
+        if (Number.isFinite(Number(msg.tx))) payload.tx = Math.trunc(Number(msg.tx));
+        if (Number.isFinite(Number(msg.ty))) payload.ty = Math.trunc(Number(msg.ty));
+        sendJson(target.ws, payload);
+        return;
+      }
+      // PvP : l'attaquant déclare un coup ; seule la VICTIME le reçoit et
+      // applique elle-même les dégâts (elle reste autoritaire sur ses PV).
+      if (msg.t === 'pattack') {
+        const to = Math.trunc(Number(msg.id));
+        const target = players.get(to);
+        if (!target || target.ws.readyState !== target.ws.OPEN) return;
+        if (target.zone !== player.zone) return; // pas de coup à travers les mondes
+        const dmg = Math.max(1, Math.min(20, Math.trunc(Number(msg.dmg) || 1)));
+        sendJson(target.ws, { t: 'pattack', from: id, dmg });
+        return;
+      }
+      // PvP : un joueur annonce ses PV après un coup (ou sa mort/respawn).
+      if (msg.t === 'php') {
+        const hp = Math.max(0, Math.min(20, Math.trunc(Number(msg.hp) || 0)));
+        player.hp = hp;
+        broadcastToZone(player.zone, { t: 'php', id, hp }, ws);
         return;
       }
       // Un joueur (le premier arrivé dans une zone vide de troupeau,

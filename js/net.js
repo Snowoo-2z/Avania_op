@@ -26,7 +26,7 @@ import {
   WS_PATH, encodeInput, decodeState, sanitizeBlockDiff, sanitizeChestSlots,
   sanitizeFurnaceState, sanitizeMobList, sanitizeMobStateList, sanitizeMobHit,
   sanitizeChatText, sanitizeChatChannel, sanitizeChatMessage,
-  sanitizeSocialPost, sanitizeSignState,
+  sanitizeSocialPost, sanitizeSignState, sanitizeSellerState,
 } from './net-protocol.js';
 
 // Cadence d'envoi de la position locale : inutile d'aller plus vite
@@ -61,6 +61,14 @@ export class MultiplayerClient {
     // Panneaux : texte + propriétaire d'un panneau distant, et resync.
     onSignChange = null,    // (zone, tx, ty, text|null, owner) — panneau posé/écrit/cassé ailleurs
     onSignSync = null,      // (zone, signs[]) — resynchronisation des panneaux connus de la zone
+    // Sellers : état d'un étal distant (ou null = cassé), et resync.
+    onSellerChange = null,  // (zone, tx, ty, state|null)
+    onSellerSync = null,    // (zone, sellers[])
+    // Message ciblé (tentative de vol, alarme) — voir net-server 'notify'.
+    onNotify = null,        // (payload{kind,text,zone?,tx?,ty?})
+    // PvP : coup reçu (on applique nous-mêmes les dégâts) + PV d'un distant.
+    onPlayerAttack = null,  // (fromId, dmg)
+    onPlayerHp = null,      // (id, hp)
     // Étape 5 (animaux partagés) : voir js/game.js pour l'usage exact
     // de chacun de ces rappels (établissement du troupeau, réapparition,
     // correctif de position, coups portés).
@@ -91,6 +99,11 @@ export class MultiplayerClient {
     this.onFurnaceSync = onFurnaceSync;
     this.onSignChange = onSignChange;
     this.onSignSync = onSignSync;
+    this.onSellerChange = onSellerChange;
+    this.onSellerSync = onSellerSync;
+    this.onNotify = onNotify;
+    this.onPlayerAttack = onPlayerAttack;
+    this.onPlayerHp = onPlayerHp;
     this.onMobSync = onMobSync;
     this.onMobSpawn = onMobSpawn;
     this.onMobState = onMobState;
@@ -292,6 +305,33 @@ export class MultiplayerClient {
       if (this.onSignSync) this.onSignSync(msg.zone, msg.signs);
       return;
     }
+    // Étal posé / modifié / cassé par un autre joueur de la zone.
+    if (msg.t === 'seller') {
+      if (typeof msg.tx !== 'number' || typeof msg.ty !== 'number') return;
+      const state = msg.state === null ? null : sanitizeSellerState(msg.state);
+      if (this.onSellerChange) this.onSellerChange(this.zone, msg.tx, msg.ty, state);
+      return;
+    }
+    if (msg.t === 'sellerSync') {
+      if (!Array.isArray(msg.sellers)) return;
+      if (this.onSellerSync) this.onSellerSync(msg.zone, msg.sellers);
+      return;
+    }
+    // Message ciblé (tentative de vol, alarme d'étal…).
+    if (msg.t === 'notify') {
+      if (this.onNotify) this.onNotify(msg);
+      return;
+    }
+    // PvP : on me déclare un coup → j'applique les dégâts moi-même.
+    if (msg.t === 'pattack') {
+      if (this.onPlayerAttack) this.onPlayerAttack(msg.from, msg.dmg);
+      return;
+    }
+    // PvP : les PV actuels d'un joueur distant (barre de vie).
+    if (msg.t === 'php') {
+      if (this.onPlayerHp) this.onPlayerHp(msg.id, msg.hp);
+      return;
+    }
     // Troupeau connu du serveur pour une zone (connexion / arrivée) —
     // peut être VIDE : c'est le signal que personne n'a encore établi
     // de troupeau ici, voir js/game.js pour la suite (le jeu appelle
@@ -420,6 +460,30 @@ export class MultiplayerClient {
     this.ws.send(JSON.stringify({ t: 'sign', tx, ty, text, owner }));
   }
 
+  // Étal : state === null annonce une casse (purge côté serveur).
+  sendSellerChange(tx, ty, state) {
+    if (!this.connected) return;
+    this.ws.send(JSON.stringify({ t: 'seller', tx, ty, state }));
+  }
+
+  // Message ciblé vers un joueur précis (propriétaire d'un étal volé…).
+  sendNotify(to, kind, text, extra = {}) {
+    if (!this.connected) return;
+    this.ws.send(JSON.stringify({ t: 'notify', to, kind, text, ...extra }));
+  }
+
+  // PvP : déclare un coup porté à un joueur (la victime applique).
+  sendPlayerAttack(id, dmg) {
+    if (!this.connected) return;
+    this.ws.send(JSON.stringify({ t: 'pattack', id, dmg }));
+  }
+
+  // PvP : annonce mes PV au reste de la zone.
+  sendPlayerHp(hp) {
+    if (!this.connected) return;
+    this.ws.send(JSON.stringify({ t: 'php', hp }));
+  }
+
   _onBinary(data) {
     const entries = decodeState(data);
     if (!entries) return;
@@ -450,6 +514,8 @@ export class MultiplayerClient {
       walkPhase: 0,
       zone: info.zone || 'surface',
       name: info.name || 'Aventurier',
+      hp: typeof info.hp === 'number' ? info.hp : 20,
+      maxHp: 20,
       appearance: { ...(info.appearance || {}), name: info.name || 'Aventurier' },
       _seen: Boolean(info.x || info.y),
     };

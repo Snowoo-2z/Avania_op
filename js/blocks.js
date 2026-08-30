@@ -135,6 +135,16 @@ export const BLOCK_DEFS = {
   // de la propriété). Texte + propriétaire synchronisés en multijoueur.
   sign: { id: 'sign', label: 'Panneau', kind: 'object', solid: false, breakable: true,
     drop: 'sign', dropN: 1, color: '#c89a5e', requiredTool: null, breakTime: 0.3 },
+  // Sellers (étals de vente entre joueurs) : 3 niveaux. Le propriétaire y
+  // dépose un objet + un prix à l'unité ; les autres achètent… ou tentent
+  // de voler (mini-jeu d'adresse, voir SELLER_TIERS). Solid : on ne
+  // traverse pas un étal.
+  seller1: { id: 'seller1', label: 'Étal de bois', kind: 'object', solid: true, breakable: true,
+    drop: 'seller1', dropN: 1, color: '#c89a5e', requiredTool: null, breakTime: 0.6, sellerTier: 1 },
+  seller2: { id: 'seller2', label: 'Étal renforcé', kind: 'object', solid: true, breakable: true,
+    drop: 'seller2', dropN: 1, color: '#9aa3ab', requiredTool: null, breakTime: 1.0, sellerTier: 2 },
+  seller3: { id: 'seller3', label: 'Étal de diamant', kind: 'object', solid: true, breakable: true,
+    drop: 'seller3', dropN: 1, color: '#3fbcd4', requiredTool: null, breakTime: 1.4, sellerTier: 3 },
   // L'entrée de la grotte, à la surface : un arche sombre. On y entre
   // avec la touche d'interaction — elle ne se casse pas.
   caveMouth: {
@@ -155,6 +165,22 @@ export const BLOCK_DEFS = {
 // Les stades de croissance du blé, dans l'ordre (semis → mûr).
 export const CROPS = ['wheat0', 'wheat1', 'wheat2', 'wheat3'];
 export const CROP_MATURE = 'wheat3';
+
+// ------------------------------------------------------------
+//  Sellers : réglages des 3 niveaux d'étals (vol & sécurité).
+//  arc      : largeur de la zone gagnante du mini-jeu (radians) — plus
+//             le niveau monte, plus elle est petite ;
+//  speed    : vitesse du curseur rotatif ;
+//  lockThis : échec niv. 1 → verrou sur CET étal (secondes) ;
+//  lockAll  : échec niv. 2/3 → verrou sur TOUS les étals du propriétaire ;
+//  notify   : le propriétaire est prévenu de la tentative ;
+//  alarm    : niv. 3 → alarme sonore + proposition de téléportation.
+// ------------------------------------------------------------
+export const SELLER_TIERS = {
+  1: { arc: Math.PI / 2.6, speed: 2.4, lockThis: 30, lockAll: 0, notify: false, alarm: false },
+  2: { arc: Math.PI / 5.5, speed: 3.1, lockThis: 0, lockAll: 30, notify: true, alarm: false },
+  3: { arc: Math.PI / 11, speed: 3.9, lockThis: 0, lockAll: 90, notify: true, alarm: true },
+};
 // Secondes entre deux stades de croissance (sur terre labourée).
 export const CROP_GROW_SECONDS = 15;
 
@@ -180,6 +206,9 @@ export const ITEM_DEFS = {
   coal: { id: 'coal', label: 'Charbon', color: '#2e2e36', type: 'resource', maxStack: 64 },
   torch: { id: 'torch', label: 'Torche', color: '#e8a53c', type: 'material', maxStack: 64, place: 'torch' },
   sign: { id: 'sign', label: 'Panneau', color: '#c89a5e', type: 'material', maxStack: 64, place: 'sign' },
+  seller1: { id: 'seller1', label: 'Étal de bois', color: '#c89a5e', type: 'material', maxStack: 16, place: 'seller1' },
+  seller2: { id: 'seller2', label: 'Étal renforcé', color: '#9aa3ab', type: 'material', maxStack: 16, place: 'seller2' },
+  seller3: { id: 'seller3', label: 'Étal de diamant', color: '#3fbcd4', type: 'material', maxStack: 16, place: 'seller3' },
   // Agriculture : graines (à semer), blé (récolte), pain (nourriture).
   seeds: { id: 'seeds', label: 'Graines', color: '#9a8a4a', type: 'resource', maxStack: 64, place: 'wheat0' },
   wheat: { id: 'wheat', label: 'Blé', color: '#d8c26a', type: 'resource', maxStack: 64 },
@@ -517,6 +546,18 @@ export const RECIPES = [
   {
     id: 'sign', label: 'Panneau', out: 'sign', outN: 2,
     inputs: { plank: 3, stick: 1 }, pattern: [['plank', 'plank', 'plank'], [null, 'stick', null]], category: 'construction',
+  },
+  {
+    id: 'seller1', label: 'Étal de bois', out: 'seller1', outN: 1,
+    inputs: { plank: 4, stick: 2 }, pattern: [['plank', 'plank'], ['stick', 'stick'], ['plank', 'plank']], category: 'construction',
+  },
+  {
+    id: 'seller2', label: 'Étal renforcé', out: 'seller2', outN: 1,
+    inputs: { plank: 4, ironIngot: 2 }, pattern: [['ironIngot', 'ironIngot'], ['plank', 'plank'], ['plank', 'plank']], category: 'construction',
+  },
+  {
+    id: 'seller3', label: 'Étal de diamant', out: 'seller3', outN: 1,
+    inputs: { diamond: 2, ironIngot: 4 }, pattern: [['diamond', 'diamond'], ['ironIngot', 'ironIngot'], ['ironIngot', 'ironIngot']], category: 'construction',
   },
   {
     id: 'woolBlock', label: 'Bloc de laine', out: 'woolBlock', outN: 1,

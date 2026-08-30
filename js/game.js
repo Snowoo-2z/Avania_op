@@ -7,7 +7,7 @@ import {
 } from './config.js';
 import {
   BLOCK_DEFS, ITEM_DEFS, TOOL_TIERS, toolTierIndex, blockMinTierIndex, toolDamage,
-  CROPS, CROP_MATURE, CROP_GROW_SECONDS,
+  CROPS, CROP_MATURE, CROP_GROW_SECONDS, SELLER_TIERS,
 } from './blocks.js';
 import { World } from './world.js';
 import { Player } from './player.js';
@@ -302,6 +302,12 @@ export class Game {
     // Panneaux posés : { text, owner } (clé = index de tuile). Seul le
     // joueur dont l'id === owner peut écrire dessus.
     this.signData = new Map();
+    // Étals de vente posés : { tier, owner, item, stock, price, till }.
+    this.sellerData = new Map();
+    // Verrous de vol locaux (clé -> this.time d'expiration) : après un vol
+    // raté, on attend avant de retenter (voir SELLER_TIERS).
+    this.stealLocks = new Map();
+    this.pvpCooldown = 0;
     // Rappels branchés par l'UI (ex. ouvrir le panneau du four / du coffre).
     this.uiCallbacks = {
       openFurnace: null,
@@ -587,6 +593,12 @@ export class Game {
     // retard visible).
     if (this.uiCallbacks.onNetUpdate) this.uiCallbacks.onNetUpdate(dt, this.player);
     this.actionCooldown = Math.max(0, this.actionCooldown - dt);
+    this.pvpCooldown = Math.max(0, this.pvpCooldown - dt);
+    // Régén PvP : hors de tout coup récent, les PV remontent doucement.
+    const lp = this.player;
+    if (lp.hp < lp.maxHp && this.time - lp.lastHurtAt > 6) {
+      lp.hp = Math.min(lp.maxHp, lp.hp + dt * 1.2);
+    }
     // Les fours cuisent en continu, même panneau ouvert (la barre avance).
     this.updateFurnaces(dt);
     if (this.paused) { this.input.endFrame(); return; }
@@ -1161,6 +1173,7 @@ export class Game {
       furnaceData: this.furnaceData,
       chestData: this.chestData,
       signData: this.signData,
+      sellerData: this.sellerData,
       droppedItems: this.droppedItems,
       mobs: this.mobs,
     });
@@ -1172,12 +1185,14 @@ export class Game {
       this.furnaceData = saved.furnaceData;
       this.chestData = saved.chestData;
       this.signData = saved.signData || new Map();
+      this.sellerData = saved.sellerData || new Map();
       this.droppedItems = saved.droppedItems;
       this.mobs = saved.mobs;
     } else {
       this.furnaceData = new Map();
       this.chestData = new Map();
       this.signData = new Map();
+      this.sellerData = new Map();
       this.droppedItems = [];
       // Pas d'animaux sous terre.
       this.mobs = world.kind === 'cave' ? [] : spawnMobs(world);
@@ -1291,6 +1306,23 @@ export class Game {
     if (this.uiCallbacks.onDescend) this.uiCallbacks.onDescend(level);
     this.switchWorld(level, x, y);
     this.notify(`Profondeur ${current - 1}.`);
+  }
+
+  // Téléportation d'alarme (étal niv. 3 volé) : bascule vers la zone de
+  // l'étal (surface ou grotte, générée si besoin) puis snap à la tuile.
+  teleportToZone(zone, tx, ty) {
+    let world;
+    if (zone === 'surface') world = this.surfaceWorld;
+    else {
+      const m = /^cave:(\d+)$/.exec(zone);
+      if (!m) return false;
+      world = this.getCaveLevel(Number(m[1]));
+    }
+    const x = tx * TILE + TILE / 2;
+    const y = (ty + 1) * TILE + TILE / 2; // juste devant l'étal
+    this.switchWorld(world, x, y);
+    this.notify('Téléportation vers ton étal !');
+    return true;
   }
 
   // Halo chaud autour du joueur dans la grotte (pré-rendu une fois).
@@ -1452,6 +1484,71 @@ export class Game {
     nctx.beginPath();
     nctx.arc(x, y, r, 0, Math.PI * 2);
     nctx.fill();
+  }
+
+  // ------------------------------------------------------------
+  //  PvP entre joueurs
+  // ------------------------------------------------------------
+
+  // Joueur distant sous le curseur (à portée), ou null. Le rayon est
+  // généreux (14 px) pour rester tolérant, comme l'aim assist des mobs.
+  playerUnderCursor() {
+    const m = this.input.mouse;
+    const zoom = this.camera.zoom;
+    const wx = this.camera.x + m.x / zoom;
+    const wy = this.camera.y + m.y / zoom;
+    let best = null;
+    let bestD = 14 * 14;
+    for (const p of this.otherPlayers) {
+      if (p.hp !== undefined && p.hp <= 0) continue;
+      const dx = p.x - wx;
+      const dy = (p.y - 8) - wy;
+      const d = dx * dx + dy * dy;
+      if (d <= bestD + 60) { // léger aim assist
+        const ddx = p.x - this.player.x;
+        const ddy = p.y - this.player.y;
+        if (ddx * ddx + ddy * ddy <= REACH * REACH) { best = p; bestD = d; }
+      }
+    }
+    return best;
+  }
+
+  // Attaque un joueur distant sous le curseur. Retourne true si un joueur
+  // était visé (pour ne pas miner la tuile derrière lui). La VICTIME
+  // applique elle-même les dégâts (elle fait foi sur ses PV).
+  tryAttackPlayer() {
+    const target = this.playerUnderCursor();
+    if (!target) return false;
+    if (this.pvpCooldown > 0) return true;
+    this.pvpCooldown = 0.5;
+    const held = this.inventory.getSelectedStackRef();
+    const dmg = held ? toolDamage(ITEM_DEFS[held.id]) : 1;
+    if (this.uiCallbacks.onPlayerAttack) this.uiCallbacks.onPlayerAttack(target.id, dmg);
+    return true;
+  }
+
+  // Un joueur distant m'attaque : j'applique les dégâts moi-même (jamais
+  // l'attaquant), je diffuse mes PV, et je gère ma propre mort/respawn.
+  applyPlayerAttack(fromId, dmg) {
+    const from = this.otherPlayers.find((p) => p.id === fromId);
+    if (!from) return;
+    const dx = from.x - this.player.x;
+    const dy = from.y - this.player.y;
+    if (dx * dx + dy * dy > (REACH * 1.6) ** 2) return; // trop loin : coup ignoré
+    const p = this.player;
+    p.hp = Math.max(0, p.hp - dmg);
+    p.lastHurtAt = this.time;
+    this.spawnBreakParticles(Math.floor(p.x / TILE), Math.floor(p.y / TILE), 'player');
+    if (p.hp <= 0) {
+      // Mort : retour au spawn de surface, PV rendus.
+      p.hp = p.maxHp;
+      const surface = this.surfaceWorld;
+      const sp = surface ? { x: surface.spawn.x, y: surface.spawn.y } : { x: p.x, y: p.y };
+      if (this.world !== surface && surface) this.switchWorld(surface, sp.x, sp.y);
+      else { p.x = sp.x; p.y = sp.y; this.camera.snapTo(sp.x, sp.y); }
+      this.notify('Tu as été tué ! Retour au spawn.');
+    }
+    if (this.uiCallbacks.onPlayerHp) this.uiCallbacks.onPlayerHp(p.hp);
   }
 
   // Trouve un mob sous le curseur (dans la portée d'interaction).
@@ -1648,7 +1745,8 @@ export class Game {
     // défaut, mais rebindable). Frappe d'abord les animaux sous le curseur
     // (comme dans Minecraft), sinon mine la tuile.
     if (this.input.down('mine')) {
-      if (!this.tryAttackMob(dt)) this.mineTarget(dt);
+      // Frappe d'abord les animaux, puis les JOUEURS (PvP), sinon mine.
+      if (!this.tryAttackMob(dt) && !this.tryAttackPlayer()) this.mineTarget(dt);
     } else if (this.mining.progress > 0) {
       this.resetMining();
     }
@@ -1703,6 +1801,11 @@ export class Game {
       if (this.uiCallbacks.openChest) {
         this.uiCallbacks.openChest(this.targetTx, this.targetTy);
       }
+      this.actionCooldown = 0.25;
+      return;
+    }
+    if (targetBlock && BLOCK_DEFS[targetBlock]?.sellerTier) {
+      if (this.uiCallbacks.openSeller) this.uiCallbacks.openSeller(this.targetTx, this.targetTy);
       this.actionCooldown = 0.25;
       return;
     }
@@ -1925,6 +2028,19 @@ export class Game {
     if (existingBlock === 'sign') {
       if (this.signData.delete(i)) {
         this._announceSignChange(this.targetTx, this.targetTy, null, -1);
+      }
+    }
+    // Étal cassé : le stock invendu et la cagnotte retombent au sol (rien
+    // ne se perd), et on purge le journal serveur.
+    if (existingBlock && BLOCK_DEFS[existingBlock]?.sellerTier) {
+      const entry = this.sellerData.get(i);
+      if (entry) {
+        this.sellerData.delete(i);
+        if (entry.item && entry.stock > 0) {
+          this.spawnDrop(this.targetTx, this.targetTy, entry.item, entry.stock);
+        }
+        if (entry.till > 0) this.spawnDrop(this.targetTx, this.targetTy, 'coin', entry.till);
+        this._announceSellerBreak(this.targetTx, this.targetTy);
       }
     }
     if (drop) {
@@ -2231,6 +2347,13 @@ export class Game {
         this.signData.set(i, { text: '', owner });
         this._announceSignChange(this.targetTx, this.targetTy, '', owner);
       }
+      // Un étal neuf : propriétaire = poseur, stock vide, prix à définir.
+      if (ITEM_DEFS[item]?.place?.startsWith('seller')) {
+        const entry = this.getSellerEntry(this.targetTx, this.targetTy);
+        if (this.uiCallbacks.onSellerChange) {
+          this.uiCallbacks.onSellerChange(this.targetTx, this.targetTy, entry);
+        }
+      }
     }
   }
 
@@ -2254,6 +2377,11 @@ export class Game {
   // Panneau posé / écrit (text) ou cassé (text === null) : relais réseau.
   _announceSignChange(tx, ty, text, owner) {
     if (this.uiCallbacks.onSignChange) this.uiCallbacks.onSignChange(tx, ty, text, owner);
+  }
+
+  // Étal cassé : state null purge le journal serveur.
+  _announceSellerBreak(tx, ty) {
+    if (this.uiCallbacks.onSellerChange) this.uiCallbacks.onSellerChange(tx, ty, null);
   }
 
   // Le joueur local écrit sur SON panneau (UI) : met à jour l'état local
@@ -2318,6 +2446,8 @@ export class Game {
       if (furnaceMap) furnaceMap.delete(world.idx(tx, ty));
       const signMap = this.signDataMapForZone(world.id);
       if (signMap) signMap.delete(world.idx(tx, ty));
+      const sellerMap = this.sellerDataMapForZone(world.id);
+      if (sellerMap) sellerMap.delete(world.idx(tx, ty));
     }
     if (!world.applyBlockDiff(tx, ty, diff)) return;
     if (world !== this.world) return; // zone pas affichée : rien d'autre à faire pour l'instant
@@ -2405,6 +2535,107 @@ export class Game {
       return;
     }
     map.set(key, { text, owner });
+  }
+
+  sellerDataMapForZone(zone) {
+    if (this.world && zone === this.world.id) return this.sellerData;
+    const saved = this.dimStates.get(zone);
+    return saved ? (saved.sellerData || null) : null;
+  }
+
+  // Un AUTRE joueur a posé / modifié / cassé un étal de la zone actuelle.
+  applyRemoteSellerChange(zone, tx, ty, state) {
+    const map = this.sellerDataMapForZone(zone);
+    if (!map) return;
+    const key = ty * WORLD_W + tx;
+    if (state === null) {
+      map.delete(key);
+      return;
+    }
+    map.set(key, state);
+  }
+
+  // Resynchronisation complète des étals d'une zone (connexion/arrivée).
+  applySellerSync(zone, sellers) {
+    const map = this.sellerDataMapForZone(zone);
+    if (!map) return;
+    map.clear();
+    for (const s of sellers) {
+      if (!s || typeof s.tx !== 'number' || typeof s.ty !== 'number') continue;
+      map.set(s.ty * WORLD_W + s.tx, s.state);
+    }
+  }
+
+  // Entrée locale d'un étal (créée à la pose ou à la première ouverture) :
+  // le poseur du bloc en est le propriétaire.
+  getSellerEntry(tx, ty) {
+    const i = this.world.idx(tx, ty);
+    let entry = this.sellerData.get(i);
+    if (!entry) {
+      const block = this.world.blocks[i];
+      const tier = BLOCK_DEFS[block]?.sellerTier || 1;
+      entry = {
+        tier,
+        owner: this.uiCallbacks.getOwnerId ? this.uiCallbacks.getOwnerId() : -1,
+        item: null, stock: 0, price: 0, till: 0,
+      };
+      this.sellerData.set(i, entry);
+    }
+    return entry;
+  }
+
+  // Modifie un étal local puis annonce l'état complet à la zone.
+  updateSeller(tx, ty, mutate) {
+    const entry = this.getSellerEntry(tx, ty);
+    mutate(entry);
+    entry.stock = Math.max(0, Math.min(9999, entry.stock | 0));
+    entry.price = Math.max(0, Math.min(99999, entry.price | 0));
+    entry.till = Math.max(0, Math.min(99999, entry.till | 0));
+    if (this.uiCallbacks.onSellerChange) this.uiCallbacks.onSellerChange(tx, ty, entry);
+    return entry;
+  }
+
+  // Verrous de vol (côté voleur) : « s:owner:idx » = cet étal, « o:owner »
+  // = tous les étals de ce propriétaire.
+  stealLockUntil(owner, idx) {
+    return Math.max(this.stealLocks.get(`s:${owner}:${idx}`) || 0, this.stealLocks.get(`o:${owner}`) || 0);
+  }
+
+  applyStealFailure(owner, idx, tier) {
+    const cfg = SELLER_TIERS[tier] || SELLER_TIERS[1];
+    if (cfg.lockThis) this.stealLocks.set(`s:${owner}:${idx}`, this.time + cfg.lockThis);
+    if (cfg.lockAll) this.stealLocks.set(`o:${owner}`, this.time + cfg.lockAll);
+  }
+
+  // Résultat du mini-jeu de vol d'un étal (côté voleur).
+  //  succès : 1 objet passe dans l'inventaire du voleur, stock -1 ;
+  //  échec  : verrous selon le niveau, et le propriétaire est prévenu
+  //           (niv. 2) ou alarmé + proposition de téléport (niv. 3).
+  reportStealResult(tx, ty, success) {
+    const i = this.world.idx(tx, ty);
+    const entry = this.sellerData.get(i);
+    if (!entry) return;
+    const cfg = SELLER_TIERS[entry.tier] || SELLER_TIERS[1];
+    if (success) {
+      if (!entry.item || entry.stock <= 0) return;
+      const added = this.inventory.add(entry.item, 1);
+      if (added <= 0) { this.notify('Inventaire plein : rien de volé.'); return; }
+      this.updateSeller(tx, ty, (e) => { e.stock -= 1; });
+      this.notify(`Vol réussi : +1 ${ITEM_DEFS[entry.item]?.label || entry.item}.`);
+      return;
+    }
+    this.applyStealFailure(entry.owner, i, entry.tier);
+    this.notify(cfg.lockAll
+      ? `Raté ! Vol impossible chez ce propriétaire pendant ${cfg.lockAll} s.`
+      : 'Raté ! 30 s d\'attente sur cet étal.');
+    if (cfg.notify && this.uiCallbacks.onNotifySend) {
+      this.uiCallbacks.onNotifySend(
+        entry.owner,
+        cfg.alarm ? 'alarm' : 'theft',
+        'Un joueur a tenté de voler un de vos sellers.',
+        { zone: this.world.id, tx, ty },
+      );
+    }
   }
 
   // Resynchronisation complète des panneaux d'une zone (connexion/arrivée).
@@ -2998,6 +3229,7 @@ export class Game {
       if (CROPS.includes(b1)) return true; // les pousses de blé posées
       if (b1 === 'torch') return true;     // les torches posées
       if (b1 === 'sign') return true;      // les panneaux posés
+      if (BLOCK_DEFS[b1]?.sellerTier) return true; // les étals de vente
       const kind = BLOCK_DEFS[b1]?.kind;
       if (kind === 'block' || kind === 'door') return true;
     }
@@ -3131,12 +3363,13 @@ export class Game {
             const isCrop = CROPS.includes(block);
             const isTorch = block === 'torch';
             const isSign = block === 'sign';
-            if (def.kind === 'block' || def.kind === 'door' || isCrop || isTorch || isSign) {
+            const isSeller = Boolean(def.sellerTier);
+            if (def.kind === 'block' || def.kind === 'door' || isCrop || isTorch || isSign || isSeller) {
               const d = this._takeBlockDrawable();
               d.tx = tx;
               d.ty = ty;
               d.block = block;
-              d.kind = isCrop ? 'crop' : (isTorch ? 'torch' : (isSign ? 'sign' : def.kind));
+              d.kind = isCrop ? 'crop' : (isTorch ? 'torch' : (isSign ? 'sign' : (isSeller ? 'seller' : def.kind)));
               d.layer = 1;
               d.sortY = sortY;
               drawables.push(d);
@@ -3244,6 +3477,13 @@ export class Game {
           this.drawTorch(ctx, tx, ty);
         } else if (d.kind === 'sign') {
           this.drawSign(ctx, tx, ty);
+        } else if (d.kind === 'seller') {
+          const spr = getObjectSprite(block);
+          if (spr) {
+            ctx.drawImage(spr.canvas,
+              tx * TILE + TILE / 2 - spr.anchorX,
+              ty * TILE + TILE - 2 - spr.anchorY);
+          }
         } else if (block === 'furnace') {
           const entry = this.furnaceData.get(this.world.idx(tx, ty));
           ctx.drawImage(getFurnaceCanvas(Boolean(entry && entry.fuelTime > 0)), tx * TILE, ty * TILE);
@@ -3357,6 +3597,19 @@ export class Game {
 
     if (heldId && !behind) {
       drawHeldItem(ctx, player.appearance, heldId, player.x, player.y, this.heldDrawOpts(player));
+    }
+    // Barre de vie (PvP) : visible dès qu'il manque un PV.
+    if (player.hp !== undefined && player.hp < (player.maxHp || 20)) {
+      const max = player.maxHp || 20;
+      const w = 22;
+      const x = player.x - w / 2;
+      const y = player.y - 30;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(x - 1, y - 1, w + 2, 5);
+      ctx.fillStyle = '#5a1616';
+      ctx.fillRect(x, y, w, 3);
+      ctx.fillStyle = '#e04038';
+      ctx.fillRect(x, y, w * Math.max(0, player.hp) / max, 3);
     }
     this.drawNameTag(ctx, player);
     this.drawSpeechBubble(ctx, player);

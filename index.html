@@ -402,6 +402,36 @@
     </div>
   </section>
 
+  <!-- Étal de vente : propriétaire (stock/prix/cagnotte) ou acheteur/voleur -->
+  <section id="seller" class="crafting seller hidden" aria-label="Étal de vente">
+    <div class="panel-backdrop"></div>
+    <div class="panel-frame panel-frame--seller">
+      <header class="crafting-header">
+        <div>
+          <span class="panel-eyebrow">COMMERCE</span>
+          <strong>Étal</strong>
+        </div>
+        <div class="crafting-header-actions">
+          <button id="seller-close" class="craft-close" title="Fermer"><span class="ic" data-icon="close"></span></button>
+        </div>
+      </header>
+      <div id="seller-body" class="seller-body"></div>
+    </div>
+  </section>
+
+  <!-- Mini-jeu de vol : arrête le curseur dans l'arc vert -->
+  <div id="steal-game" class="steal-game hidden" tabindex="0">
+    <canvas width="180" height="180"></canvas>
+    <p>Espace ou clic : STOP dans l'arc vert !</p>
+  </div>
+
+  <!-- Alarme d'étal niveau 3 : téléportation proposée au propriétaire -->
+  <div id="alarm-banner" class="alarm-banner hidden">
+    <span id="alarm-text">Un joueur a tenté de voler un de vos sellers.</span>
+    <button id="alarm-go" type="button" class="keybinds-reset">Se téléporter</button>
+    <button id="alarm-ignore" type="button" class="keybinds-reset">Ignorer</button>
+  </div>
+
   <section id="settings-panel" class="settings-panel hidden" aria-label="Paramètres">
     <div class="panel-backdrop"></div>
     <div class="settings-frame">

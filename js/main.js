@@ -9,7 +9,7 @@
 import { PERFORMANCE, TILE } from './config.js';
 import {
   openCharacterCreation, HUD, WalletHUD, Hotbar, InventoryPanel, Crafting,
-  FurnacePanel, ChestPanel, SignEditor,
+  FurnacePanel, ChestPanel, SignEditor, SellerPanel, StealGame, playAlarm,
 } from './ui.js';
 import { SlotManager } from './slots.js';
 import { initIcons } from './icons.js';
@@ -233,6 +233,19 @@ async function boot() {
       game.applyRemoteSignChange(zone, tx, ty, text, owner);
     },
     onSignSync: (zone, signs) => game.applySignSync(zone, signs),
+    // Étals partagés : état complet (stock/prix/cagnotte) ou null = cassé.
+    onSellerChange: (zone, tx, ty, state) => {
+      game.applyRemoteSellerChange(zone, tx, ty, state);
+    },
+    onSellerSync: (zone, sellers) => game.applySellerSync(zone, sellers),
+    // Message ciblé : tentative de vol (toast) ou alarme (téléport proposé).
+    onNotify: (payload) => handleSellerNotify(payload),
+    // PvP : coup reçu → j'applique ; PV distants → barre de vie.
+    onPlayerAttack: (from, dmg) => game.applyPlayerAttack(from, dmg),
+    onPlayerHp: (id, hp) => {
+      const r = multiplayer.players.find((p) => p.id === id);
+      if (r) { r.hp = hp; r.maxHp = 20; }
+    },
     // Étape 5 (animaux partagés) : un troupeau connu (mobSync) peut
     // être vide — c'est le signal que ce client est probablement le
     // premier à visiter cette zone : il propose alors son propre
@@ -355,6 +368,8 @@ async function boot() {
   let furnacePanel;
   let chestPanel;
   let signEditor;
+  let sellerPanel;
+  let stealGame;
   let merchantChat;
   // Le téléphone met le jeu en pause (comme les autres panneaux) : on y
   // écrit au clavier, donc le personnage ne doit pas partir se promener
@@ -362,8 +377,8 @@ async function boot() {
   // marchant, c'est tout l'intérêt du canal global.
   const syncPause = () => game.setPaused(Boolean(
     inventoryPanel?.isOpen || crafting?.isOpen || furnacePanel?.isOpen
-    || chestPanel?.isOpen || signEditor?.isOpen || merchantChat?.isOpen
-    || settings?.isOpen || phonePanel?.isOpen,
+    || chestPanel?.isOpen || signEditor?.isOpen || sellerPanel?.isOpen
+    || merchantChat?.isOpen || settings?.isOpen || phonePanel?.isOpen,
   ));
   // Fermer les paramètres (croix, fond, Échap) doit aussi dé-pauser le jeu.
   settings.onToggle = syncPause;
@@ -429,6 +444,13 @@ async function boot() {
   game.uiCallbacks.getOwnerId = () => multiplayer.localId;
   // Diffusion des poses/écritures/casses de panneaux de la zone.
   game.uiCallbacks.onSignChange = (tx, ty, text, owner) => multiplayer.sendSignChange(tx, ty, text, owner);
+  // Diffusion des changements d'étals (stock, prix, cagnotte, casse).
+  game.uiCallbacks.onSellerChange = (tx, ty, state) => multiplayer.sendSellerChange(tx, ty, state);
+  // Message ciblé vers le propriétaire d'un étal (tentative de vol/alarme).
+  game.uiCallbacks.onNotifySend = (to, kind, text, extra) => multiplayer.sendNotify(to, kind, text, extra);
+  // PvP : je déclare un coup porté (la victime applique) + j'annonce mes PV.
+  game.uiCallbacks.onPlayerAttack = (id, dmg) => multiplayer.sendPlayerAttack(id, dmg);
+  game.uiCallbacks.onPlayerHp = (hp) => multiplayer.sendPlayerHp(Math.round(hp));
 
   // ============================================================
   //  Communication : chat (global + proximité) et téléphone
@@ -484,6 +506,34 @@ async function boot() {
   const walletHUD = new WalletHUD(document.getElementById('hud-right'));
   walletHUD.show();
   walletHUD.setGear(game.gear);
+
+  // Étals de vente : achat, vol (mini-jeu) et gestion propriétaire.
+  stealGame = new StealGame(document.getElementById('steal-game'));
+  sellerPanel = new SellerPanel(
+    document.getElementById('seller'), game, wallet, stealGame, () => syncPause(),
+  );
+  game.uiCallbacks.openSeller = (tx, ty) => sellerPanel.open(tx, ty);
+
+  // Alarme d'étal niv. 3 : bannière + téléportation chez le propriétaire.
+  let alarmTarget = null;
+  const alarmBanner = document.getElementById('alarm-banner');
+  const showAlarm = (payload) => {
+    alarmTarget = { zone: payload.zone || 'surface', tx: payload.tx || 0, ty: payload.ty || 0 };
+    document.getElementById('alarm-text').textContent = payload.text || 'Alarme !';
+    alarmBanner.classList.remove('hidden');
+    playAlarm();
+  };
+  document.getElementById('alarm-go')?.addEventListener('click', () => {
+    if (alarmTarget) game.teleportToZone(alarmTarget.zone, alarmTarget.tx, alarmTarget.ty);
+    alarmBanner.classList.add('hidden');
+  });
+  document.getElementById('alarm-ignore')?.addEventListener('click', () => {
+    alarmBanner.classList.add('hidden');
+  });
+  function handleSellerNotify(payload) {
+    if (payload.kind === 'alarm') { showAlarm(payload); return; }
+    game.notify(payload.text || 'Quelque chose s\'est passé.');
+  }
 
   // --- Les deux marchands. Leur ÉTAT survit aux allées et venues dans
   //     la grotte : ce qu'ils ont vendu, leur humeur et leur patience
@@ -763,6 +813,8 @@ async function boot() {
       furnacePanel.close();
       chestPanel.close();
       signEditor.close();
+      sellerPanel.close();
+      stealGame.cancel();
       if (tutorial.isOpen) closeTutorial();
       syncPause();
       return;

@@ -284,6 +284,27 @@ function drawSignIcon(ctx) {
   ctx.restore();
 }
 
+// --- Étal (seller) : comptoir + auvent rayé, couleur du niveau ---
+function drawSellerIcon(ctx, tier) {
+  const AWNING = { 1: ['#c89a5e', '#a87940'], 2: ['#9aa3ab', '#6d7880'], 3: ['#4fd6e8', '#2a92a6'] }[tier];
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.fillStyle = '#5a3818';
+  ctx.fillRect(-8, -2, 2, 9);
+  ctx.fillRect(6, -2, 2, 9);
+  ctx.fillStyle = tier === 1 ? '#8a5f30' : tier === 2 ? '#7d8890' : '#2a92a6';
+  ctx.fillRect(-9, 0, 18, 5);
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = AWNING[i % 2];
+    ctx.fillRect(-9 + i * 4.5, -8, 4.5, 5);
+  }
+  ctx.fillStyle = '#d8c26a';
+  ctx.fillRect(-5, -2, 4, 2);
+  ctx.fillStyle = '#b0875f';
+  ctx.fillRect(1, -2, 4, 2);
+  ctx.restore();
+}
+
 // --- Diamant : gemme taillée bleu-vert, très brillante ---
 function drawDiamond(ctx) {
   ctx.save();
@@ -684,6 +705,9 @@ const TOOL_DRAWERS = {
   coal:           (ctx) => drawCoal(ctx),
   torch:          (ctx) => drawTorchIcon(ctx),
   sign:           (ctx) => drawSignIcon(ctx),
+  seller1:        (ctx) => drawSellerIcon(ctx, 1),
+  seller2:        (ctx) => drawSellerIcon(ctx, 2),
+  seller3:        (ctx) => drawSellerIcon(ctx, 3),
   ironIngot:      (ctx) => drawIronIngot(ctx),
   door:           (ctx) => drawDoorIcon(ctx),
   wool:           (ctx) => drawWool(ctx),

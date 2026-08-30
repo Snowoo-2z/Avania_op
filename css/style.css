@@ -3569,3 +3569,82 @@ html.low-power .dialog-frame {
   align-items: center;
   justify-content: space-between;
 }
+
+/* ============================================================
+   Étal de vente + mini-jeu de vol + alarme
+   ============================================================ */
+.panel-frame--seller {
+  width: min(430px, calc(100vw - 24px));
+}
+.seller-body {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.seller-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.seller-line label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.seller-line input[type="number"] {
+  width: 90px;
+  border: 2px solid #5a3818;
+  border-radius: 6px;
+  background: #f4e6c8;
+  color: #4a2f14;
+  padding: 4px 6px;
+}
+.seller-item-img {
+  width: 28px;
+  height: 28px;
+  image-rendering: pixelated;
+}
+.steal-game {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(6, 5, 14, 0.55);
+}
+.steal-game.hidden { display: none; }
+.steal-game canvas {
+  background: #f4e6c8;
+  border: 3px solid #5a3818;
+  border-radius: 50%;
+}
+.steal-game p {
+  color: #f4e6c8;
+  font-weight: 700;
+}
+.alarm-banner {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #5a1616;
+  color: #ffe0dc;
+  border: 2px solid #e04038;
+  border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(224, 64, 56, 0.5);
+  animation: alarm-pulse 0.8s infinite alternate;
+}
+.alarm-banner.hidden { display: none; }
+@keyframes alarm-pulse {
+  from { box-shadow: 0 4px 12px rgba(224, 64, 56, 0.35); }
+  to { box-shadow: 0 4px 26px rgba(224, 64, 56, 0.85); }
+}

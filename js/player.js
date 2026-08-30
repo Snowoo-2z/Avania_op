@@ -13,6 +13,10 @@ export class Player {
     this.moving = false;
     this.walkPhase = 0;
     this.sortY = y; // pour le tri de profondeur
+    // PvP : points de vie (20 = plein). La victime fait foi sur les siens.
+    this.hp = 20;
+    this.maxHp = 20;
+    this.lastHurtAt = -99; // dernière blessure (this.time du jeu)
   }
 
   // tente de déplacer le joueur ; gère les collisions avec le monde

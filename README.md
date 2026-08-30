@@ -88,6 +88,20 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   l'approprier. Texte (120 car.) et propriétaire **synchronisés** en
   multijoueur (journal par zone + resync des arrivants), rendu en jeu sur
   la planche.
+- **🏪 Sellers (étals de vente)** : 3 niveaux (bois → fer renforcé →
+  diamant). Le propriétaire y dépose un objet et **définit le prix à
+  l'unité** ; la cagnotte s'accumule et s'encaisse. Les autres joueurs
+  **achètent** (écus transférés) ou **tentent de voler** via un mini-jeu
+  d'adresse (cercle + curseur rotatif, zone gagnante de plus en plus
+  petite). Échec niv. 1 : 30 s de verrou sur l'étal ; niv. 2 : 30 s sur
+  tous les étals du propriétaire + message « Un joueur a tenté de voler un
+  de vos sellers » ; niv. 3 : **alarme sonore**, bouton **se téléporter /
+  ignorer** chez le propriétaire et 1 min 30 de verrou. Tout l'état (stock,
+  prix, cagnotte, propriétaire) est journalisé par zone côté serveur.
+- **⚔️ PvP** : 20 PV par joueur, dégâts selon l'arme tenue (l'épée fait
+  mal), régénération hors combat, barre de vie au-dessus de la tête, mort =
+  retour au spawn. La victime fait foi sur ses PV (message `pattack`
+  relayé, `php` diffusé à la zone).
 - **📦 Lâcher des objets** : touche `Q` pour jeter un objet de ta main,
   `Ctrl+Q` pour toute la pile — ou sors une pile de l'inventaire par-dessus
   le bord de l'écran. Les objets tombent au sol, fusionnent entre eux et
@@ -512,6 +526,11 @@ puis construis ta première cabane.
 - [x] **Panneaux écrits** — craft + pose ; écriture réservée au poseur
   (casser puis reposer pour hériter) ; texte & propriétaire synchronisés
   (journal serveur par zone, resync des arrivants).
+- [x] **Sellers (étals de vente)** — 3 niveaux ; stock + prix à l'unité +
+  cagnotte ; achat ou vol (mini-jeu d'adresse) ; verrous 30 s / 30 s +
+  message / 1 min 30 + alarme & téléportation ; état journalisé par zone.
+- [x] **PvP entre joueurs** — 20 PV, dégâts selon l'arme, barre de vie,
+  régén, mort = spawn ; victime autoritaire sur ses PV.
 - [x] **Multijoueur (étape 6 : chat & réseau social)** — fenêtre de chat
   toujours visible (canal global + talkie-walkie de proximité en `V`),
   et téléphone (`P`) avec un réseau social partagé : comptes,
