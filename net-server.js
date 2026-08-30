@@ -15,6 +15,10 @@
 //  mobJournal) — mêmes bêtes au même endroit pour tout le monde, coups
 //  et morts vus par tous ; seul le détail frame par frame de l'errance
 //  (dead reckoning) reste calculé localement par chaque client.
+//  Étape 6 : le chat (global + talkie-walkie de proximité, voir
+//  `chatHistory` et le handler du message 'chat') et la diffusion en
+//  direct du fil du réseau social (message 'social', émis par
+//  social-server.js à travers la fonction `broadcast` retournée ici).
 //  Le monde reste néanmoins « bête » côté serveur : PAS de World.js
 //  ici, PAS de validation des règles du jeu — juste un relais + un
 //  journal mémoire par zone pour resynchroniser les arrivants (voir le
@@ -43,7 +47,9 @@ import {
   WS_PATH, MAX_PLAYER_ID, encodeState, decodeInput,
   sanitizeBlockDiff, sanitizeZone, validTile, sanitizeChestSlots,
   sanitizeFurnaceState, sanitizeMobList, sanitizeMobInfo,
-  sanitizeMobStateList, sanitizeMobHit,
+  sanitizeMobStateList, sanitizeMobHit, sanitizeSignState, sanitizeSellerState,
+  sanitizeChatText, sanitizeChatChannel, CHAT_GLOBAL, CHAT_PROXIMITY,
+  PROXIMITY_PX, MAX_CHAT_HISTORY,
 } from './js/net-protocol.js';
 
 // --- Réglages, pensés pour Render free ---
@@ -231,6 +237,67 @@ function recordFurnaceState(zone, tx, ty, state) {
   j.set(key, { tx, ty, state });
 }
 
+// --- Panneaux partagés : texte + propriétaire par tuile, même principe
+//     que chestJournal / furnaceJournal. text === null purge l'entrée
+//     (panneau cassé). ---
+const signJournal = new Map();
+const MAX_SIGNS_PER_ZONE = 500;
+
+function zoneSignJournal(zone) {
+  let j = signJournal.get(zone);
+  if (!j) {
+    if (signJournal.size >= MAX_ZONES) {
+      const oldest = signJournal.keys().next().value;
+      if (oldest !== undefined) signJournal.delete(oldest);
+    }
+    j = new Map();
+    signJournal.set(zone, j);
+  }
+  return j;
+}
+
+function recordSignState(zone, tx, ty, text, owner) {
+  const j = zoneSignJournal(zone);
+  const key = ty * MAX_WORLD_TILE_STRIDE + tx;
+  if (text === null) {
+    // Panneau cassé : plus rien à resynchroniser.
+    j.delete(key);
+    return;
+  }
+  if (!j.has(key) && j.size >= MAX_SIGNS_PER_ZONE) return; // zone pleine : on arrête d'enregistrer, sans planter
+  j.set(key, { tx, ty, text, owner });
+}
+
+// --- Sellers partagés : état complet d'un étal (stock, prix, cagnotte,
+//     propriétaire), même principe que chestJournal. ---
+const sellerJournal = new Map();
+const MAX_SELLERS_PER_ZONE = 500;
+
+function zoneSellerJournal(zone) {
+  let j = sellerJournal.get(zone);
+  if (!j) {
+    if (sellerJournal.size >= MAX_ZONES) {
+      const oldest = sellerJournal.keys().next().value;
+      if (oldest !== undefined) sellerJournal.delete(oldest);
+    }
+    j = new Map();
+    sellerJournal.set(zone, j);
+  }
+  return j;
+}
+
+function recordSellerState(zone, tx, ty, state) {
+  const j = zoneSellerJournal(zone);
+  const key = ty * MAX_WORLD_TILE_STRIDE + tx;
+  if (state === null) {
+    // Étal cassé : plus rien à resynchroniser.
+    j.delete(key);
+    return;
+  }
+  if (!j.has(key) && j.size >= MAX_SELLERS_PER_ZONE) return;
+  j.set(key, { tx, ty, state });
+}
+
 function sanitizeAppearance(app) {
   // On ne fait AUCUNE hypothèse sur les valeurs valides ici (elles
   // vivent dans js/config.js, côté rendu) : on se contente de brider
@@ -344,6 +411,20 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     sendJson(ws, { t: 'furnaceSync', zone, furnaces });
   }
 
+  // Idem, pour les panneaux connus de la zone (texte + propriétaire).
+  function sendSignSync(ws, zone) {
+    const j = signJournal.get(zone);
+    const signs = j ? [...j.values()] : [];
+    sendJson(ws, { t: 'signSync', zone, signs });
+  }
+
+  // Idem, pour les étals de vente connus de la zone.
+  function sendSellerSync(ws, zone) {
+    const j = sellerJournal.get(zone);
+    const sellers = j ? [...j.values()] : [];
+    sendJson(ws, { t: 'sellerSync', zone, sellers });
+  }
+
   // Idem, pour le troupeau connu de la zone (étape 5). Un tableau VIDE
   // signifie « personne ne m'a encore dit ce qu'il y avait ici » : le
   // client qui reçoit ça sait qu'il est (probablement) le premier de
@@ -353,6 +434,103 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     const j = mobJournal.get(zone);
     const mobs = j ? [...j.values()] : [];
     sendJson(ws, { t: 'mobSync', zone, mobs });
+  }
+
+  // ------------------------------------------------------------
+  //  Chat (étape 6)
+  //
+  //  Deux canaux, un seul relais :
+  //   - GLOBAL : retransmis à tous les joueurs connectés, quelle que
+  //     soit leur zone (on discute aussi bien depuis la grotte). Les
+  //     MAX_CHAT_HISTORY derniers messages sont gardés en mémoire et
+  //     renvoyés à chaque arrivant, pour qu'on ne débarque pas au
+  //     milieu d'une conversation muette.
+  //   - PROXIMITÉ (talkie-walkie) : retransmis uniquement aux joueurs
+  //     de la MÊME zone situés à moins de PROXIMITY_TILES tuiles. Le
+  //     calcul se fait ICI, à partir des positions que le serveur
+  //     reçoit déjà à chaque tick : un client ne peut donc pas
+  //     s'inventer une portée qu'il n'a pas.
+  //
+  //  Dans les deux cas le message n'est PAS renvoyé à son auteur
+  //  (comme pour les blocs/coffres) : le client l'affiche immédiatement
+  //  en local, ce qui évite l'aller-retour visible à l'envoi.
+  // ------------------------------------------------------------
+  const CHAT_MIN_INTERVAL_MS = 400;      // au plus un message toutes les 400 ms
+  const CHAT_BURST_MAX = 6;              // …et au plus 6 par fenêtre
+  const CHAT_BURST_WINDOW_MS = 10_000;
+  /** @type {Array<object>} derniers messages GLOBAUX, plus ancien en premier */
+  const chatHistory = [];
+
+  // Débit de chat d'un joueur : renvoie true s'il peut parler maintenant.
+  // Sans ça, une boucle `for` côté client suffirait à saturer la bande
+  // passante de tout le monde — le reste du protocole est borné par la
+  // fréquence des ticks, le chat ne l'est pas.
+  function chatAllowed(player) {
+    const now = Date.now();
+    if (now - (player.lastChatAt || 0) < CHAT_MIN_INTERVAL_MS) return false;
+    if (!player.chatBurstAt || now - player.chatBurstAt > CHAT_BURST_WINDOW_MS) {
+      player.chatBurstAt = now;
+      player.chatBurst = 0;
+    }
+    if (player.chatBurst >= CHAT_BURST_MAX) return false;
+    player.chatBurst += 1;
+    player.lastChatAt = now;
+    return true;
+  }
+
+  function pushChatHistory(message) {
+    chatHistory.push(message);
+    while (chatHistory.length > MAX_CHAT_HISTORY) chatHistory.shift();
+  }
+
+  // Distance de Manhattan plutôt qu'euclidienne : les deux se valent pour
+  // un rayon de quelques tuiles, et celle-ci évite deux multiplications
+  // et une racine par joueur testé (appelé à chaque message de proximité).
+  // Les positions reçues sont en PIXELS monde (voir net-protocol.js,
+  // PROXIMITY_PX) — comparer des pixels à un nombre de tuiles donnerait
+  // une portée de quelques centimètres.
+  function withinProximity(a, b) {
+    return Math.abs(a.x - b.x) <= PROXIMITY_PX
+      && Math.abs(a.y - b.y) <= PROXIMITY_PX;
+  }
+
+  function relayChat(player, rawText, rawChannel) {
+    const channel = rawChannel === CHAT_PROXIMITY ? CHAT_PROXIMITY : CHAT_GLOBAL;
+    const message = {
+      t: 'chat',
+      id: player.id,
+      from: player.name,
+      text: rawText,
+      channel,
+      ts: Date.now(),
+    };
+    if (channel === CHAT_GLOBAL) {
+      pushChatHistory(message);
+      broadcastJson(message, player.ws);
+      return;
+    }
+    // Proximité : même zone + distance. L'auteur est exclu (il s'affiche
+    // déjà lui-même), d'où le `continue` sur son propre ws.
+    const s = JSON.stringify(message);
+    const size = Buffer.byteLength(s);
+    for (const other of players.values()) {
+      if (other.ws === player.ws) continue;
+      if (other.zone !== player.zone) continue;
+      if (other.ws.readyState !== other.ws.OPEN) continue;
+      if (!withinProximity(player, other)) continue;
+      other.ws.send(s);
+      bytesSentThisMonth += size;
+    }
+  }
+
+  // Poussé aux joueurs connectés par le réseau social du téléphone
+  // (social-server.js) : une publication, un like ou une suppression que
+  // quelqu'un vient de faire, pour rafraîchir le fil en direct. Renvoyé
+  // à TOUT LE MONDE y compris l'auteur — contrairement au chat, l'auteur
+  // n'a pas besoin d'afficher son post lui-même avant la réponse HTTP,
+  // il l'obtient justement de cette réponse (voir js/phone.js).
+  function broadcast(payload) {
+    broadcastJson(payload);
   }
 
   wss.on('connection', (ws, req) => {
@@ -372,8 +550,10 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     }
 
     const player = {
-      ws, id, x: 0, y: 0, facing: 'down', moving: false, zone: 'surface',
+      ws, id, x: 0, y: 0, facing: 'down', moving: false, zone: 'surface', hp: 20,
       name: 'Aventurier', appearance: {}, lastMoveAt: Date.now(),
+      // Débit de chat (étape 6) : voir chatAllowed.
+      lastChatAt: 0, chatBurst: 0, chatBurstAt: 0,
     };
     players.set(id, player);
     log(`AVANIA multi : joueur #${id} connecté (${playerCount()}/${MAX_PLAYERS})`);
@@ -396,7 +576,15 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
     sendWorldSync(ws, player.zone);
     sendChestSync(ws, player.zone);
     sendFurnaceSync(ws, player.zone);
+    sendSignSync(ws, player.zone);
+    sendSellerSync(ws, player.zone);
     sendMobSync(ws, player.zone);
+    // Étape 6 (chat) : les derniers messages du canal global, pour que
+    // l'arrivant voie la conversation en cours au lieu d'un chat vide.
+    // Message rare (une fois par connexion), donc on ne le filtre pas.
+    if (chatHistory.length > 0) {
+      sendJson(ws, { t: 'chatHistory', messages: chatHistory });
+    }
 
     // 2. On annonce le nouvel arrivant à tout le monde (apparence
     //    encore vide : elle arrive dans le prochain message 'hello').
@@ -441,7 +629,21 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
         sendWorldSync(ws, zone);
         sendChestSync(ws, zone);
         sendFurnaceSync(ws, zone);
+        sendSignSync(ws, zone);
+        sendSellerSync(ws, zone);
         sendMobSync(ws, zone);
+        return;
+      }
+      // Étape 6 : un joueur parle. Le canal 'global' traverse tout le
+      // serveur, le canal 'proximity' (talkie-walkie) ne touche que les
+      // joueurs proches de la même zone — voir relayChat ci-dessus.
+      // Un texte vide ou trop bavard (débit, voir chatAllowed) est
+      // simplement ignoré : on ne ferme pas la connexion pour ça.
+      if (msg.t === 'chat') {
+        const text = sanitizeChatText(msg.text);
+        if (!text) return;
+        if (!chatAllowed(player)) return;
+        relayChat(player, text, sanitizeChatChannel(msg.channel));
         return;
       }
       // Un joueur a cassé/posé un bloc ou basculé une porte : on note
@@ -485,6 +687,64 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
         const state = sanitizeFurnaceState(msg.state);
         recordFurnaceState(player.zone, tx, ty, state);
         broadcastToZone(player.zone, { t: 'furnace', tx, ty, state }, ws);
+        return;
+      }
+      // Un joueur pose / écrit / casse un panneau : texte + propriétaire
+      // sont journalisés par zone (resync des arrivants) et rediffusés.
+      if (msg.t === 'sign') {
+        const tx = Math.trunc(msg.tx);
+        const ty = Math.trunc(msg.ty);
+        if (!validTile(tx) || !validTile(ty)) return;
+        const s = sanitizeSignState(msg);
+        recordSignState(player.zone, tx, ty, s.text, s.owner);
+        broadcastToZone(player.zone, { t: 'sign', tx, ty, text: s.text, owner: s.owner }, ws);
+        return;
+      }
+      // Un étal de vente change (stock, prix, cagnotte, pose, casse) :
+      // journalisé par zone et rediffusé aux voisins.
+      if (msg.t === 'seller') {
+        const tx = Math.trunc(msg.tx);
+        const ty = Math.trunc(msg.ty);
+        if (!validTile(tx) || !validTile(ty)) return;
+        if (msg.state === null) {
+          recordSellerState(player.zone, tx, ty, null);
+          broadcastToZone(player.zone, { t: 'seller', tx, ty, state: null }, ws);
+          return;
+        }
+        const state = sanitizeSellerState(msg.state);
+        recordSellerState(player.zone, tx, ty, state);
+        broadcastToZone(player.zone, { t: 'seller', tx, ty, state }, ws);
+        return;
+      }
+      // Message ciblé (tentative de vol, alarme…) : relayé UNIQUEMENT au
+      // joueur dont l'id est visé, jamais au reste de la zone.
+      if (msg.t === 'notify') {
+        const to = Math.trunc(Number(msg.to));
+        const target = players.get(to);
+        if (!target || target.ws.readyState !== target.ws.OPEN) return;
+        const payload = { t: 'notify', kind: String(msg.kind || '').slice(0, 16), text: String(msg.text || '').slice(0, 140) };
+        if (typeof msg.zone === 'string') payload.zone = sanitizeZone(msg.zone);
+        if (Number.isFinite(Number(msg.tx))) payload.tx = Math.trunc(Number(msg.tx));
+        if (Number.isFinite(Number(msg.ty))) payload.ty = Math.trunc(Number(msg.ty));
+        sendJson(target.ws, payload);
+        return;
+      }
+      // PvP : l'attaquant déclare un coup ; seule la VICTIME le reçoit et
+      // applique elle-même les dégâts (elle reste autoritaire sur ses PV).
+      if (msg.t === 'pattack') {
+        const to = Math.trunc(Number(msg.id));
+        const target = players.get(to);
+        if (!target || target.ws.readyState !== target.ws.OPEN) return;
+        if (target.zone !== player.zone) return; // pas de coup à travers les mondes
+        const dmg = Math.max(1, Math.min(20, Math.trunc(Number(msg.dmg) || 1)));
+        sendJson(target.ws, { t: 'pattack', from: id, dmg });
+        return;
+      }
+      // PvP : un joueur annonce ses PV après un coup (ou sa mort/respawn).
+      if (msg.t === 'php') {
+        const hp = Math.max(0, Math.min(20, Math.trunc(Number(msg.hp) || 0)));
+        player.hp = hp;
+        broadcastToZone(player.zone, { t: 'php', id, hp }, ws);
         return;
       }
       // Un joueur (le premier arrivé dans une zone vide de troupeau,
@@ -601,6 +861,10 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
   return {
     playerCount,
     bytesSentThisMonth: () => bytesSentThisMonth,
+    // Utilisé par le réseau social du téléphone (social-server.js, monté
+    // dans server.js) pour pousser les nouveautés du fil à tous les
+    // joueurs connectés.
+    broadcast,
     close: () => { clearInterval(tickTimer); clearInterval(janitor); wss.close(); },
   };
 }

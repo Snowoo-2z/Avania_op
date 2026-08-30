@@ -10,7 +10,8 @@
     "test:relay": "node test/merchant-relay.mjs",
     "test:multiplayer": "node test/multiplayer.mjs",
     "test:multiplayer:client": "node test/multiplayer-client.mjs",
-    "bench": "node scripts/frame-bench.mjs"
+    "bench": "node scripts/frame-bench.mjs",
+    "test:chat": "node test/chat-social.mjs"
   },
   "license": "MIT",
   "engines": {

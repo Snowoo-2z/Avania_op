@@ -7,7 +7,7 @@
 
 import { TILE, WORLD_W, WORLD_H } from './config.js';
 import { mulberry32 } from './utils.js';
-import { BLOCK_DEFS, ITEM_DEFS, DIGGABLE_FLOOR, SOLID_FLOOR } from './blocks.js';
+import { BLOCK_DEFS, ITEM_DEFS, DIGGABLE_FLOOR, SOLID_FLOOR, CROPS } from './blocks.js';
 import { generateCaveLevel, buildCaveEntrance, CAVE } from './cave.js';
 
 const W = WORLD_W;
@@ -223,6 +223,10 @@ export class World {
     const i = this.idx(tx, ty);
     const item = ITEM_DEFS[itemId];
     if (!item || !item.place) return false;
+
+    // Les cultures ne poussent que sur de la terre labourée : semer dans
+    // l'herbe ou le sable n'a aucun sens (et le blé mourrait).
+    if (CROPS.includes(item.place) && this.floor[i] !== 'farmland') return false;
 
     // Empêche de construire directement derrière un mur (une case au-dessus)
     // car le mur en perspective cache cette tuile. Le passage reste libre pour marcher !

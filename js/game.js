@@ -6,7 +6,8 @@ import {
   TILE, WORLD_W, WORLD_H, REACH, PERFORMANCE, PLAYER_RENDER_SCALE, BLOCK_EXTRUDE,
 } from './config.js';
 import {
-  BLOCK_DEFS, ITEM_DEFS, TOOL_TIERS, toolTierIndex, blockMinTierIndex,
+  BLOCK_DEFS, ITEM_DEFS, TOOL_TIERS, toolTierIndex, blockMinTierIndex, toolDamage,
+  CROPS, CROP_MATURE, CROP_GROW_SECONDS, SELLER_TIERS,
 } from './blocks.js';
 import { World } from './world.js';
 import { Player } from './player.js';
@@ -24,13 +25,20 @@ import { drawCharacter } from './character.js';
 import { drawNpc } from './npc/index.js';
 import { getItemSprite } from './icons.js';
 import { drawHeldItem, heldItemIsBehind } from './held.js';
-import { isLowPowerDevice, makeCanvas } from './utils.js';
+import { isLowPowerDevice, makeCanvas, lerp } from './utils.js';
 import { updateFurnace, makeFurnaceEntry } from './furnace.js';
 import {
   MOB_DEFS, Mob, spawnMobs, updateMob, drawMob, mobDrops,
   DEFAULT_MOB_COUNTS, findMobSpawnSpot, makeMobFromNetwork,
 } from './mobs/index.js';
 import { CAVE, canDescendTo } from './cave.js';
+// Chat de proximité (étape 6) : le nettoyage du texte d'une bulle utilise
+// le même garde-fou que le réseau, pour qu'un message affiché au-dessus
+// d'un joueur ne puisse jamais contenir de caractère de contrôle.
+import { sanitizeChatText } from './net-protocol.js';
+
+// Durée d'affichage d'une bulle de talkie-walkie, en secondes de jeu.
+const BUBBLE_SECONDS = 6;
 
 // Multijoueur (étape 4, fours) : débit d'émission réseau de la
 // progression d'un four possédé localement — voir Game.updateFurnaces
@@ -263,6 +271,18 @@ export class Game {
     this.otherPlayers = []; // futurs joueurs en ligne
     // Objets posés au sol (ramassables en marchant dessus).
     this.droppedItems = [];
+    // Agriculture : âge (en secondes) de chaque pousse de blé, par tuile.
+    this.cropAge = new Map();
+    // Bonus temporaire après avoir mangé (secondes restantes).
+    this.wellFedT = 0;
+    // Décalage de caméra (parallaxe) : la caméra « anticipe » légèrement la
+    // direction de déplacement pour dégager le champ de vision.
+    this.camLeadX = 0;
+    this.camLeadY = 0;
+    // Cycle jour/nuit (en secondes de jeu pour un tour complet) + canvas
+    // hors-écran qui reçoit le voile nocturne percé de lueurs.
+    this.dayLength = 240;
+    this.nightCanvas = null;
     this.pickupFullCooldown = 0;
     // Animaux (moutons, vaches) qui se baladent dans le monde.
     this.mobs = spawnMobs(this.world);
@@ -279,10 +299,20 @@ export class Game {
     this.furnaceData = new Map();
     // Coffres posés : 27 cases de rangement (clé = index de tuile).
     this.chestData = new Map();
+    // Panneaux posés : { text, owner } (clé = index de tuile). Seul le
+    // joueur dont l'id === owner peut écrire dessus.
+    this.signData = new Map();
+    // Étals de vente posés : { tier, owner, item, stock, price, till }.
+    this.sellerData = new Map();
+    // Verrous de vol locaux (clé -> this.time d'expiration) : après un vol
+    // raté, on attend avant de retenter (voir SELLER_TIERS).
+    this.stealLocks = new Map();
+    this.pvpCooldown = 0;
     // Rappels branchés par l'UI (ex. ouvrir le panneau du four / du coffre).
     this.uiCallbacks = {
       openFurnace: null,
       openChest: null,
+      openSign: null,
       onMoney: null,
       onEnterCave: null,
       onExitCave: null,
@@ -373,6 +403,11 @@ export class Game {
     this.blockDrawables = [];
     this.blockDrawableCount = 0;
     this.nameTagCache = new Map();
+    // Bulles du talkie-walkie (chat de proximité) : même principe que les
+    // étiquettes de nom — texte pré-rendu en haute résolution, blitté à
+    // sa taille logique. Clé = texte + zoom, donc un même message répété
+    // ne coûte rien.
+    this.bubbleCache = new Map();
     // Sprites pré-rendus : surbrillance de la cible et ombres ovales
     // des objets au sol (clés numériques, aucune allocation par frame).
     this.highlightCache = new Map();
@@ -510,14 +545,28 @@ export class Game {
     }
   }
 
+  // Niveau graphiques effectif : le choix de l'utilisateur, mais le mode
+  // performance (machine modeste / adaptive) force toujours « low ».
+  //  low    : ni ombres portées, ni lueurs, ni vignette (voile de nuit plat) ;
+  //  medium : ombres + nuit percée de halos, mais sans lueurs additives ;
+  //  high   : tout, y compris la lueur vacillante des feux et la vignette.
+  _gfx() {
+    if (this.performanceMode) return 'low';
+    const g = this.settings ? this.settings.graphics : 'high';
+    return g === 'low' || g === 'medium' ? g : 'high';
+  }
+
   // Particules activées ? (réglage utilisateur ; le mode performance réduit
-  // déjà leur nombre, on ne fait ici que respecter l'interrupteur.)
+  // déjà leur nombre, et le niveau « low » les coupe entièrement.)
   _particlesEnabled() {
+    if (this._gfx() === 'low') return false;
     return this.settings ? this.settings.particles !== false : true;
   }
 
-  // Vignette activée ? (réglage utilisateur ; le mode performance la coupe.)
+  // Vignette activée ? (réglage utilisateur ; le mode performance et le
+  // niveau « low » la coupent.)
   _vignetteOn() {
+    if (this._gfx() === 'low') return false;
     return this.settings ? this.settings.vignette !== false : true;
   }
 
@@ -544,6 +593,12 @@ export class Game {
     // retard visible).
     if (this.uiCallbacks.onNetUpdate) this.uiCallbacks.onNetUpdate(dt, this.player);
     this.actionCooldown = Math.max(0, this.actionCooldown - dt);
+    this.pvpCooldown = Math.max(0, this.pvpCooldown - dt);
+    // Régén PvP : hors de tout coup récent, les PV remontent doucement.
+    const lp = this.player;
+    if (lp.hp < lp.maxHp && this.time - lp.lastHurtAt > 6) {
+      lp.hp = Math.min(lp.maxHp, lp.hp + dt * 1.2);
+    }
     // Les fours cuisent en continu, même panneau ouvert (la barre avance).
     this.updateFurnaces(dt);
     if (this.paused) { this.input.endFrame(); return; }
@@ -591,13 +646,22 @@ export class Game {
     // Pendant une cinématique (l'arrivée du représentant), le joueur ne
     // contrôle plus rien : on ignore simplement ses entrées.
     const dir = this.cutscene ? this._zeroDir : this.input.getDirection();
-    this.player.update(dir, dt, this.world);
-    this.camera.follow(this.player.x, this.player.y, dt);
+    this.player.update(dir, dt, this.world, this.wellFedBoost());
+    // Parallaxe : on lisse un léger décalage vers la direction de
+    // déplacement, puis on suit ce point (pas exactement le joueur) pour
+    // dégager la vue dans le sens du mouvement.
+    const LEAD = 46;
+    const lk = 1 - Math.pow(0.002, dt);
+    this.camLeadX = lerp(this.camLeadX, dir.x * LEAD, lk);
+    this.camLeadY = lerp(this.camLeadY, dir.y * LEAD, lk);
+    this.camera.follow(this.player.x + this.camLeadX, this.player.y + this.camLeadY, dt);
     // Pré-construit par petits lots les chunks qui vont entrer dans la vue :
     // c'est le correctif des saccades au déplacement (plus de rasterisation
     // synchrone de chunk dans la boucle de rendu).
     this.prewarmFloorChunks(PERFORMANCE.CHUNK_PREWARM_BUDGET_MS);
     this.updateDroppedItems(dt);
+    if (this.wellFedT > 0) this.wellFedT = Math.max(0, this.wellFedT - dt);
+    this.updateCrops(dt);
     this.updateParticles(dt);
     this.updateHeldItem(dt);
     this.updateMobs(dt);
@@ -1108,6 +1172,8 @@ export class Game {
     this.dimStates.set(world.id, {
       furnaceData: this.furnaceData,
       chestData: this.chestData,
+      signData: this.signData,
+      sellerData: this.sellerData,
       droppedItems: this.droppedItems,
       mobs: this.mobs,
     });
@@ -1118,11 +1184,15 @@ export class Game {
     if (saved) {
       this.furnaceData = saved.furnaceData;
       this.chestData = saved.chestData;
+      this.signData = saved.signData || new Map();
+      this.sellerData = saved.sellerData || new Map();
       this.droppedItems = saved.droppedItems;
       this.mobs = saved.mobs;
     } else {
       this.furnaceData = new Map();
       this.chestData = new Map();
+      this.signData = new Map();
+      this.sellerData = new Map();
       this.droppedItems = [];
       // Pas d'animaux sous terre.
       this.mobs = world.kind === 'cave' ? [] : spawnMobs(world);
@@ -1238,6 +1308,23 @@ export class Game {
     this.notify(`Profondeur ${current - 1}.`);
   }
 
+  // Téléportation d'alarme (étal niv. 3 volé) : bascule vers la zone de
+  // l'étal (surface ou grotte, générée si besoin) puis snap à la tuile.
+  teleportToZone(zone, tx, ty) {
+    let world;
+    if (zone === 'surface') world = this.surfaceWorld;
+    else {
+      const m = /^cave:(\d+)$/.exec(zone);
+      if (!m) return false;
+      world = this.getCaveLevel(Number(m[1]));
+    }
+    const x = tx * TILE + TILE / 2;
+    const y = (ty + 1) * TILE + TILE / 2; // juste devant l'étal
+    this.switchWorld(world, x, y);
+    this.notify('Téléportation vers ton étal !');
+    return true;
+  }
+
   // Halo chaud autour du joueur dans la grotte (pré-rendu une fois).
   getCaveGlow() {
     if (this.caveGlowSprite) return this.caveGlowSprite;
@@ -1265,6 +1352,29 @@ export class Game {
     const veil = Math.min(0.62, 0.34 + depth * 0.035);
     ctx.fillStyle = `rgba(6,5,14,${veil})`;
     ctx.fillRect(0, 0, W, H);
+
+    // Les torches posées éclairent la galerie d'une lueur chaude et
+    // vacillante — visible même en mode performance (c'est du repérage).
+    const zt = this.camera.zoom;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const torches = this._torchPositions();
+    for (let k = 0; k < torches.length; k += 2) {
+      const x = (torches[k] - this.camera.x) * zt;
+      const y = (torches[k + 1] - this.camera.y) * zt;
+      const r = 140 * zt;
+      if (x < -r || x > W + r || y < -r || y > H + r) continue;
+      const flick = 0.8 + Math.sin(this.time * 8 + k) * 0.2;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(255,170,80,${(0.5 * flick).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(255,140,50,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
     if (this.performanceMode || !this._vignetteOn()) return;
 
     const zoom = this.camera.zoom;
@@ -1275,6 +1385,170 @@ export class Game {
     ctx.globalCompositeOperation = 'lighter';
     ctx.drawImage(this.getCaveGlow(), sx - r, sy - r, r * 2, r * 2);
     ctx.restore();
+  }
+
+  // Quantité de nuit (0 = plein jour, 1 = pleine nuit) déduite du cycle.
+  // t : 0 aube, 0.25 midi, 0.5 crépuscule, 0.75 minuit.
+  dayNightAmount() {
+    const t = (this.time % this.dayLength) / this.dayLength;
+    if (t < 0.42) return 0;                       // journée
+    if (t < 0.55) return (t - 0.42) / 0.13;       // crépuscule
+    if (t < 0.90) return 1;                        // nuit
+    return 1 - (t - 0.90) / 0.10;                  // aube
+  }
+
+  // Voile nocturne en surface : un bleu profond percé de lueurs chaudes
+  // autour du joueur et des fours allumés (canvas hors-écran +
+  // destination-out), plus une lueur additive sur les fours.
+  drawNight(ctx, W, H) {
+    const m = this.dayNightAmount();
+    if (m <= 0.02) { this.nightCanvas = null; return; }
+    // Niveau Faible : un simple voile plat, sans canvas secondaire.
+    if (this._gfx() === 'low') {
+      ctx.fillStyle = `rgba(12,16,48,${(m * 0.5).toFixed(3)})`;
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
+    if (!this.nightCanvas || this.nightCanvas.width !== W || this.nightCanvas.height !== H) {
+      this.nightCanvas = makeCanvas(W, H);
+    }
+    const nctx = this.nightCanvas.getContext('2d');
+    nctx.setTransform(1, 0, 0, 1, 0, 0);
+    nctx.globalCompositeOperation = 'source-over';
+    nctx.clearRect(0, 0, W, H);
+    nctx.fillStyle = `rgba(12,16,48,${(m * 0.55).toFixed(3)})`;
+    nctx.fillRect(0, 0, W, H);
+    // Percer des trous de lumière.
+    nctx.globalCompositeOperation = 'destination-out';
+    const zoom = this.camera.zoom;
+    const sx = (wx) => (wx - this.camera.x) * zoom;
+    const sy = (wy) => (wy - this.camera.y) * zoom;
+    this._punchLight(nctx, sx(this.player.x), sy(this.player.y - 6), 150 * zoom, 0.72, W, H);
+    for (const [idx, e] of this.furnaceData) {
+      if (!(e && e.fuelTime > 0)) continue;
+      const tx = idx % WORLD_W, ty = (idx / WORLD_W) | 0;
+      this._punchLight(nctx, sx(tx * TILE + 16), sy(ty * TILE + 14), 120 * zoom, 0.85, W, H);
+    }
+    const torches = this._torchPositions();
+    for (let k = 0; k < torches.length; k += 2) {
+      this._punchLight(nctx, sx(torches[k]), sy(torches[k + 1]), 110 * zoom, 0.85, W, H);
+    }
+    nctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(this.nightCanvas, 0, 0);
+    // Lueur chaude additive des fours allumés (niveau Élevé uniquement).
+    if (this._gfx() !== 'high') return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const [idx, e] of this.furnaceData) {
+      if (!(e && e.fuelTime > 0)) continue;
+      const tx = idx % WORLD_W, ty = (idx / WORLD_W) | 0;
+      const x = sx(tx * TILE + 16), y = sy(ty * TILE + 12);
+      const r = 110 * zoom;
+      if (x < -r || x > W + r || y < -r || y > H + r) continue;
+      // Petit vacillement de flamme pour une lueur vivante.
+      const flick = 0.85 + Math.sin(this.time * 7 + idx) * 0.15;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(255,170,70,${(0.45 * m * flick).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(255,150,60,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Lueur des torches posées, elle aussi vacillante.
+    const torchGlow = this._torchPositions();
+    for (let k = 0; k < torchGlow.length; k += 2) {
+      const x = sx(torchGlow[k]), y = sy(torchGlow[k + 1]);
+      const r = 100 * zoom;
+      if (x < -r || x > W + r || y < -r || y > H + r) continue;
+      const flick = 0.8 + Math.sin(this.time * 8 + k) * 0.2;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(255,180,80,${(0.4 * m * flick).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(255,150,60,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Troue le voile nocturne d'un dégradé radial (force = opacité effacée).
+  _punchLight(nctx, x, y, r, strength, W, H) {
+    if (x < -r || x > W + r || y < -r || y > H + r) return;
+    const g = nctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(0,0,0,${strength})`);
+    g.addColorStop(0.5, `rgba(0,0,0,${(strength * 0.4).toFixed(3)})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    nctx.fillStyle = g;
+    nctx.beginPath();
+    nctx.arc(x, y, r, 0, Math.PI * 2);
+    nctx.fill();
+  }
+
+  // ------------------------------------------------------------
+  //  PvP entre joueurs
+  // ------------------------------------------------------------
+
+  // Joueur distant sous le curseur (à portée), ou null. Le rayon est
+  // généreux (14 px) pour rester tolérant, comme l'aim assist des mobs.
+  playerUnderCursor() {
+    const m = this.input.mouse;
+    const zoom = this.camera.zoom;
+    const wx = this.camera.x + m.x / zoom;
+    const wy = this.camera.y + m.y / zoom;
+    let best = null;
+    let bestD = 14 * 14;
+    for (const p of this.otherPlayers) {
+      if (p.hp !== undefined && p.hp <= 0) continue;
+      const dx = p.x - wx;
+      const dy = (p.y - 8) - wy;
+      const d = dx * dx + dy * dy;
+      if (d <= bestD + 60) { // léger aim assist
+        const ddx = p.x - this.player.x;
+        const ddy = p.y - this.player.y;
+        if (ddx * ddx + ddy * ddy <= REACH * REACH) { best = p; bestD = d; }
+      }
+    }
+    return best;
+  }
+
+  // Attaque un joueur distant sous le curseur. Retourne true si un joueur
+  // était visé (pour ne pas miner la tuile derrière lui). La VICTIME
+  // applique elle-même les dégâts (elle fait foi sur ses PV).
+  tryAttackPlayer() {
+    const target = this.playerUnderCursor();
+    if (!target) return false;
+    if (this.pvpCooldown > 0) return true;
+    this.pvpCooldown = 0.5;
+    const held = this.inventory.getSelectedStackRef();
+    const dmg = held ? toolDamage(ITEM_DEFS[held.id]) : 1;
+    if (this.uiCallbacks.onPlayerAttack) this.uiCallbacks.onPlayerAttack(target.id, dmg);
+    return true;
+  }
+
+  // Un joueur distant m'attaque : j'applique les dégâts moi-même (jamais
+  // l'attaquant), je diffuse mes PV, et je gère ma propre mort/respawn.
+  applyPlayerAttack(fromId, dmg) {
+    const from = this.otherPlayers.find((p) => p.id === fromId);
+    if (!from) return;
+    const dx = from.x - this.player.x;
+    const dy = from.y - this.player.y;
+    if (dx * dx + dy * dy > (REACH * 1.6) ** 2) return; // trop loin : coup ignoré
+    const p = this.player;
+    p.hp = Math.max(0, p.hp - dmg);
+    p.lastHurtAt = this.time;
+    this.spawnBreakParticles(Math.floor(p.x / TILE), Math.floor(p.y / TILE), 'player');
+    if (p.hp <= 0) {
+      // Mort : retour au spawn de surface, PV rendus.
+      p.hp = p.maxHp;
+      const surface = this.surfaceWorld;
+      const sp = surface ? { x: surface.spawn.x, y: surface.spawn.y } : { x: p.x, y: p.y };
+      if (this.world !== surface && surface) this.switchWorld(surface, sp.x, sp.y);
+      else { p.x = sp.x; p.y = sp.y; this.camera.snapTo(sp.x, sp.y); }
+      this.notify('Tu as été tué ! Retour au spawn.');
+    }
+    if (this.uiCallbacks.onPlayerHp) this.uiCallbacks.onPlayerHp(p.hp);
   }
 
   // Trouve un mob sous le curseur (dans la portée d'interaction).
@@ -1313,14 +1587,15 @@ export class Game {
     const selected = this.inventory.getSelectedStackRef();
     const def = selected && ITEM_DEFS[selected.id];
     const sword = def?.toolType === 'sword';
-    const damage = sword ? 3 : 1;
+    const damage = toolDamage(def);
 
     mob.hp -= damage;
     mob.hitFlash = 0.18;
     mob.fleeT = 1.7;
     this.spawnHitParticles(mob.x, mob.y);
 
-    if (sword) {
+    // Une lame ou une hache utilisée comme arme s'use à chaque coup.
+    if (sword || def?.toolType === 'axe') {
       const result = this.inventory.damageSelectedTool(1);
       if (result.broken) this.notify(`${def.label} s'est cassé.`);
     }
@@ -1470,7 +1745,8 @@ export class Game {
     // défaut, mais rebindable). Frappe d'abord les animaux sous le curseur
     // (comme dans Minecraft), sinon mine la tuile.
     if (this.input.down('mine')) {
-      if (!this.tryAttackMob(dt)) this.mineTarget(dt);
+      // Frappe d'abord les animaux, puis les JOUEURS (PvP), sinon mine.
+      if (!this.tryAttackMob(dt) && !this.tryAttackPlayer()) this.mineTarget(dt);
     } else if (this.mining.progress > 0) {
       this.resetMining();
     }
@@ -1528,7 +1804,103 @@ export class Game {
       this.actionCooldown = 0.25;
       return;
     }
+    if (targetBlock && BLOCK_DEFS[targetBlock]?.sellerTier) {
+      if (this.uiCallbacks.openSeller) this.uiCallbacks.openSeller(this.targetTx, this.targetTy);
+      this.actionCooldown = 0.25;
+      return;
+    }
+    if (targetBlock === 'sign') {
+      // Seul le poseur écrit : les autres lisent (et peuvent casser puis
+      // reposer pour hériter du panneau).
+      const entry = this.signData.get(this.world.idx(this.targetTx, this.targetTy));
+      const me = this.uiCallbacks.getOwnerId ? this.uiCallbacks.getOwnerId() : -1;
+      if (entry && entry.owner === me) {
+        if (this.uiCallbacks.openSign) this.uiCallbacks.openSign(this.targetTx, this.targetTy);
+      } else {
+        this.notify(entry && entry.text
+          ? 'Panneau d\'un autre joueur : casse-le puis repose-le pour écrire.'
+          : 'Ce panneau appartient à quelqu\'un d\'autre.');
+      }
+      this.actionCooldown = 0.25;
+      return;
+    }
+
+    // Labour : la houe retourne herbe / terre en terre labourée, prête à
+    // semer. (Clic droit, comme poser — mais ça transforme le SOL.)
+    const held = this.inventory.getSelectedStackRef();
+    const heldDef = held && ITEM_DEFS[held.id];
+    if (heldDef?.toolType === 'hoe' && !targetBlock) {
+      const floor = this.world.floorAt(this.targetTx, this.targetTy);
+      if (floor === 'grass' || floor === 'grassDark' || floor === 'dirt') {
+        const i = this.world.idx(this.targetTx, this.targetTy);
+        this.world.floor[i] = 'farmland';
+        this.invalidateFloorChunk(this.targetTx, this.targetTy);
+        this.actionCooldown = 0.2;
+        this._announceBlockChange(this.targetTx, this.targetTy, { floor: 'farmland' });
+        const res = this.inventory.damageSelectedTool(1);
+        if (res.broken) this.notify(`${heldDef.label} s'est cassée.`);
+        return;
+      }
+    }
+
+    // Manger : un aliment en main se consomme d'un clic droit (bien nourri
+    // = un coup de pouce temporaire au minage et à la marche).
+    if (heldDef?.food) {
+      this.eatSelectedFood();
+      return;
+    }
+
     this.placeSelectedBlock();
+  }
+
+  // Consomme l'aliment sélectionné et applique le bonus « bien nourri ».
+  eatSelectedFood() {
+    const idx = this.inventory.selectedSlotIndex();
+    const stack = this.inventory.getSlot(idx);
+    const def = stack && ITEM_DEFS[stack.id];
+    if (!def?.food) return;
+    this.inventory.takeSlot(idx, 1);
+    this.wellFedT = Math.min(120, this.wellFedT + def.food * 10);
+    this.notify(`Miam ! ${def.label} : bien nourri ${Math.round(this.wellFedT)} s.`);
+  }
+
+  // Bonus tant que le joueur est bien nourri (mine et marche un peu mieux).
+  wellFedBoost() {
+    return this.wellFedT > 0 ? 1.1 : 1;
+  }
+
+  // Fait pousser le blé autour du joueur : chaque pousse sur terre labourée
+  // accumule un âge et passe au stade suivant toutes les CROP_GROW_SECONDS.
+  // Le changement de stade est un simple diff de bloc, diffusé comme les
+  // autres modifications de tuile (les voisins voient le blé mûrir).
+  updateCrops(dt) {
+    const world = this.world;
+    if (!world) return;
+    const ptx = Math.floor(this.player.x / TILE);
+    const pty = Math.floor(this.player.y / TILE);
+    const R = 8;
+    for (let ty = pty - R; ty <= pty + R; ty++) {
+      for (let tx = ptx - R; tx <= ptx + R; tx++) {
+        if (!world.inBounds(tx, ty)) continue;
+        const i = world.idx(tx, ty);
+        const block = world.blocks[i];
+        if (!block || !CROPS.includes(block)) {
+          if (this.cropAge.has(i)) this.cropAge.delete(i);
+          continue;
+        }
+        if (block === CROP_MATURE || world.floor[i] !== 'farmland') continue;
+        const age = (this.cropAge.get(i) || 0) + dt;
+        if (age >= CROP_GROW_SECONDS) {
+          const next = CROPS[CROPS.indexOf(block) + 1];
+          world.blocks[i] = next;
+          this.cropAge.delete(i);
+          this.reindexPlacedChunk(tx, ty);
+          this._announceBlockChange(tx, ty, { blocks: next });
+        } else {
+          this.cropAge.set(i, age);
+        }
+      }
+    }
   }
 
   // Petite bouffée de particules quand une porte s'ouvre / se ferme.
@@ -1594,7 +1966,7 @@ export class Game {
     if (stoneByHand) speed /= 10;
     // L'équipement de la grotte accélère réellement le minage : c'est
     // la récompense tangible de l'achat chez les marchands.
-    this.mining.duration = duration / (speed * this.gearMiningBoost());
+    this.mining.duration = duration / (speed * this.gearMiningBoost() * this.wellFedBoost());
     this.mining.progress += dt / this.mining.duration;
 
     if (this.mining.progress < 1) return;
@@ -1650,6 +2022,27 @@ export class Game {
         this._announceFurnaceChange(this.targetTx, this.targetTy, makeFurnaceEntry());
       }
     }
+    // Panneau cassé : le texte part avec (comme dans Minecraft), et on
+    // purge le journal du serveur pour qu'un futur panneau posé ici
+    // reparte vierge.
+    if (existingBlock === 'sign') {
+      if (this.signData.delete(i)) {
+        this._announceSignChange(this.targetTx, this.targetTy, null, -1);
+      }
+    }
+    // Étal cassé : le stock invendu et la cagnotte retombent au sol (rien
+    // ne se perd), et on purge le journal serveur.
+    if (existingBlock && BLOCK_DEFS[existingBlock]?.sellerTier) {
+      const entry = this.sellerData.get(i);
+      if (entry) {
+        this.sellerData.delete(i);
+        if (entry.item && entry.stock > 0) {
+          this.spawnDrop(this.targetTx, this.targetTy, entry.item, entry.stock);
+        }
+        if (entry.till > 0) this.spawnDrop(this.targetTx, this.targetTy, 'coin', entry.till);
+        this._announceSellerBreak(this.targetTx, this.targetTy);
+      }
+    }
     if (drop) {
       if (existingBlock && BLOCK_DEFS[existingBlock]?.kind === 'object') {
         this.removeStaticObjectAt(this.targetTx, this.targetTy);
@@ -1679,6 +2072,11 @@ export class Game {
         const result = this.inventory.damageSelectedTool(1);
         if (result.broken) this.notify(`${selectedDef.label} s'est cassé.`);
       }
+    }
+    // Récolter du blé mûr rend aussi des graines : la ferme s'auto-entretient.
+    if (existingBlock === CROP_MATURE) {
+      const extra = 1 + (Math.random() < 0.5 ? 1 : 0);
+      for (let k = 0; k < extra; k++) this.spawnDrop(this.targetTx, this.targetTy, 'seeds', 1);
     }
     if (this.world.floor[i] !== oldFloor) this.invalidateFloorChunk(this.targetTx, this.targetTy);
     this.resetMining();
@@ -1942,6 +2340,20 @@ export class Game {
       if (this.world.blocks[i] !== oldBlock) diff.blocks = this.world.blocks[i];
       if (this.world.blocks2 && this.world.blocks2[i] !== oldBlock2) diff.blocks2 = this.world.blocks2[i];
       if (Object.keys(diff).length > 0) this._announceBlockChange(this.targetTx, this.targetTy, diff);
+      // Un panneau neuf appartient à celui qui le pose : il sera le seul
+      // à pouvoir y écrire. Les autres devront le casser puis le reposer.
+      if (item === 'sign') {
+        const owner = this.uiCallbacks.getOwnerId ? this.uiCallbacks.getOwnerId() : -1;
+        this.signData.set(i, { text: '', owner });
+        this._announceSignChange(this.targetTx, this.targetTy, '', owner);
+      }
+      // Un étal neuf : propriétaire = poseur, stock vide, prix à définir.
+      if (ITEM_DEFS[item]?.place?.startsWith('seller')) {
+        const entry = this.getSellerEntry(this.targetTx, this.targetTy);
+        if (this.uiCallbacks.onSellerChange) {
+          this.uiCallbacks.onSellerChange(this.targetTx, this.targetTy, entry);
+        }
+      }
     }
   }
 
@@ -1960,6 +2372,26 @@ export class Game {
   // ne l'a pas branché (ou si le réseau n'a jamais pu se connecter).
   _announceBlockChange(tx, ty, diff) {
     if (this.uiCallbacks.onBlockChange) this.uiCallbacks.onBlockChange(tx, ty, diff);
+  }
+
+  // Panneau posé / écrit (text) ou cassé (text === null) : relais réseau.
+  _announceSignChange(tx, ty, text, owner) {
+    if (this.uiCallbacks.onSignChange) this.uiCallbacks.onSignChange(tx, ty, text, owner);
+  }
+
+  // Étal cassé : state null purge le journal serveur.
+  _announceSellerBreak(tx, ty) {
+    if (this.uiCallbacks.onSellerChange) this.uiCallbacks.onSellerChange(tx, ty, null);
+  }
+
+  // Le joueur local écrit sur SON panneau (UI) : met à jour l'état local
+  // puis annonce aux autres joueurs de la zone.
+  setSignText(tx, ty, text) {
+    const i = this.world.idx(tx, ty);
+    const entry = this.signData.get(i);
+    if (!entry) return;
+    entry.text = String(text ?? '').slice(0, 120);
+    this._announceSignChange(tx, ty, entry.text, entry.owner);
   }
 
   // Même principe pour le contenu d'un coffre (étape 3) : appelé
@@ -2012,6 +2444,10 @@ export class Game {
       if (map) map.delete(world.idx(tx, ty));
       const furnaceMap = this.furnaceDataMapForZone(world.id);
       if (furnaceMap) furnaceMap.delete(world.idx(tx, ty));
+      const signMap = this.signDataMapForZone(world.id);
+      if (signMap) signMap.delete(world.idx(tx, ty));
+      const sellerMap = this.sellerDataMapForZone(world.id);
+      if (sellerMap) sellerMap.delete(world.idx(tx, ty));
     }
     if (!world.applyBlockDiff(tx, ty, diff)) return;
     if (world !== this.world) return; // zone pas affichée : rien d'autre à faire pour l'instant
@@ -2082,6 +2518,137 @@ export class Game {
     return saved ? saved.furnaceData : null;
   }
 
+  signDataMapForZone(zone) {
+    if (this.world && zone === this.world.id) return this.signData;
+    const saved = this.dimStates.get(zone);
+    return saved ? (saved.signData || null) : null;
+  }
+
+  // Un AUTRE joueur a posé / écrit / cassé un panneau de la zone actuelle.
+  // text === null : le panneau n'existe plus (cassé).
+  applyRemoteSignChange(zone, tx, ty, text, owner) {
+    const map = this.signDataMapForZone(zone);
+    if (!map) return; // zone jamais visitée localement : rien à raccrocher
+    const key = ty * WORLD_W + tx;
+    if (text === null) {
+      map.delete(key);
+      return;
+    }
+    map.set(key, { text, owner });
+  }
+
+  sellerDataMapForZone(zone) {
+    if (this.world && zone === this.world.id) return this.sellerData;
+    const saved = this.dimStates.get(zone);
+    return saved ? (saved.sellerData || null) : null;
+  }
+
+  // Un AUTRE joueur a posé / modifié / cassé un étal de la zone actuelle.
+  applyRemoteSellerChange(zone, tx, ty, state) {
+    const map = this.sellerDataMapForZone(zone);
+    if (!map) return;
+    const key = ty * WORLD_W + tx;
+    if (state === null) {
+      map.delete(key);
+      return;
+    }
+    map.set(key, state);
+  }
+
+  // Resynchronisation complète des étals d'une zone (connexion/arrivée).
+  applySellerSync(zone, sellers) {
+    const map = this.sellerDataMapForZone(zone);
+    if (!map) return;
+    map.clear();
+    for (const s of sellers) {
+      if (!s || typeof s.tx !== 'number' || typeof s.ty !== 'number') continue;
+      map.set(s.ty * WORLD_W + s.tx, s.state);
+    }
+  }
+
+  // Entrée locale d'un étal (créée à la pose ou à la première ouverture) :
+  // le poseur du bloc en est le propriétaire.
+  getSellerEntry(tx, ty) {
+    const i = this.world.idx(tx, ty);
+    let entry = this.sellerData.get(i);
+    if (!entry) {
+      const block = this.world.blocks[i];
+      const tier = BLOCK_DEFS[block]?.sellerTier || 1;
+      entry = {
+        tier,
+        owner: this.uiCallbacks.getOwnerId ? this.uiCallbacks.getOwnerId() : -1,
+        item: null, stock: 0, price: 0, till: 0,
+      };
+      this.sellerData.set(i, entry);
+    }
+    return entry;
+  }
+
+  // Modifie un étal local puis annonce l'état complet à la zone.
+  updateSeller(tx, ty, mutate) {
+    const entry = this.getSellerEntry(tx, ty);
+    mutate(entry);
+    entry.stock = Math.max(0, Math.min(9999, entry.stock | 0));
+    entry.price = Math.max(0, Math.min(99999, entry.price | 0));
+    entry.till = Math.max(0, Math.min(99999, entry.till | 0));
+    if (this.uiCallbacks.onSellerChange) this.uiCallbacks.onSellerChange(tx, ty, entry);
+    return entry;
+  }
+
+  // Verrous de vol (côté voleur) : « s:owner:idx » = cet étal, « o:owner »
+  // = tous les étals de ce propriétaire.
+  stealLockUntil(owner, idx) {
+    return Math.max(this.stealLocks.get(`s:${owner}:${idx}`) || 0, this.stealLocks.get(`o:${owner}`) || 0);
+  }
+
+  applyStealFailure(owner, idx, tier) {
+    const cfg = SELLER_TIERS[tier] || SELLER_TIERS[1];
+    if (cfg.lockThis) this.stealLocks.set(`s:${owner}:${idx}`, this.time + cfg.lockThis);
+    if (cfg.lockAll) this.stealLocks.set(`o:${owner}`, this.time + cfg.lockAll);
+  }
+
+  // Résultat du mini-jeu de vol d'un étal (côté voleur).
+  //  succès : 1 objet passe dans l'inventaire du voleur, stock -1 ;
+  //  échec  : verrous selon le niveau, et le propriétaire est prévenu
+  //           (niv. 2) ou alarmé + proposition de téléport (niv. 3).
+  reportStealResult(tx, ty, success) {
+    const i = this.world.idx(tx, ty);
+    const entry = this.sellerData.get(i);
+    if (!entry) return;
+    const cfg = SELLER_TIERS[entry.tier] || SELLER_TIERS[1];
+    if (success) {
+      if (!entry.item || entry.stock <= 0) return;
+      const added = this.inventory.add(entry.item, 1);
+      if (added <= 0) { this.notify('Inventaire plein : rien de volé.'); return; }
+      this.updateSeller(tx, ty, (e) => { e.stock -= 1; });
+      this.notify(`Vol réussi : +1 ${ITEM_DEFS[entry.item]?.label || entry.item}.`);
+      return;
+    }
+    this.applyStealFailure(entry.owner, i, entry.tier);
+    this.notify(cfg.lockAll
+      ? `Raté ! Vol impossible chez ce propriétaire pendant ${cfg.lockAll} s.`
+      : 'Raté ! 30 s d\'attente sur cet étal.');
+    if (cfg.notify && this.uiCallbacks.onNotifySend) {
+      this.uiCallbacks.onNotifySend(
+        entry.owner,
+        cfg.alarm ? 'alarm' : 'theft',
+        'Un joueur a tenté de voler un de vos sellers.',
+        { zone: this.world.id, tx, ty },
+      );
+    }
+  }
+
+  // Resynchronisation complète des panneaux d'une zone (connexion/arrivée).
+  applySignSync(zone, signs) {
+    const map = this.signDataMapForZone(zone);
+    if (!map) return;
+    map.clear();
+    for (const s of signs) {
+      if (!s || typeof s.tx !== 'number' || typeof s.ty !== 'number') continue;
+      map.set(s.ty * WORLD_W + s.tx, { text: String(s.text ?? ''), owner: Number(s.owner) });
+    }
+  }
+
   // Un AUTRE joueur a modifié un four de la zone actuelle (contenu, ou
   // juste avancement de la cuisson — voir js/ui.js FurnacePanel pour le
   // rythme d'émission). `state` est déjà nettoyé par
@@ -2150,6 +2717,9 @@ export class Game {
     // 1) sols par chunks
     this.drawFloorChunks(ctx, viewL, viewT, viewR, viewB);
 
+    // 1b) ombres portées des blocs posés, sous TOUT le reste (tri inclus)
+    this.drawPlacedShadows(ctx, minTx, minTy, maxTx, maxTy);
+
     // 2) objets (arbres, rochers, blocs posés, portes, fours) + joueurs, triés par profondeur
     this.drawDepthSorted(ctx, minTx, minTy, maxTx, maxTy);
 
@@ -2166,6 +2736,8 @@ export class Game {
 
     // 6) obscurité souterraine (voile + halo autour du joueur)
     if (this.world.kind === 'cave') this.drawCaveDarkness(ctx, W, H);
+    // 6b) cycle jour/nuit : voile nocturne percé par le joueur et les fours.
+    else this.drawNight(ctx, W, H);
 
     // 7) vignette d'ambiance. Cachée en mode performance ou si le joueur
     // l'a désactivée dans les paramètres. Pré-rendue sinon.
@@ -2308,22 +2880,109 @@ export class Game {
     return cached || this.buildFloorChunk(cx, cy);
   }
 
-  drawPlacedBlocks(ctx, minTx, minTy, maxTx, maxTy) {
+  // Positions monde (px) des torches posées, via l'index spatial des blocs
+  // posés : sert à percer le voile de nuit et à éclairer la grotte.
+  _torchPositions() {
+    const out = [];
     const blocks = this.world.blocks;
-    const doorOpen = this.world.doorOpen;
-    for (let ty = minTy; ty <= maxTy; ty++) {
-      let i = this.world.idx(minTx, ty);
-      for (let tx = minTx; tx <= maxTx; tx++, i++) {
-        const block = blocks[i];
-        if (!block) continue;
-        const def = BLOCK_DEFS[block];
-        if (def.kind === 'door') {
-          ctx.drawImage(getDoorCanvas(doorOpen[i] === 1), tx * TILE, ty * TILE);
-        } else if (block === 'furnace') {
-          const entry = this.furnaceData.get(i);
-          ctx.drawImage(getFurnaceCanvas(Boolean(entry && entry.fuelTime > 0)), tx * TILE, ty * TILE);
-        } else if (def.kind === 'block') {
-          ctx.drawImage(getTileCanvas(block), tx * TILE, ty * TILE);
+    for (const list of this.placedByChunk.values()) {
+      for (let k = 0; k < list.length; k++) {
+        const i = list[k];
+        if (blocks[i] !== 'torch') continue;
+        const tx = i % WORLD_W;
+        const ty = (i / WORLD_W) | 0;
+        out.push(tx * TILE + TILE / 2, ty * TILE + TILE / 2 - 6);
+      }
+    }
+    return out;
+  }
+
+  // Torche posée : sprite bois/charbon + flamme animée qui vacille.
+  // La phase dépend de la position pour que deux torches ne battent pas
+  // la mesure ensemble.
+  drawTorch(ctx, tx, ty) {
+    const spr = getObjectSprite('torch');
+    const bx = tx * TILE + TILE / 2;
+    const by = ty * TILE + TILE - 2;
+    if (spr) ctx.drawImage(spr.canvas, bx - spr.anchorX, by - spr.anchorY);
+    const fx = bx;
+    const fy = by - 19;
+    const fl = 0.75 + Math.sin(this.time * 9 + tx * 7 + ty * 13) * 0.25;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const r = 9 + 3 * fl;
+    const g = ctx.createRadialGradient(fx, fy, 0, fx, fy, r);
+    g.addColorStop(0, 'rgba(255,190,90,0.55)');
+    g.addColorStop(1, 'rgba(255,120,40,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(fx, fy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // Cœur de flamme.
+    ctx.fillStyle = '#e8632c';
+    ctx.fillRect(fx - 2, fy - 4 - fl * 2, 4, 6);
+    ctx.fillStyle = '#f7a13c';
+    ctx.fillRect(fx - 1.5, fy - 3 - fl * 2, 3, 4);
+    ctx.fillStyle = '#ffd979';
+    ctx.fillRect(fx - 0.5, fy - 2 - fl * 2, 2, 2);
+  }
+
+  // Panneau posé : sprite bois + texte du propriétaire, découpé en trois
+  // lignes courtes qui tiennent dans la planche.
+  drawSign(ctx, tx, ty) {
+    const spr = getObjectSprite('sign');
+    const bx = tx * TILE + TILE / 2;
+    const by = ty * TILE + TILE - 2;
+    if (spr) ctx.drawImage(spr.canvas, bx - spr.anchorX, by - spr.anchorY);
+    const entry = this.signData.get(this.world.idx(tx, ty));
+    const text = entry ? entry.text : '';
+    if (!text) return;
+    // Zone utile de la planche (voir drawSignRaw dans js/tileset.js).
+    const left = bx - 12;
+    const top = by - 24;
+    ctx.save();
+    ctx.font = '4px monospace';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#4a2f14';
+    const lines = [];
+    for (let k = 0; k < text.length && lines.length < 3; k += 11) {
+      lines.push(text.slice(k, k + 11));
+    }
+    for (let l = 0; l < lines.length; l++) {
+      ctx.fillText(lines[l], left, top + l * 4);
+    }
+    ctx.restore();
+  }
+
+  // Ombres portées directionnelles (lumière venant du nord-ouest) : chaque
+  // bloc solide posé projette une pénombre au sol vers le sud-est. Passe
+  // dédiée AVANT le tri en profondeur, pour que toutes les ombres restent
+  // sous les sprites (un mur ne vient jamais mordre l'ombre de son voisin).
+  drawPlacedShadows(ctx, minTx, minTy, maxTx, maxTy) {
+    if (this._gfx() === 'low') return; // niveau Faible : pas d'ombres portées
+    const ct = this.chunkTiles;
+    const blocks = this.world.blocks;
+    const chunkT = Math.floor(minTy / ct);
+    const chunkB = Math.floor(maxTy / ct);
+    const chunkL = Math.floor(minTx / ct);
+    const chunkR = Math.floor(maxTx / ct);
+    ctx.fillStyle = 'rgba(8,10,18,0.16)';
+    for (let cy = chunkT; cy <= chunkB; cy++) {
+      const rowBase = cy * 256;
+      for (let cx = chunkL; cx <= chunkR; cx++) {
+        const list = this.placedByChunk.get(rowBase + cx);
+        if (!list) continue;
+        for (let k = 0; k < list.length; k++) {
+          const i = list[k];
+          const def = BLOCK_DEFS[blocks[i]];
+          if (!def || !def.solid) continue;
+          const tx = i % WORLD_W;
+          const ty = (i / WORLD_W) | 0;
+          if (tx < minTx || tx > maxTx || ty < minTy || ty > maxTy) continue;
+          // Bande au sud + bande à l'est : l'ombre « tombe » en bas à droite.
+          ctx.fillRect(tx * TILE + 3, (ty + 1) * TILE - 3, TILE - 3, 5);
+          ctx.fillRect((tx + 1) * TILE - 3, ty * TILE + 4, 5, TILE - 4);
         }
       }
     }
@@ -2567,6 +3226,10 @@ export class Game {
     const blocks2 = this.world.blocks2;
     const b1 = blocks[i];
     if (b1) {
+      if (CROPS.includes(b1)) return true; // les pousses de blé posées
+      if (b1 === 'torch') return true;     // les torches posées
+      if (b1 === 'sign') return true;      // les panneaux posés
+      if (BLOCK_DEFS[b1]?.sellerTier) return true; // les étals de vente
       const kind = BLOCK_DEFS[b1]?.kind;
       if (kind === 'block' || kind === 'door') return true;
     }
@@ -2692,16 +3355,21 @@ export class Game {
           if (tx < minTx || tx > maxTx || ty < minTy || ty > maxTy) continue;
           const sortY = (ty + 1) * TILE; // trié par le bas de sa tuile
 
-          // Couche 1 (base)
+          // Couche 1 (base) — les pousses de culture (kind « object » mais
+          // posées dans world.blocks) passent aussi par ici pour être vues.
           const block = blocks[i];
           if (block) {
             const def = BLOCK_DEFS[block];
-            if (def.kind === 'block' || def.kind === 'door') {
+            const isCrop = CROPS.includes(block);
+            const isTorch = block === 'torch';
+            const isSign = block === 'sign';
+            const isSeller = Boolean(def.sellerTier);
+            if (def.kind === 'block' || def.kind === 'door' || isCrop || isTorch || isSign || isSeller) {
               const d = this._takeBlockDrawable();
               d.tx = tx;
               d.ty = ty;
               d.block = block;
-              d.kind = def.kind;
+              d.kind = isCrop ? 'crop' : (isTorch ? 'torch' : (isSign ? 'sign' : (isSeller ? 'seller' : def.kind)));
               d.layer = 1;
               d.sortY = sortY;
               drawables.push(d);
@@ -2795,8 +3463,27 @@ export class Game {
             ctx.scale(-1, 1);
             ctx.translate(-(tx * TILE + TILE / 2), -(ty * TILE + TILE / 2));
           }
-          ctx.drawImage(getDoorCanvas(isOpen), tx * TILE, ty * TILE);
+          ctx.drawImage(getDoorCanvas(isOpen), tx * TILE, ty * TILE - BLOCK_EXTRUDE);
           ctx.restore();
+        } else if (d.kind === 'crop') {
+          // Pousse de blé : petit sprite ancré au sol de la tuile.
+          const spr = getObjectSprite(block);
+          if (spr) {
+            ctx.drawImage(spr.canvas,
+              tx * TILE + TILE / 2 - spr.anchorX,
+              ty * TILE + TILE - 6 - spr.anchorY);
+          }
+        } else if (d.kind === 'torch') {
+          this.drawTorch(ctx, tx, ty);
+        } else if (d.kind === 'sign') {
+          this.drawSign(ctx, tx, ty);
+        } else if (d.kind === 'seller') {
+          const spr = getObjectSprite(block);
+          if (spr) {
+            ctx.drawImage(spr.canvas,
+              tx * TILE + TILE / 2 - spr.anchorX,
+              ty * TILE + TILE - 2 - spr.anchorY);
+          }
         } else if (block === 'furnace') {
           const entry = this.furnaceData.get(this.world.idx(tx, ty));
           ctx.drawImage(getFurnaceCanvas(Boolean(entry && entry.fuelTime > 0)), tx * TILE, ty * TILE);
@@ -2883,7 +3570,7 @@ export class Game {
     o.swing = Math.sin(this.swingPhase);
     o.time = this.time;
     o.pop = this.equipPop;
-    o.shadow = !this.performanceMode;
+    o.shadow = this._gfx() !== 'low';
     return o;
   }
 
@@ -2904,14 +3591,28 @@ export class Game {
     o.walkPhase = player.moving ? player.walkPhase : 0;
     // Le joueur reste lisible, mais nettement plus petit que l'arbre :
     // une tuile représente désormais un vrai espace autour de lui.
-    o.shadow = !this.performanceMode;
+    o.shadow = this._gfx() !== 'low';
     o.pixelDensity = this.camera.zoom;
     drawCharacter(ctx, player.appearance, player.x, player.y, o);
 
     if (heldId && !behind) {
       drawHeldItem(ctx, player.appearance, heldId, player.x, player.y, this.heldDrawOpts(player));
     }
+    // Barre de vie (PvP) : visible dès qu'il manque un PV.
+    if (player.hp !== undefined && player.hp < (player.maxHp || 20)) {
+      const max = player.maxHp || 20;
+      const w = 22;
+      const x = player.x - w / 2;
+      const y = player.y - 30;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(x - 1, y - 1, w + 2, 5);
+      ctx.fillStyle = '#5a1616';
+      ctx.fillRect(x, y, w, 3);
+      ctx.fillStyle = '#e04038';
+      ctx.fillRect(x, y, w * Math.max(0, player.hp) / max, 3);
+    }
     this.drawNameTag(ctx, player);
+    this.drawSpeechBubble(ctx, player);
   }
 
   getNameTag(name, scale = 1) {
@@ -2957,5 +3658,114 @@ export class Game {
     const tag = this.getNameTag(player.appearance.name, scale);
     // Dessiné à sa taille logique (monde) : le zoom redonne un texte net.
     ctx.drawImage(tag.canvas, player.x - tag.w / 2, player.y - 34, tag.w, tag.h);
+  }
+
+  // ------------------------------------------------------------
+  //  Bulles du talkie-walkie (chat de proximité, étape 6)
+  //
+  //  Le message apparaît au-dessus du joueur qui parle — le sien comme
+  //  celui des autres — pendant BUBBLE_SECONDS. C'est ce qui rend le
+  //  canal de proximité lisible SANS quitter le monde des yeux : la
+  //  fenêtre de chat, elle, reste en bas de l'écran.
+  // ------------------------------------------------------------
+  showBubble(entity, text, seconds = BUBBLE_SECONDS) {
+    if (!entity) return;
+    // Réglage utilisateur (« Bulles de proximité », panneau Paramètres).
+    if (this.settings && this.settings.bubbles === false) return;
+    const clean = sanitizeChatText(text);
+    if (!clean) return;
+    entity._bubble = { text: clean, until: this.time + seconds };
+  }
+
+  // Ce que dit LE JOUEUR LOCAL au talkie-walkie : bulle immédiate sur son
+  // propre personnage (le serveur ne lui renvoie pas son message en écho).
+  showLocalBubble(text) {
+    this.showBubble(this.player, text);
+  }
+
+  // Même chose pour un joueur distant (repéré par son id réseau).
+  showRemoteBubble(id, text) {
+    for (const p of this.otherPlayers) {
+      if (p.id === id) { this.showBubble(p, text); return true; }
+    }
+    return false;
+  }
+
+  // Rendu du texte pré-rendu, avec retour à la ligne automatique : une
+  // bulle trop large déborderait de l'écran et masquerait le décor.
+  getSpeechBubble(text, scale = 1) {
+    const key = `${text}@${scale}`;
+    const cached = this.bubbleCache.get(key);
+    if (cached) return cached;
+    // Le texte d'une bulle est libre (jusqu'à 200 caractères) : le cache
+    // ne doit pas grossir sans borne, on le vide quand il devient gros
+    // (une bulle se re-dessine en quelques dizaines de microsecondes).
+    if (this.bubbleCache.size > 80) this.bubbleCache.clear();
+
+    const px = Math.max(1, Math.round(scale));
+    const pad = 6 * px;
+    const maxChars = 26;
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (candidate.length > maxChars && line) { lines.push(line); line = word; }
+      else line = candidate;
+    }
+    if (line) lines.push(line);
+
+    const font = `bold ${9 * px}px system-ui, sans-serif`;
+    this.ctx.save();
+    this.ctx.font = font;
+    let textW = 0;
+    for (const l of lines) textW = Math.max(textW, Math.ceil(this.ctx.measureText(l).width));
+    this.ctx.restore();
+
+    const lineH = 11 * px;
+    const wPx = textW + pad * 2;
+    const tail = 4 * px;
+    const hPx = lines.length * lineH + pad * 2 + tail;
+
+    const c = makeCanvas(wPx, hPx);
+    const bctx = c.getContext('2d');
+    bctx.font = font;
+    bctx.textAlign = 'center';
+    bctx.textBaseline = 'middle';
+    const bodyH = hPx - tail;
+    bctx.fillStyle = 'rgba(232,244,228,0.94)';
+    if (bctx.roundRect) {
+      bctx.beginPath();
+      bctx.roundRect(0, 0, wPx, bodyH, 6 * px);
+      bctx.fill();
+      // Queue de la bulle, pointée vers le joueur.
+      bctx.beginPath();
+      bctx.moveTo(wPx / 2 - 5 * px, bodyH - 1);
+      bctx.lineTo(wPx / 2, hPx);
+      bctx.lineTo(wPx / 2 + 5 * px, bodyH - 1);
+      bctx.closePath();
+      bctx.fill();
+    } else {
+      bctx.fillRect(0, 0, wPx, bodyH);
+    }
+    bctx.fillStyle = '#1d2a1f';
+    lines.forEach((l, i) => bctx.fillText(l, wPx / 2, pad + lineH * (i + 0.5)));
+
+    const bubble = { canvas: c, w: wPx / px, h: hPx / px };
+    this.bubbleCache.set(key, bubble);
+    return bubble;
+  }
+
+  drawSpeechBubble(ctx, player) {
+    const bubble = player._bubble;
+    if (!bubble) return;
+    // Une bulle expirée est oubliée ici plutôt que dans la boucle de mise
+    // à jour : elle n'a aucune raison d'être tracée, et ça évite de
+    // parcourir tous les joueurs distants à chaque frame pour rien.
+    if (this.time >= bubble.until) { player._bubble = null; return; }
+    const scale = Math.max(1, Math.round(this.camera.zoom));
+    const art = this.getSpeechBubble(bubble.text, scale);
+    // Juste au-dessus de l'étiquette de nom (qui est à -34).
+    ctx.drawImage(art.canvas, player.x - art.w / 2, player.y - 34 - art.h - 3, art.w, art.h);
   }
 }

@@ -5,8 +5,8 @@
 //    1. buildCaveEntrance() — la falaise et son arche sombre, posées
 //       à un endroit FIXE de l'île. C'est le point de repère du monde.
 //    2. generateCaveLevel() — la génération d'un niveau souterrain :
-//       galeries creusées dans la roche, pierre et fer uniquement,
-//       de plus en plus profond (et de plus en plus riche).
+//       galeries creusées dans la roche, pierre, fer et (dès la
+//       profondeur 2) diamant, de plus en plus profond et riche.
 //
 //  Tout est déterministe (seed + profondeur) : deux joueurs descendent
 //  exactement dans la même grotte, ce qui sera indispensable quand le
@@ -33,6 +33,13 @@ export const CAVE = {
   // c'est riche — c'est la récompense du risque).
   stoneDensity: (depth) => 0.030 + Math.min(depth, 6) * 0.006,
   ironDensity: (depth) => 0.010 + Math.min(depth, 6) * 0.006,
+  // Le charbon est le minerai le plus commun : présent dès le niveau 1,
+  // un peu plus abondant que le fer (c'est le combustible de base).
+  coalDensity: (depth) => 0.014 + Math.min(depth, 6) * 0.005,
+  // Le diamant n'existe JAMAIS au niveau 1 : il faut descendre à la
+  // profondeur 2 ou plus. Et il est beaucoup plus rare que le fer
+  // (environ un quart de sa densité) — c'est la récompense du fond.
+  diamondDensity: (depth) => (depth >= 2 ? 0.0025 + Math.min(depth, 6) * 0.0012 : 0),
 };
 
 // ------------------------------------------------------------
@@ -274,9 +281,11 @@ export function generateCaveLevel(world) {
     }
   }
 
-  // --- 6) les ressources : pierre et fer, rien d'autre ---
+  // --- 6) les ressources : charbon, pierre, fer, et diamant (prof. 2+) ---
   const stoneP = CAVE.stoneDensity(depth);
   const ironP = CAVE.ironDensity(depth);
+  const coalP = CAVE.coalDensity(depth);
+  const diamondP = CAVE.diamondDensity(depth);
   for (let y = M; y < h - M; y++) {
     for (let x = M; x < w - M; x++) {
       const i = y * w + x;
@@ -284,8 +293,10 @@ export function generateCaveLevel(world) {
       // Jamais juste devant l'arrivée ni sur les puits.
       if (Math.abs(x - entranceTx) <= 3 && Math.abs(y - arriveY) <= 3) continue;
       const r = rng();
-      if (r < ironP) blocks[i] = 'caveIron';
-      else if (r < ironP + stoneP) blocks[i] = 'caveStone';
+      if (r < diamondP) blocks[i] = 'caveDiamond';
+      else if (r < diamondP + ironP) blocks[i] = 'caveIron';
+      else if (r < diamondP + ironP + coalP) blocks[i] = 'caveCoal';
+      else if (r < diamondP + ironP + coalP + stoneP) blocks[i] = 'caveStone';
     }
   }
 

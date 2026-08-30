@@ -233,13 +233,22 @@ export class IntroSequence {
     if (this.granted || !this.wallet) return;
     this.granted = true;
     // La somme n'est versée qu'une seule fois, même si la cinématique
-    // est rejouée : l'argent se gagne, il ne pleut pas.
-    if (!this.wallet.hasReceivedGrant()) {
-      this.wallet.add(CURRENCY.startingGrant, 'Somme de bienvenue');
+    // est rejouée : l'argent se gagne, il ne pleut pas. (Quand la bourse
+    // est adossée à l'inventaire, `shouldGrant()` répond vrai à chaque
+    // arrivée sur l'île — voir js/economy.js : l'argent d'une session
+    // précédente a disparu avec l'inventaire.)
+    if (this.wallet.shouldGrant()) {
+      const added = this.wallet.add(CURRENCY.startingGrant, 'Somme de bienvenue');
       this.wallet.markGrantReceived();
+      if (this.game.notify) {
+        this.game.notify(added === CURRENCY.startingGrant
+          ? `+ ${added} ${CURRENCY.plural.toLowerCase()} remis par ${GENTLEMAN_NAME}`
+          : `Inventaire plein : ${added} ${CURRENCY.plural.toLowerCase()} seulement sur ${CURRENCY.startingGrant}.`);
+      }
+      return;
     }
     if (this.game.notify) {
-      this.game.notify(`+ ${CURRENCY.startingGrant} ${CURRENCY.plural.toLowerCase()} remis par ${GENTLEMAN_NAME}`);
+      this.game.notify(`${GENTLEMAN_NAME} vous salue.`);
     }
   }
 

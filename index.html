@@ -9,7 +9,7 @@
     #boot-error { display: none; position: fixed; inset: 16px auto auto 16px; z-index: 999; max-width: min(520px, calc(100% - 32px)); padding: 12px 14px; background: #3a1c16; border: 1px solid #c96a55; border-radius: 10px; font: 700 13px system-ui, sans-serif; }
     #boot-error.visible { display: block; }
   </style>
-  <link rel="stylesheet" href="css/style.css?v=24" />
+  <link rel="stylesheet" href="css/style.css?v=25" />
 </head>
 <body>
   <div id="boot-error" role="alert"></div>
@@ -27,14 +27,10 @@
     </div>
   </div>
 
-  <!-- Bourse (haut droite) : la monnaie d'Avania, toujours visible -->
+  <!-- État du monde (haut droite). La monnaie n'a plus de compteur ici :
+       les écus sont des pièces dans l'inventaire du joueur (objet `coin`),
+       visibles dans la barre rapide comme le reste du butin. -->
   <div id="hud-right" class="hud hud-right hidden">
-    <div id="wallet" class="wallet" title="Votre bourse">
-      <span class="wallet-coin" data-icon="coin"></span>
-      <span id="wallet-amount" class="wallet-amount">0</span>
-      <span class="wallet-label">écus</span>
-      <span id="wallet-delta" class="wallet-delta" aria-hidden="true"></span>
-    </div>
     <div id="depth-chip" class="depth-chip" title="Profondeur">
       <span class="depth-icon" data-icon="cave"></span>
       <span id="depth-label">Surface</span>
@@ -106,17 +102,23 @@
     </div>
   </section>
 
-  <!-- Aide des commandes -->
-  <div id="controls-hint" class="controls-hint hidden">
-    <div class="ctrl"><kbd>ZQSD</kbd><span>Se déplacer</span></div>
-    <div class="ctrl"><kbd>Maintenir clic G</kbd><span>Miner / pelleter</span></div>
-    <div class="ctrl"><kbd>Clic D</kbd><span>Poser</span></div>
-    <div class="ctrl"><kbd>1·9</kbd><span>Barre rapide</span></div>
-    <div class="ctrl"><kbd>Q</kbd><span>Lâcher un objet</span></div>
-    <div class="ctrl"><kbd>Ctrl+Q</kbd><span>Lâcher toute la pile</span></div>
-    <div class="ctrl"><kbd>E</kbd><span>Inventaire</span></div>
-    <div class="ctrl"><kbd>C</kbd><span>Fabriquer</span></div>
-  </div>
+  <!-- Chat : canal global (fenêtre toujours visible) + talkie-walkie de
+       proximité (touche V). Placé en bas à gauche par défaut ;
+       déplaçable en bas à droite dans les paramètres. -->
+  <section id="global-chat" class="gchat" data-side="left" aria-label="Chat">
+    <div id="gchat-log" class="gchat-log" aria-live="polite"></div>
+    <div class="gchat-bar">
+      <button id="gchat-channel" class="gchat-channel" type="button" aria-pressed="false"
+              title="Canal global : tout le serveur vous lit (V pour le talkie-walkie)">
+        <span class="gchat-channel-dot" aria-hidden="true"></span>
+        <span id="gchat-channel-label">Global</span>
+      </button>
+      <form id="gchat-form" class="gchat-form" autocomplete="off">
+        <input id="gchat-input" type="text" maxlength="200" placeholder="Cliquez pour écrire…" aria-label="Message" />
+      </form>
+      <span id="gchat-status" class="gchat-status" aria-hidden="true"></span>
+    </div>
+  </section>
 
   <!-- Barre rapide (inventaire) -->
   <div id="hotbar" class="hotbar"></div>
@@ -310,7 +312,126 @@
 
   <div id="game-toast" class="game-toast" role="status"></div>
 
+  <!-- Téléphone (touche P) : le réseau social du village, « Avania Social ».
+       Compte (pseudo + mot de passe), publications, j'aime — le même fil
+       pour tous les joueurs, en direct. -->
+  <section id="phone" class="phone hidden" aria-label="Téléphone">
+    <div class="panel-backdrop"></div>
+    <div class="phone-frame">
+      <header class="phone-head">
+        <span class="phone-notch" aria-hidden="true"></span>
+        <span class="phone-brand"><span class="ic" data-icon="phone"></span><strong id="phone-title">Avania</strong></span>
+        <button id="phone-close" class="craft-close" type="button" title="Raccrocher (Échap)"><span class="ic" data-icon="close"></span></button>
+      </header>
+
+      <!-- Accueil : les applications -->
+      <div id="phone-home" class="phone-home">
+        <div id="phone-clock" class="phone-clock">--:--</div>
+        <div class="phone-apps">
+          <button id="phone-app-social" class="phone-app" type="button">
+            <span class="phone-app-icon"><span class="ic" data-icon="chat"></span><span id="phone-app-badge" class="phone-app-badge hidden">0</span></span>
+            <span class="phone-app-name">Avania Social</span>
+          </button>
+        </div>
+        <p class="phone-home-hint">Le réseau du village : tout le monde lit le même fil.</p>
+      </div>
+
+      <!-- Application : connexion / création de compte -->
+      <div id="phone-auth" class="phone-screen hidden">
+        <form id="phone-auth-form" class="phone-auth" autocomplete="off">
+          <h3 id="phone-auth-title">Créer un compte</h3>
+          <label class="phone-field">
+            <span>Pseudo</span>
+            <input id="phone-auth-handle" type="text" maxlength="16" placeholder="3 à 16 caractères" spellcheck="false" />
+          </label>
+          <label class="phone-field">
+            <span>Mot de passe</span>
+            <input id="phone-auth-pass" type="password" maxlength="64" placeholder="4 caractères minimum" />
+          </label>
+          <p id="phone-auth-error" class="phone-error" role="alert"></p>
+          <div class="phone-auth-actions">
+            <button id="phone-auth-submit" class="btn btn-primary" type="submit">Créer le compte</button>
+            <button id="phone-auth-switch" class="btn btn-secondary" type="button">J'ai déjà un compte</button>
+          </div>
+          <p class="phone-auth-note">Compte valable pour cette session du serveur : rien n'est conservé au-delà.</p>
+        </form>
+      </div>
+
+      <!-- Application : le fil -->
+      <div id="phone-feed" class="phone-screen hidden">
+        <header class="social-head">
+          <button id="social-back" class="social-back" type="button" title="Retour à l'accueil"><span class="ic" data-icon="chevronLeft"></span></button>
+          <strong>Avania Social</strong>
+          <span id="social-me" class="social-me"></span>
+          <button id="social-logout" class="social-logout hidden" type="button" title="Se déconnecter">Quitter</button>
+        </header>
+        <form id="social-compose" class="social-compose" autocomplete="off">
+          <textarea id="social-text" maxlength="280" rows="2" placeholder="Quoi de neuf à Avania ?"></textarea>
+          <div class="social-compose-actions">
+            <span id="social-count" class="social-count">0/280</span>
+            <button id="social-publish" class="social-publish" type="submit" disabled>Publier</button>
+          </div>
+        </form>
+        <div id="social-feed" class="social-feed" aria-live="polite"></div>
+        <p id="social-status" class="phone-error" role="status"></p>
+      </div>
+    </div>
+  </section>
+
   <!-- Panneau de paramètres -->
+  <!-- Édition d'un panneau posé : seul son propriétaire l'ouvre (js/game.js) -->
+  <section id="sign-edit" class="crafting sign-edit hidden" aria-label="Écrire sur le panneau">
+    <div class="panel-backdrop"></div>
+    <div class="panel-frame panel-frame--sign">
+      <header class="crafting-header">
+        <div>
+          <span class="panel-eyebrow">ÉCRITURE</span>
+          <strong>Panneau</strong>
+        </div>
+        <div class="crafting-header-actions">
+          <button id="sign-close" class="craft-close" title="Fermer"><span class="ic" data-icon="close"></span></button>
+        </div>
+      </header>
+      <div class="sign-body">
+        <textarea id="sign-text" rows="4" maxlength="120" placeholder="Ton message…"></textarea>
+        <div class="sign-actions">
+          <span id="sign-count" class="settings-hint">0/120</span>
+          <button id="sign-save" type="button" class="keybinds-reset">Écrire</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Étal de vente : propriétaire (stock/prix/cagnotte) ou acheteur/voleur -->
+  <section id="seller" class="crafting seller hidden" aria-label="Étal de vente">
+    <div class="panel-backdrop"></div>
+    <div class="panel-frame panel-frame--seller">
+      <header class="crafting-header">
+        <div>
+          <span class="panel-eyebrow">COMMERCE</span>
+          <strong>Étal</strong>
+        </div>
+        <div class="crafting-header-actions">
+          <button id="seller-close" class="craft-close" title="Fermer"><span class="ic" data-icon="close"></span></button>
+        </div>
+      </header>
+      <div id="seller-body" class="seller-body"></div>
+    </div>
+  </section>
+
+  <!-- Mini-jeu de vol : arrête le curseur dans l'arc vert -->
+  <div id="steal-game" class="steal-game hidden" tabindex="0">
+    <canvas width="180" height="180"></canvas>
+    <p>Espace ou clic : STOP dans l'arc vert !</p>
+  </div>
+
+  <!-- Alarme d'étal niveau 3 : téléportation proposée au propriétaire -->
+  <div id="alarm-banner" class="alarm-banner hidden">
+    <span id="alarm-text">Un joueur a tenté de voler un de vos sellers.</span>
+    <button id="alarm-go" type="button" class="keybinds-reset">Se téléporter</button>
+    <button id="alarm-ignore" type="button" class="keybinds-reset">Ignorer</button>
+  </div>
+
   <section id="settings-panel" class="settings-panel hidden" aria-label="Paramètres">
     <div class="panel-backdrop"></div>
     <div class="settings-frame">
@@ -367,6 +488,31 @@
           <div class="settings-option toggle-option">
             <label><span>Aim assist (animaux)</span><span class="settings-hint">Ciblage plus facile des moutons &amp; vaches</span></label>
             <button id="toggle-aimassist" class="toggle-btn active" aria-pressed="true"><span class="toggle-knob"></span></button>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title"><span class="settings-icon" data-icon="bolt"></span><h3>Graphismes</h3></div>
+          <div class="settings-option">
+            <label><span>Qualité graphique</span><span class="settings-hint">Faible : sans ombres ni lueurs · Moyen : ombres + nuit · Élevé : + vignette &amp; lueurs de feu</span></label>
+            <div class="chat-side-btns" id="graphics-levels">
+              <button type="button" class="chat-side-btn graphics-btn" data-level="low">Faible</button>
+              <button type="button" class="chat-side-btn graphics-btn" data-level="medium">Moyen</button>
+              <button type="button" class="chat-side-btn graphics-btn" data-level="high">Élevé</button>
+            </div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title"><span class="settings-icon" data-icon="chat"></span><h3>Communication</h3></div>
+          <div class="settings-option">
+            <label><span>Emplacement du chat</span><span class="settings-hint">Fenêtre du chat global (toujours visible)</span></label>
+            <div class="chat-side-btns" id="chat-side">
+              <button type="button" class="chat-side-btn active" data-side="left">Bas à gauche</button>
+              <button type="button" class="chat-side-btn" data-side="right">Bas à droite</button>
+            </div>
+          </div>
+          <div class="settings-option toggle-option">
+            <label><span>Bulles de proximité</span><span class="settings-hint">Affiche au-dessus des joueurs ce qu'ils disent au talkie-walkie</span></label>
+            <button id="toggle-bubbles" class="toggle-btn active" aria-pressed="true"><span class="toggle-knob"></span></button>
           </div>
         </div>
       </div>
@@ -438,6 +584,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/main.js?v=24"></script>
+  <script type="module" src="js/main.js?v=25"></script>
 </body>
 </html>

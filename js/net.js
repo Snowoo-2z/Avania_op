@@ -25,6 +25,8 @@
 import {
   WS_PATH, encodeInput, decodeState, sanitizeBlockDiff, sanitizeChestSlots,
   sanitizeFurnaceState, sanitizeMobList, sanitizeMobStateList, sanitizeMobHit,
+  sanitizeChatText, sanitizeChatChannel, sanitizeChatMessage,
+  sanitizeSocialPost, sanitizeSignState, sanitizeSellerState,
 } from './net-protocol.js';
 
 // Cadence d'envoi de la position locale : inutile d'aller plus vite
@@ -56,6 +58,17 @@ export class MultiplayerClient {
     // Étape 4 (fours partagés) : même principe, un état de four complet.
     onFurnaceChange = null, // (zone, tx, ty, state) — un four distant a changé (contenu ou cuisson)
     onFurnaceSync = null,   // (zone, furnaces[]) — resynchronisation des fours connus de la zone
+    // Panneaux : texte + propriétaire d'un panneau distant, et resync.
+    onSignChange = null,    // (zone, tx, ty, text|null, owner) — panneau posé/écrit/cassé ailleurs
+    onSignSync = null,      // (zone, signs[]) — resynchronisation des panneaux connus de la zone
+    // Sellers : état d'un étal distant (ou null = cassé), et resync.
+    onSellerChange = null,  // (zone, tx, ty, state|null)
+    onSellerSync = null,    // (zone, sellers[])
+    // Message ciblé (tentative de vol, alarme) — voir net-server 'notify'.
+    onNotify = null,        // (payload{kind,text,zone?,tx?,ty?})
+    // PvP : coup reçu (on applique nous-mêmes les dégâts) + PV d'un distant.
+    onPlayerAttack = null,  // (fromId, dmg)
+    onPlayerHp = null,      // (id, hp)
     // Étape 5 (animaux partagés) : voir js/game.js pour l'usage exact
     // de chacun de ces rappels (établissement du troupeau, réapparition,
     // correctif de position, coups portés).
@@ -63,6 +76,13 @@ export class MultiplayerClient {
     onMobSpawn = null, // (zone, mobs[]) — un ou plusieurs animaux neufs (repop)
     onMobState = null, // (zone, mobs[{id,x,y}]) — correctif de position du coordinateur
     onMobHit = null,   // (zone, {id,hp,alive}) — un animal distant a été frappé/tué
+    // Étape 6 (chat + réseau social) : le chat est le seul canal qui
+    // n'est PAS borné par la zone pour son canal global (on discute aussi
+    // depuis la grotte) ; le canal 'proximity' est filtré par le serveur
+    // (même zone + distance, voir net-server.js relayChat).
+    onChat = null,         // (msg{id,from,text,channel,ts}) — un autre joueur a parlé
+    onChatHistory = null,  // (msgs[]) — derniers messages globaux, reçus à la connexion
+    onSocial = null,       // (payload{event:'post'|'like'|'delete', post?, id?}) — le fil du téléphone a bougé
   } = {}) {
     this.url = url;
     this.ws = null;
@@ -77,10 +97,20 @@ export class MultiplayerClient {
     this.onChestSync = onChestSync;
     this.onFurnaceChange = onFurnaceChange;
     this.onFurnaceSync = onFurnaceSync;
+    this.onSignChange = onSignChange;
+    this.onSignSync = onSignSync;
+    this.onSellerChange = onSellerChange;
+    this.onSellerSync = onSellerSync;
+    this.onNotify = onNotify;
+    this.onPlayerAttack = onPlayerAttack;
+    this.onPlayerHp = onPlayerHp;
     this.onMobSync = onMobSync;
     this.onMobSpawn = onMobSpawn;
     this.onMobState = onMobState;
     this.onMobHit = onMobHit;
+    this.onChat = onChat;
+    this.onChatHistory = onChatHistory;
+    this.onSocial = onSocial;
     // id distant → état rendu (forme compatible avec drawPlayer : x, y,
     // facing, moving, walkPhase, appearance).
     this.remote = new Map();
@@ -262,6 +292,46 @@ export class MultiplayerClient {
       if (this.onFurnaceSync) this.onFurnaceSync(msg.zone, msg.furnaces);
       return;
     }
+    // Panneau posé / écrit / cassé par un autre joueur de la zone.
+    if (msg.t === 'sign') {
+      if (typeof msg.tx !== 'number' || typeof msg.ty !== 'number') return;
+      const s = sanitizeSignState(msg);
+      if (this.onSignChange) this.onSignChange(this.zone, msg.tx, msg.ty, s.text, s.owner);
+      return;
+    }
+    // Resynchronisation des panneaux connus d'une zone (connexion / arrivée).
+    if (msg.t === 'signSync') {
+      if (!Array.isArray(msg.signs)) return;
+      if (this.onSignSync) this.onSignSync(msg.zone, msg.signs);
+      return;
+    }
+    // Étal posé / modifié / cassé par un autre joueur de la zone.
+    if (msg.t === 'seller') {
+      if (typeof msg.tx !== 'number' || typeof msg.ty !== 'number') return;
+      const state = msg.state === null ? null : sanitizeSellerState(msg.state);
+      if (this.onSellerChange) this.onSellerChange(this.zone, msg.tx, msg.ty, state);
+      return;
+    }
+    if (msg.t === 'sellerSync') {
+      if (!Array.isArray(msg.sellers)) return;
+      if (this.onSellerSync) this.onSellerSync(msg.zone, msg.sellers);
+      return;
+    }
+    // Message ciblé (tentative de vol, alarme d'étal…).
+    if (msg.t === 'notify') {
+      if (this.onNotify) this.onNotify(msg);
+      return;
+    }
+    // PvP : on me déclare un coup → j'applique les dégâts moi-même.
+    if (msg.t === 'pattack') {
+      if (this.onPlayerAttack) this.onPlayerAttack(msg.from, msg.dmg);
+      return;
+    }
+    // PvP : les PV actuels d'un joueur distant (barre de vie).
+    if (msg.t === 'php') {
+      if (this.onPlayerHp) this.onPlayerHp(msg.id, msg.hp);
+      return;
+    }
     // Troupeau connu du serveur pour une zone (connexion / arrivée) —
     // peut être VIDE : c'est le signal que personne n'a encore établi
     // de troupeau ici, voir js/game.js pour la suite (le jeu appelle
@@ -292,6 +362,42 @@ export class MultiplayerClient {
       if (this.onMobHit) this.onMobHit(this.zone, mob);
       return;
     }
+    // Étape 6 : un joueur parle (canal global, ou talkie-walkie s'il est
+    // assez proche — le filtrage est fait par le serveur, on affiche donc
+    // tel quel ce qui arrive).
+    if (msg.t === 'chat') {
+      const clean = sanitizeChatMessage(msg);
+      if (!clean) return;
+      if (this.onChat) this.onChat(clean);
+      return;
+    }
+    // Les derniers messages du canal global, envoyés une fois à la
+    // connexion : on arrive au milieu d'une conversation, pas dans le vide.
+    if (msg.t === 'chatHistory') {
+      if (!Array.isArray(msg.messages)) return;
+      const clean = [];
+      for (const m of msg.messages) {
+        const msg2 = sanitizeChatMessage(m);
+        if (msg2) clean.push(msg2);
+      }
+      if (clean.length && this.onChatHistory) this.onChatHistory(clean);
+      return;
+    }
+    // Le fil du réseau social a bougé (quelqu'un a publié, aimé ou
+    // supprimé) : transmis à l'application du téléphone si elle est
+    // ouverte. Le POST de l'auteur lui a déjà répondu via HTTP, mais il
+    // applique aussi cette diffusion pour rester identique aux autres.
+    if (msg.t === 'social') {
+      const payload = { event: msg.event === 'like' || msg.event === 'delete' ? msg.event : 'post' };
+      if (msg.post) {
+        const post = sanitizeSocialPost(msg.post);
+        if (!post) return;
+        payload.post = post;
+      }
+      if (typeof msg.id === 'string') payload.id = msg.id.slice(0, 40);
+      if (this.onSocial) this.onSocial(payload);
+      return;
+    }
   }
 
   // À appeler par le jeu quand LE JOUEUR LOCAL casse/pose un bloc ou
@@ -303,6 +409,30 @@ export class MultiplayerClient {
     const clean = sanitizeBlockDiff(diff);
     if (Object.keys(clean).length === 0) return;
     this.ws.send(JSON.stringify({ t: 'block', tx, ty, diff: clean }));
+  }
+
+  // À appeler par l'interface quand LE JOUEUR LOCAL envoie un message :
+  // 'global' (fenêtre de chat, tout le serveur) ou 'proximity' (talkie-
+  // walkie, uniquement les joueurs proches de la même zone). Renvoie
+  // true si le message est parti — false si la connexion est down ou le
+  // texte vide, ce qui permet à l'UI de le dire plutôt que de laisser le
+  // joueur parler dans le vide.
+  //
+  // Le serveur ne renvoie PAS notre propre message en écho : l'UI
+  // l'affiche immédiatement en local (voir js/chat-global.js), ce qui
+  // évite l'aller-retour visible à chaque envoi.
+  sendChat(text, channel = 'global') {
+    const clean = sanitizeChatText(text);
+    if (!clean) return false;
+    if (!this.connected) return false;
+    this.ws.send(JSON.stringify({ t: 'chat', text: clean, channel: sanitizeChatChannel(channel) }));
+    return true;
+  }
+
+  // Le talkie-walkie est-il actif côté réseau ? (l'UI s'en sert pour
+  // griser la fenêtre de chat quand le serveur est injoignable)
+  get chatAvailable() {
+    return this.connected;
   }
 
   // À appeler par le jeu quand LE JOUEUR LOCAL modifie le contenu d'un
@@ -322,6 +452,36 @@ export class MultiplayerClient {
   sendFurnaceChange(tx, ty, state) {
     if (!this.connected) return;
     this.ws.send(JSON.stringify({ t: 'furnace', tx, ty, state: sanitizeFurnaceState(state) }));
+  }
+
+  // Panneau : text === null annonce une casse (purge côté serveur).
+  sendSignChange(tx, ty, text, owner) {
+    if (!this.connected) return;
+    this.ws.send(JSON.stringify({ t: 'sign', tx, ty, text, owner }));
+  }
+
+  // Étal : state === null annonce une casse (purge côté serveur).
+  sendSellerChange(tx, ty, state) {
+    if (!this.connected) return;
+    this.ws.send(JSON.stringify({ t: 'seller', tx, ty, state }));
+  }
+
+  // Message ciblé vers un joueur précis (propriétaire d'un étal volé…).
+  sendNotify(to, kind, text, extra = {}) {
+    if (!this.connected) return;
+    this.ws.send(JSON.stringify({ t: 'notify', to, kind, text, ...extra }));
+  }
+
+  // PvP : déclare un coup porté à un joueur (la victime applique).
+  sendPlayerAttack(id, dmg) {
+    if (!this.connected) return;
+    this.ws.send(JSON.stringify({ t: 'pattack', id, dmg }));
+  }
+
+  // PvP : annonce mes PV au reste de la zone.
+  sendPlayerHp(hp) {
+    if (!this.connected) return;
+    this.ws.send(JSON.stringify({ t: 'php', hp }));
   }
 
   _onBinary(data) {
@@ -354,6 +514,8 @@ export class MultiplayerClient {
       walkPhase: 0,
       zone: info.zone || 'surface',
       name: info.name || 'Aventurier',
+      hp: typeof info.hp === 'number' ? info.hp : 20,
+      maxHp: 20,
       appearance: { ...(info.appearance || {}), name: info.name || 'Aventurier' },
       _seen: Boolean(info.x || info.y),
     };

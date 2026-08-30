@@ -9,7 +9,6 @@ import {
   DEFAULT_APPEARANCE, NAME_IDEAS,
 } from './config.js';
 import { ITEM_DEFS, RECIPES } from './blocks.js';
-import { formatMoney } from './economy.js';
 import { drawCharacter } from './character.js';
 import { getItemIconURL } from './icons.js';
 import { SMELT_RECIPES } from './furnace.js';
@@ -236,64 +235,32 @@ export class HUD {
 }
 
 // ------------------------------------------------------------
-//  Bourse + état de la grotte (haut droite)
+//  État du monde (haut droite) : surface / profondeur + équipement
 //
 //  Comme pour le reste du HUD, on n'écrit dans le DOM que lorsque la
 //  valeur a vraiment changé : sinon chaque frame déclencherait un
 //  recalcul de style pour rien.
 // ------------------------------------------------------------
 export class WalletHUD {
-  constructor(root, wallet) {
+  // Le nom « WalletHUD » est historique : cette classe n'affiche plus la
+  // bourse (les écus sont des pièces dans l'inventaire du joueur, voir
+  // js/economy.js et l'objet `coin` de js/blocks.js). Il reste l'état du
+  // monde en haut à droite : surface/profondeur et équipement de grotte.
+  constructor(root) {
     this.root = root;
     this.el = {
-      amount: root.querySelector('#wallet-amount'),
-      delta: root.querySelector('#wallet-delta'),
-      wallet: root.querySelector('#wallet'),
       depthChip: root.querySelector('#depth-chip'),
       depthLabel: root.querySelector('#depth-label'),
       gearChip: root.querySelector('#gear-chip'),
       gearDepth: root.querySelector('#gear-depth'),
       slots: root.querySelectorAll('#gear-chip .gear-slot'),
     };
-    this.lastAmount = null;
     this.lastDepth = null;
     this.lastGear = null;
-    this._bumpTimer = null;
-    this._deltaTimer = null;
-
-    if (wallet) {
-      wallet.subscribe((w, delta) => this.setMoney(w.money, delta));
-      this.setMoney(wallet.money, 0);
-    }
   }
 
   show() { this.root.classList.remove('hidden'); }
   hide() { this.root.classList.add('hidden'); }
-
-  setMoney(amount, delta = 0) {
-    const value = Math.round(amount || 0);
-    if (value !== this.lastAmount) {
-      this.lastAmount = value;
-      if (this.el.amount) {
-        this.el.amount.textContent = formatMoney(value);
-        // Petit « bump » à chaque changement : le joueur voit sa bourse vivre.
-        this.el.amount.classList.remove('bump');
-        void this.el.amount.offsetWidth;
-        this.el.amount.classList.add('bump');
-        clearTimeout(this._bumpTimer);
-        this._bumpTimer = setTimeout(() => this.el.amount.classList.remove('bump'), 180);
-      }
-    }
-    if (delta && this.el.delta) {
-      const gain = delta > 0;
-      this.el.delta.textContent = `${gain ? '+' : '−'}${formatMoney(Math.abs(delta))}`;
-      this.el.delta.className = `wallet-delta ${gain ? 'gain' : 'loss'}`;
-      void this.el.delta.offsetWidth;
-      this.el.delta.classList.add('show');
-      clearTimeout(this._deltaTimer);
-      this._deltaTimer = setTimeout(() => this.el.delta.classList.remove('show'), 1500);
-    }
-  }
 
   // Surface ou profondeur de grotte.
   setDepth(world) {
@@ -1342,3 +1309,301 @@ export class Crafting {
     return !this.root.classList.contains('hidden');
   }
 }
+
+// ------------------------------------------------------------
+//  Éditeur de panneau : petite fenêtre où le PROPRIÉTAIRE d'un
+//  panneau posé écrit son message (js/game.js n'ouvre ce panneau
+//  que si l'id local === entry.owner). Le texte est borné à 120
+//  caractères côté protocole (sanitizeSignState).
+// ------------------------------------------------------------
+export class SignEditor {
+  constructor(root, game, onVisibilityChange = () => {}) {
+    this.root = root;
+    this.game = game;
+    this.onVisibilityChange = onVisibilityChange;
+    this.textarea = root.querySelector('#sign-text');
+    this.count = root.querySelector('#sign-count');
+    this.tx = 0;
+    this.ty = 0;
+    root.querySelector('.panel-backdrop')?.addEventListener('pointerdown', () => this.close());
+    root.querySelector('#sign-close')?.addEventListener('click', () => this.close());
+    root.querySelector('#sign-save')?.addEventListener('click', () => this.save());
+    this.textarea?.addEventListener('input', () => this._updateCount());
+  }
+
+  open(tx, ty) {
+    this.tx = tx;
+    this.ty = ty;
+    const entry = this.game.signData.get(this.game.world.idx(tx, ty));
+    this.textarea.value = entry ? entry.text : '';
+    this._updateCount();
+    this.root.classList.remove('hidden');
+    this.onVisibilityChange(true);
+    this.textarea?.focus();
+  }
+
+  _updateCount() {
+    if (this.count) this.count.textContent = `${this.textarea.value.length}/120`;
+  }
+
+  save() {
+    this.game.setSignText(this.tx, this.ty, this.textarea.value);
+    this.close();
+  }
+
+  close() {
+    if (this.root.classList.contains('hidden')) return;
+    this.root.classList.add('hidden');
+    this.onVisibilityChange(false);
+  }
+
+  get isOpen() {
+    return !this.root.classList.contains('hidden');
+  }
+}
+
+// ------------------------------------------------------------
+//  Étals de vente (sellers) : panneau propriétaire / acheteur,
+//  et mini-jeu de vol (cercle + curseur rotatif).
+// ------------------------------------------------------------
+
+// Petite alarme sonore en WebAudio (aucun asset : tout est généré).
+export function playAlarm() {
+  try {
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    const ac = playAlarm._ac || (playAlarm._ac = new Ctor());
+    const t0 = ac.currentTime;
+    for (let k = 0; k < 3; k++) {
+      const o = ac.createOscillator();
+      const g = ac.createGain();
+      o.type = 'square';
+      o.frequency.value = k % 2 ? 660 : 880;
+      g.gain.setValueAtTime(0.0001, t0 + k * 0.22);
+      g.gain.exponentialRampToValueAtTime(0.12, t0 + k * 0.22 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + k * 0.22 + 0.2);
+      o.connect(g).connect(ac.destination);
+      o.start(t0 + k * 0.22);
+      o.stop(t0 + k * 0.22 + 0.22);
+    }
+  } catch { /* pas de son, pas de drame */ }
+}
+
+// Mini-jeu de vol : un curseur tourne autour d'un cercle ; il faut
+// l'arrêter (Espace ou clic) dans l'arc cible, de plus en plus petit
+// selon le niveau de l'étal.
+export class StealGame {
+  constructor(root) {
+    this.root = root;
+    this.canvas = root.querySelector('canvas');
+    this.ctx = this.canvas.getContext('2d');
+    this.running = false;
+    this.onDone = null;
+    const stop = (e) => {
+      if (!this.running) return;
+      if (e.type === 'keydown' && e.code !== 'Space') return;
+      e.preventDefault();
+      this._stop();
+    };
+    root.addEventListener('pointerdown', stop);
+    root.addEventListener('keydown', stop);
+  }
+
+  start(tier, onDone) {
+    const cfg = (typeof tier === 'object' ? tier : null);
+    this.arc = cfg ? cfg.arc : Math.PI / 2.6;
+    this.speed = cfg ? cfg.speed : 2.4;
+    this.onDone = onDone;
+    this.angle = 0;
+    this.target = Math.random() * Math.PI * 2;
+    this.running = true;
+    this.root.classList.remove('hidden');
+    this.root.tabIndex = 0;
+    this.root.focus();
+    this._last = performance.now();
+    this._raf = requestAnimationFrame(() => this._tick());
+  }
+
+  _tick() {
+    if (!this.running) return;
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - this._last) / 1000);
+    this._last = now;
+    this.angle = (this.angle + this.speed * dt * 2) % (Math.PI * 2);
+    this._draw();
+    this._raf = requestAnimationFrame(() => this._tick());
+  }
+
+  _draw() {
+    const { ctx } = this;
+    const W = this.canvas.width, H = this.canvas.height;
+    const cx = W / 2, cy = H / 2, r = W * 0.36;
+    ctx.clearRect(0, 0, W, H);
+    // Cercle de fond.
+    ctx.strokeStyle = '#3c2c12';
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    // Arc cible (zone gagnante).
+    ctx.strokeStyle = '#7ccf6a';
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, this.target - this.arc / 2, this.target + this.arc / 2);
+    ctx.stroke();
+    // Curseur rotatif.
+    ctx.strokeStyle = '#e04038';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(this.angle) * (r - 12), cy + Math.sin(this.angle) * (r - 12));
+    ctx.lineTo(cx + Math.cos(this.angle) * (r + 12), cy + Math.sin(this.angle) * (r + 12));
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('STOP !', cx, cy + 4);
+  }
+
+  _stop() {
+    this.running = false;
+    cancelAnimationFrame(this._raf);
+    this.root.classList.add('hidden');
+    // Distance angulaire entre le curseur et le centre de la cible.
+    let d = Math.abs(this.angle - this.target);
+    d = Math.min(d, Math.PI * 2 - d);
+    const ok = d <= this.arc / 2;
+    this.onDone?.(ok);
+  }
+
+  cancel() {
+    this.running = false;
+    cancelAnimationFrame(this._raf);
+    this.root.classList.add('hidden');
+  }
+}
+
+export class SellerPanel {
+  constructor(root, game, wallet, stealGame, onVisibilityChange = () => {}) {
+    this.root = root;
+    this.game = game;
+    this.wallet = wallet;
+    this.stealGame = stealGame;
+    this.onVisibilityChange = onVisibilityChange;
+    this.body = root.querySelector('#seller-body');
+    this.tx = 0;
+    this.ty = 0;
+    root.querySelector('.panel-backdrop')?.addEventListener('pointerdown', () => this.close());
+    root.querySelector('#seller-close')?.addEventListener('click', () => this.close());
+  }
+
+  open(tx, ty) {
+    this.tx = tx;
+    this.ty = ty;
+    this.render();
+    this.root.classList.remove('hidden');
+    this.onVisibilityChange(true);
+  }
+
+  close() {
+    if (this.root.classList.contains('hidden')) return;
+    this.root.classList.add('hidden');
+    this.onVisibilityChange(false);
+  }
+
+  get isOpen() {
+    return !this.root.classList.contains('hidden');
+  }
+
+  render() {
+    const g = this.game;
+    const entry = g.getSellerEntry(this.tx, this.ty);
+    const me = g.uiCallbacks.getOwnerId ? g.uiCallbacks.getOwnerId() : -1;
+    const owner = entry.owner === me;
+    const idx = g.world.idx(this.tx, this.ty);
+    const lock = g.stealLockUntil(entry.owner, idx);
+    const locked = lock > g.time;
+    const itemDef = entry.item ? ITEM_DEFS[entry.item] : null;
+
+    let html = `<div class="seller-line"><strong>${owner ? 'Ton étal' : 'Étal'}</strong>
+      <span class="settings-hint">niv. ${entry.tier}</span></div>`;
+    html += `<div class="seller-line">
+      ${itemDef ? `<img class="seller-item-img" alt="" src="${getItemIconURL(entry.item)}" />` : ''}
+      <span>${itemDef ? itemDef.label : 'Aucun objet en vente'}</span>
+      <span class="settings-hint">stock ${entry.stock}</span></div>`;
+    html += `<div class="seller-line"><span>Prix à l'unité :</span>
+      <strong>${entry.price} écus</strong></div>`;
+
+    if (owner) {
+      html += `<div class="seller-line"><label>Prix <input id="seller-price" type="number" min="0" max="99999" value="${entry.price}" /></label></div>`;
+      html += `<div class="sign-actions">
+        <button id="seller-deposit" type="button" class="keybinds-reset">+ Déposer (sélection)</button>
+        <button id="seller-withdraw" type="button" class="keybinds-reset">− Retirer 1</button></div>`;
+      html += `<div class="sign-actions">
+        <button id="seller-price-ok" type="button" class="keybinds-reset">Définir le prix</button>
+        <button id="seller-collect" type="button" class="keybinds-reset">Encaisser (${entry.till} écus)</button></div>`;
+    } else {
+      html += `<div class="sign-actions">
+        <button id="seller-buy" type="button" class="keybinds-reset">Acheter 1 (${entry.price} écus)</button>
+        <button id="seller-steal" type="button" class="keybinds-reset" ${locked || !entry.item || entry.stock <= 0 ? 'disabled' : ''}>
+          ${locked ? `Verrouillé (${Math.ceil(lock - g.time)} s)` : 'Tenter de voler'}</button></div>`;
+    }
+    this.body.innerHTML = html;
+
+    const on = (id, fn) => this.body.querySelector('#' + id)?.addEventListener('click', fn);
+    if (owner) {
+      on('seller-deposit', () => {
+        const held = g.inventory.getSelectedStackRef();
+        if (!held) { g.notify('Sélectionne d\'abord l\'objet à vendre.'); return; }
+        if (entry.item && entry.item !== held.id) { g.notify('Un seul type d\'objet par étal.'); return; }
+        const n = Math.min(10, held.count);
+        if (g.inventory.remove(held.id, n)) {
+          g.updateSeller(this.tx, this.ty, (e) => { e.item = e.item || held.id; e.stock += n; });
+        }
+        this.render();
+      });
+      on('seller-withdraw', () => {
+        if (entry.stock <= 0) return;
+        if (g.inventory.add(entry.item, 1) > 0) {
+          g.updateSeller(this.tx, this.ty, (e) => {
+            e.stock -= 1;
+            if (e.stock <= 0) e.item = null;
+          });
+        } else g.notify('Inventaire plein.');
+        this.render();
+      });
+      on('seller-price-ok', () => {
+        const v = Number(this.body.querySelector('#seller-price')?.value || 0);
+        g.updateSeller(this.tx, this.ty, (e) => { e.price = Math.max(0, Math.min(99999, Math.round(v))); });
+        g.notify('Prix défini.');
+        this.render();
+      });
+      on('seller-collect', () => {
+        if (entry.till <= 0) return;
+        const got = this.wallet.add(entry.till, 'Ventes de l\'étal');
+        if (got > 0) g.updateSeller(this.tx, this.ty, (e) => { e.till -= got; });
+        this.render();
+      });
+    } else {
+      on('seller-buy', () => {
+        if (entry.stock <= 0 || !entry.item) { g.notify('Plus rien à vendre.'); return; }
+        if (!this.wallet.canAfford(entry.price)) { g.notify(`Il te manque ${entry.price - this.wallet.money} écus.`); return; }
+        if (g.inventory.canAdd(entry.item, 1) === false) { g.notify('Inventaire plein.'); return; }
+        this.wallet.spend(entry.price, 'Achat à un étal');
+        g.inventory.add(entry.item, 1);
+        g.updateSeller(this.tx, this.ty, (e) => { e.stock -= 1; e.till += entry.price; });
+        this.render();
+      });
+      on('seller-steal', () => {
+        if (locked) return;
+        this.stealGame.start({ arc: STEAL_ARCS[entry.tier] ?? STEAL_ARCS[1], speed: 2 + entry.tier * 0.8 }, (ok) => {
+          g.reportStealResult(this.tx, this.ty, ok);
+          this.render();
+        });
+      });
+    }
+  }
+}
+
+// Largeur de la zone gagnante du mini-jeu selon le niveau de l'étal :
+// plus le niveau monte, plus l'arc est petit (vol plus dur).
+export const STEAL_ARCS = { 1: Math.PI / 2.6, 2: Math.PI / 5.5, 3: Math.PI / 11 };

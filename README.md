@@ -40,8 +40,8 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
 - **Établi façon Minecraft** (touche `C` ou bouton 🛠️) : grille 3×3 + résultat,
   **livre de recettes repliable** avec recherche, et l'inventaire du joueur
   affiché en bas. Bois → planches → bâtons, puis pioches, haches, pelles et
-  épées en bois, pierre ou **fer**. Clic (ou maintien) sur le résultat pour
-  fabriquer, shift-clic pour tout fabriquer d'un coup.
+  épées en bois, pierre, **fer** ou **diamant**. Clic (ou maintien) sur le
+  résultat pour fabriquer, shift-clic pour tout fabriquer d'un coup.
 - **🪵 Portes** : 6 planches → 3 portes. Posées comme un bloc, elles se
   ferment au clic droit et laissent passer (ou bloquent) le joueur.
 - **⛏️ Le fer** : du **minerai de fer** (rocher aux pépites beige-rosé
@@ -50,6 +50,58 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   **fer brut** (pépite à facettes), fondu en **lingots** (1:1) puis en
   **bloc de fer** (9 lingots) pour construire, et en **outils en fer** bien
   plus durables.
+- **💎 Outils en diamant** : les gemmes de diamant (minées dès la
+  profondeur 2) se craftent en pioche, hache, pelle et épée — mêmes formes
+  que le fer, mais le palier **diamant** mine plus vite et tient plus
+  longtemps (520 d'usure contre 250).
+- **⚔️ Dégâts selon l'outil** : une épée tranche d'autant plus fort que son
+  matériau est noble — bois 3, pierre 4, fer 5, **diamant 7** — et la hache,
+  comme dans Minecraft, cogne elle aussi (bois 2 → diamant 6). Pioche, pelle
+  et mains nues frappent à 1 (`toolDamage`, js/blocks.js). Épée et hache
+  s'usent à chaque coup porté.
+- **🌾 Agriculture** : la **houe** (4 paliers) retourne herbe/terre en
+  **terre labourée** (clic droit) ; on y sème des **graines** (trouvées en
+  fauchant les fleurs) qui poussent en 4 stades (~15 s chacun) jusqu'au
+  **blé** mûr. Récolter rend du blé + des graines ; 3 blés → 1 **pain**.
+  Pain et steak se mangent (clic droit) et donnent un bonus temporaire de
+  minage/marche. La pousse est diffusée en multijoueur comme un diff de bloc.
+- **🌗 Ambiance vivante** : cycle **jour/nuit** (~4 min) — la nuit pose un
+  voile bleuté percé par le halo du joueur et la lueur chaude, vacillante,
+  des fours allumés **et des torches**. **Ombres portées directionnelles**
+  (lumière nord-ouest) sous les blocs posés, arbres et mobs. La **caméra
+  anticipe** légèrement le déplacement (parallaxe douce) pour dégager le
+  champ de vision.
+- **🔥 Torches & charbon** : le **charbon** est le filon le plus commun de
+  la grotte (dès le niveau 1) ; il brûle **30 s** au four (deux fois le
+  bois). La **torche** se craft (1 charbon + 1 bâton → 4), se pose au sol et
+  éclaire la nuit comme les galeries d'une flamme animée.
+- **🚪 Portes refaites** : vantail vertical extrudé comme les murs
+  (planches, pentures de fer, poignée anneau) ; ouverte, la porte devient
+  une embrasure sombre au vantail rabattu — on voit où passer.
+- **🎚️ Niveaux graphiques** : dans les paramètres, **Faible / Moyen /
+  Élevé** — Faible coupe ombres portées, lueurs et vignette (voile de nuit
+  plat) ; Moyen garde ombres et halos ; Élevé ajoute la lueur vacillante
+  des feux et la vignette.
+- **🪧 Panneaux écrits** : le **panneau** se craft (3 planches + 1 bâton →
+  2) et se pose au sol. **Seul celui qui l'a posé peut y écrire** (clic
+  droit) ; un autre joueur doit le casser puis le reposer pour se
+  l'approprier. Texte (120 car.) et propriétaire **synchronisés** en
+  multijoueur (journal par zone + resync des arrivants), rendu en jeu sur
+  la planche.
+- **🏪 Sellers (étals de vente)** : 3 niveaux (bois → fer renforcé →
+  diamant). Le propriétaire y dépose un objet et **définit le prix à
+  l'unité** ; la cagnotte s'accumule et s'encaisse. Les autres joueurs
+  **achètent** (écus transférés) ou **tentent de voler** via un mini-jeu
+  d'adresse (cercle + curseur rotatif, zone gagnante de plus en plus
+  petite). Échec niv. 1 : 30 s de verrou sur l'étal ; niv. 2 : 30 s sur
+  tous les étals du propriétaire + message « Un joueur a tenté de voler un
+  de vos sellers » ; niv. 3 : **alarme sonore**, bouton **se téléporter /
+  ignorer** chez le propriétaire et 1 min 30 de verrou. Tout l'état (stock,
+  prix, cagnotte, propriétaire) est journalisé par zone côté serveur.
+- **⚔️ PvP** : 20 PV par joueur, dégâts selon l'arme tenue (l'épée fait
+  mal), régénération hors combat, barre de vie au-dessus de la tête, mort =
+  retour au spawn. La victime fait foi sur ses PV (message `pattack`
+  relayé, `php` diffusé à la zone).
 - **📦 Lâcher des objets** : touche `Q` pour jeter un objet de ta main,
   `Ctrl+Q` pour toute la pile — ou sors une pile de l'inventaire par-dessus
   le bord de l'écran. Les objets tombent au sol, fusionnent entre eux et
@@ -80,15 +132,22 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
 - **💰 L'argent** — à l'arrivée sur l'île, un **monsieur en costume-cravate**
   aborde le joueur, lui remet sa somme de bienvenue (**150 écus**) et lui
   explique les règles, puis repart. Pendant toute la scène le joueur ne peut
-  pas bouger ; la somme n'est versée qu'une seule fois, même si la cinématique
-  est rejouée ou passée. La bourse est affichée en haut à droite, avec la
-  profondeur courante et la profondeur autorisée par l'équipement.
+  pas bouger. Les écus sont **des pièces dans l'inventaire** (objet `coin`,
+  une seule case : le nombre affiché est la somme) — plus de compteur dans
+  le HUD. Comme tout objet, ils peuvent être **lâchés au sol** (`Q`) ou
+  **rangés dans un coffre** (donc perdus ou partagés). Conséquence : la
+  somme de bienvenue est remise à chaque arrivée sur l'île, l'inventaire
+  (et l'argent avec) ne survivant pas à la session. La pile de pièces
+  apparaît directement dans la barre rapide.
+  La profondeur courante et la profondeur autorisée par l'équipement restent
+  affichées en haut à droite.
 - **⛰️ La grotte** — une arche taillée dans la falaise, à un endroit fixe de
   la carte. On entre avec `F`. À l'intérieur, **8 niveaux** qui descendent de
-  plus en plus bas, générés de façon déterministe, où l'on ne trouve **que de
-  la pierre et du fer** (le fer devient plus abondant en profondeur). Chaque
-  niveau a son échelle de sortie et son puits de descente, toujours
-  atteignables.
+  plus en plus bas, générés de façon déterministe, où l'on trouve **pierre,
+  fer** (plus abondant en profondeur) et — **dès la profondeur 2 uniquement**
+  — du **diamant**, beaucoup plus rare (rocher piqué de gemmes bleu-vert,
+  miné à la pioche, il lâche une gemme). Chaque niveau a son échelle de
+  sortie et son puits de descente, toujours atteignables.
 - **🎭 Masque & protection de minage** — descendre au-delà du niveau 1 exige
   deux équipements achetés : un **masque** et une **protection de minage**.
   Chacun existe en **trois paliers** ; plus c'est cher, plus la profondeur
@@ -106,7 +165,11 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   Deux commandes structurent l'échange : `/sell [article] [prix]` affiche une
   fiche d'offre avec **Acheter** ou **Continuer à discuter**, et `/out` met le
   joueur dehors s'il insiste trop ou devient insultant — **45 secondes**
-  pendant lesquelles le marchand refuse de lui parler.
+  pendant lesquelles le marchand refuse de lui parler. La commande `/sell`
+  est reconnue même collée en fin de phrase, et si le modèle annonce un prix
+  en prose sans commande, l'offre est quand même proposée. Refermer puis
+  rouvrir le comptoir fait **réapparaître l'offre négociée** : pas besoin de
+  redemander pour revoir les boutons d'achat.
   Le dialogue passe par un modèle si une clé `AVANIA_AI_API_KEY` est
   configurée (relais `POST /api/merchant`), sinon par un **cerveau de
   négociation local** qui applique exactement les mêmes règles.
@@ -162,7 +225,7 @@ Variables d'environnement :
 | `AVANIA_AI_MODEL` | `mistral-small-latest` | `mistral-large-latest` pour des répliques plus fines |
 | `PORT` | `3000` | port d'écoute |
 
-### 🌐 Multijoueur (étape 1 : présence, étape 2 : monde partagé, étape 3 : coffres, étape 4 : fours)
+### 🌐 Multijoueur (étape 1 : présence, étape 2 : monde partagé, étape 3 : coffres, étape 4 : fours, étape 5 : animaux, étape 6 : chat & réseau social)
 
 **Étape 1 — présence.** Chaque joueur voit les autres se déplacer en
 direct : position, orientation, animation de marche, apparence et nom.
@@ -217,6 +280,54 @@ l'une de l'autre au fil du temps. En solo (jamais de réseau), rien ne
 change : le four devient propriétaire dès la première ouverture et
 continue de cuire normalement, panneau fermé ou pas, exactement comme
 avant cette étape.
+
+**Étape 6 — chat (global + proximité) et réseau social du téléphone.**
+
+*Le chat.* Une fenêtre **toujours visible** en bas de l'écran (aucune
+touche à apprendre : on clique dans le champ, on écrit, `Entrée`), avec
+deux canaux :
+
+| Canal | Portée | Comment |
+| --- | --- | --- |
+| **Global** | tout le serveur, quelle que soit la zone (surface ou grotte) | mode par défaut, on clique dans le champ |
+| **Proximité** (talkie-walkie) | les joueurs à moins de 10 tuiles **de la même zone** | touche `V`, ou le bouton du canal |
+
+Les messages de proximité s'affichent aussi **en bulle au-dessus du
+joueur** qui parle (`Game.showBubble`, `js/game.js`) — désactivable dans
+Paramètres → Communication. Le serveur garde les 25 derniers messages
+globaux en mémoire et les renvoie à chaque arrivant (`chatHistory`) : on
+ne débarque jamais au milieu d'une conversation muette. Le filtrage de
+proximité est fait **côté serveur** (`relayChat`, `net-server.js`) à
+partir des positions qu'il reçoit déjà à chaque tick : un client ne peut
+donc pas s'inventer une portée qu'il n'a pas. Le débit est borné (un
+message toutes les 400 ms, 6 par tranche de 10 s) pour qu'une boucle côté
+client ne puisse pas saturer la bande passante de tout le monde.
+
+*Le téléphone.* Touche `P` : un téléphone pixel art avec une application,
+**Avania Social**. On y crée un compte (**pseudo + mot de passe**), on se
+connecte, on publie sur le fil, on aime les publications des autres et on
+supprime les siennes. **Le fil est unique** : tous les joueurs voient les
+mêmes publications, où qu'ils soient.
+
+Contrairement au reste du multijoueur, le réseau social passe par **HTTP**
+(`POST /api/social/*`, voir `social-server.js`) et non par WebSocket : ce
+sont des requêtes avec réponse (« crée-moi ce compte et dis-moi si le
+pseudo est pris »). Le WebSocket ne sert qu'à **pousser en direct** la
+nouveauté aux autres joueurs (message `social`), pour que le fil se
+rafraîchisse tout seul.
+
+- mot de passe **haché** (scrypt + sel par compte, comparaison en temps
+  constant) — jamais stocké ni renvoyé en clair ;
+- session = jeton aléatoire à durée de vie limitée, gardé en
+  `localStorage` côté client, donc on reste connecté d'une partie à
+  l'autre sur le même navigateur ;
+- débit limité par adresse IP (12 créations/connexions et 20 actions par
+  minute) — le hachage scrypt coûte ~50 ms de CPU, ce n'est pas gratuit ;
+- **aucune persistance** (choix assumé, voir ci-dessous) : comptes et
+  publications vivent en mémoire et repartent à zéro au redémarrage du
+  serveur, comme les journaux de blocs/coffres/fours ;
+- bornes dures : 500 comptes, 200 publications (le fil oublie les plus
+  anciennes), 280 caractères par publication.
 
 Le serveur reste volontairement un simple **relais + mémoire tampon**,
 jamais une autorité qui rejoue les règles du jeu : il ne fait aucune
@@ -304,6 +415,8 @@ Variables d'environnement :
 | `AVANIA_MAX_PLAYERS` | `24` | connexions simultanées maximum |
 | `AVANIA_TICK_HZ` | `12.5` | fréquence de diffusion des positions |
 | `AVANIA_MONTHLY_BYTES_BUDGET` | `3221225472` (3 Go) | seuil de sécurité de bande passante sortante par mois |
+| `AVANIA_SOCIAL_MAX_ACCOUNTS` | `500` | nombre maximal de comptes du réseau social |
+| `AVANIA_SOCIAL_MAX_POSTS` | `200` | publications conservées dans le fil (les plus anciennes sont oubliées) |
 
 ## 🧪 Tests, aperçus & benchmark
 
@@ -313,6 +426,7 @@ npm run test:browser                  # test d'intégration : le jeu démarre da
 npm run test:relay                    # relais marchand contre une API Mistral simulée
 npm run test:multiplayer              # protocole réseau : vrai server.js + vrais clients WebSocket
 npm run test:multiplayer:client       # client réseau (js/net.js) de bout en bout, deux "joueurs"
+npm run test:chat                     # chat (global + proximité) + réseau social du téléphone
 npm run bench                         # benchmark de la boucle de jeu (ms/frame)
 node scripts/render-preview.mjs       # aperçus PNG : monde, personnage, blocs, mobs
 node scripts/preview-mobs.mjs         # planches des mobs (profils, marche, scène en jeu)
@@ -361,6 +475,9 @@ Tous les PNG partent dans `preview/` (ignoré par git).
 | Ouvrir / fermer une porte | Clic droit sur la porte |
 | Ouvrir un four | Clic droit sur le four |
 | Attaquer un animal | Clic gauche sur le mouton / la vache |
+| Écrire dans le chat global | Clic dans le champ en bas de l'écran, puis `Entrée` |
+| Talkie-walkie (chat de proximité) | Touche `V` (bascule global ↔ proximité) |
+| Téléphone / réseau social | Touche `P` |
 
 Astuce : casse les **arbres** (→ bois) et les **rochers** (→ pierre) autour de toi,
 puis construis ta première cabane.
@@ -382,6 +499,42 @@ puis construis ta première cabane.
   restent locaux à chaque client.
 - [x] **Plus de blocs** — planche, brique, sable, verre, terre… (+ craft).
 - [x] **Économie (v2)** — monnaie, achats auprès des marchands, négociation.
+- [x] **Monnaie dans l'inventaire** — les écus sont des pièces (objet
+  `coin`) rangées dans les cases du joueur ; le compteur du HUD a été
+  retiré (voir `js/economy.js`, mode « inventaire » du `Wallet`).
+- [x] **Diamant** — nouveau minerai de la grotte (`caveDiamond`), absent du
+  niveau 1 et présent dès la profondeur 2, bien plus rare que le fer ;
+  miné à la pioche, il lâche une gemme (`diamond`). Densité réglable dans
+  `CAVE.diamondDensity` (js/cave.js).
+- [x] **Agriculture** — houe (4 paliers), terre labourée, graines → blé en
+  4 stades, pain nourrissant. Croissance diffusée en multijoueur.
+- [x] **Ombres portées directionnelles** — lumière nord-ouest : ombre au sol
+  sud-est sous chaque bloc posé (passe dédiée avant le tri en profondeur) et
+  ombres de contact décalées sous arbres, mobs et cultures.
+- [x] **Cycle jour/nuit** — ~4 min : voile bleuté nocturne percé par le halo
+  du joueur et la lueur chaude vacillante des fours allumés.
+- [x] **Parallaxe de caméra** — léger regard anticipé, lissé, dans le sens
+  du déplacement.
+- [x] **Torches & charbon** — filon de charbon dès le niveau 1 (combustible
+  30 s), torche craftable posable, source de lumière animée (nuit + grotte).
+- [x] **Portes refaites** — vantail extrudé à planches/pentures/poignée ;
+  l'état ouvert est une embrasure sombre au vantail rabattu.
+- [x] **Niveaux graphiques** — Faible / Moyen / Élevé dans les paramètres
+  (ombres portées, lueurs de nuit, vignette).
+- [x] **Effet 3D renforcé** — extrusion 12 px, dessus plus lumineux, face
+  est dégradée, occlusion au pied des murs.
+- [x] **Panneaux écrits** — craft + pose ; écriture réservée au poseur
+  (casser puis reposer pour hériter) ; texte & propriétaire synchronisés
+  (journal serveur par zone, resync des arrivants).
+- [x] **Sellers (étals de vente)** — 3 niveaux ; stock + prix à l'unité +
+  cagnotte ; achat ou vol (mini-jeu d'adresse) ; verrous 30 s / 30 s +
+  message / 1 min 30 + alarme & téléportation ; état journalisé par zone.
+- [x] **PvP entre joueurs** — 20 PV, dégâts selon l'arme, barre de vie,
+  régén, mort = spawn ; victime autoritaire sur ses PV.
+- [x] **Multijoueur (étape 6 : chat & réseau social)** — fenêtre de chat
+  toujours visible (canal global + talkie-walkie de proximité en `V`),
+  et téléphone (`P`) avec un réseau social partagé : comptes,
+  publications, j'aime, fil poussé en direct à tous les joueurs.
 - [ ] **Économie (suite)** — banque, salaires, taxes, troc entre joueurs.
 - [x] **La grotte** — 8 niveaux souterrains, pierre & fer, équipement exigé.
 - [ ] **Intérieurs** — entrer dans les bâtiments construits.
@@ -411,8 +564,11 @@ Avania_op/
 ├── net-server.js       ★ serveur multijoueur : WebSocket, présence des
 │                         joueurs, diffusion des positions ET journal du
 │                         monde partagé + du contenu des coffres et
-│                         fours par zone (voir la section « Multijoueur »
-│                         plus haut)
+│                         fours par zone, relais du chat (global +
+│                         proximité) — voir la section « Multijoueur »
+├── social-server.js    ★ réseau social du téléphone : comptes (scrypt),
+│                         sessions, fil de publications — HTTP
+│                         /api/social/*, tout en mémoire
 ├── js/                 TOUT le jeu (modules ES natifs, ~9 000 lignes)
 │   ├── main.js         point d'entrée : initialisation & boucle
 │   ├── net.js          ★ client multijoueur : connexion, lissage des
@@ -440,7 +596,8 @@ Avania_op/
 │   ├── furnace.js      logique du four (recettes, combustibles, cuisson)
 │   ├── tutorial.js     petit didacticiel illustré (pages E, C, mobs…)
 │   ├── utils.js        helpers : RNG seed, canvas, détection PC modeste
-│   ├── economy.js      ★ monnaie : Wallet, formatage, journal des mouvements
+│   ├── economy.js      ★ monnaie : Wallet (compteur OU pile de pièces dans
+│   │                     l'inventaire), formatage, journal des mouvements
 │   ├── cave.js         ★ la grotte : entrée, génération BFS des niveaux,
 │   │                     profondeur autorisée selon l'équipement
 │   ├── intro.js        ★ cinématique d'arrivée (le monsieur en costume)
@@ -448,6 +605,9 @@ Avania_op/
 │   ├── merchant-brain.js ★ cerveau de négociation local (règles du rôle)
 │   ├── merchant-ai.js  ★ relais modèle + nettoyage + lecture des commandes
 │   ├── chat.js         ★ comptoir de négociation (panneau de dialogue)
+│   ├── chat-global.js  ★ fenêtre de chat : canal global + talkie-walkie
+│   ├── phone.js        ★ téléphone : client HTTP du réseau social + écran
+│   │                     (accueil, connexion, fil, j'aime)
 │   ├── svgicons.js     icônes vectorielles de l'interface
 │   ├── npc/            ★ les PNJ : un fichier par look
 │   │   ├── base.js         nom, ombre, nuage « … »
@@ -463,7 +623,10 @@ Avania_op/
 │   └── diff-shots.mjs
 ├── test/
 │   ├── smoke.mjs       test de fumée : logique pure importée en Node
-│   └── browser-boot.mjs ★ test d'intégration : le jeu dans un vrai DOM
+│   ├── browser-boot.mjs ★ test d'intégration : le jeu dans un vrai DOM
+│   ├── multiplayer.mjs protocole réseau : vrai serveur + vrais clients WS
+│   ├── multiplayer-client.mjs client réseau (js/net.js) de bout en bout
+│   └── chat-social.mjs ★ chat (global + proximité) et réseau social
 └── preview/            (généré, git-ignoré) PNG de vérification visuelle
 ```
 
@@ -509,6 +672,18 @@ Le moteur tient 60 fps sur des PC modestes :
   tranches pour le passage « derrière »), personnages (par apparence ×
   orientation × clignement), mobs (espèce × côté × flash × étape de marche),
   icônes d'items, fissures de minage, surbrillance, ombres.
+- **Rendu « 2.5D » volumétrique** : les blocs sont des cubes extrudés
+  (dessus + face avant + face est) avec ombrage par face — dessus éclairé
+  nord-est, avant assombri vers le bas, droite plus foncée, pli ombré sous le
+  dessus — et auto-tiling qui fusionne les murs voisins. L'extrusion
+  (`BLOCK_EXTRUDE`) donne de la hauteur aux constructions.
+- **Éclairage directionnel & nuit** : passe d'ombres portées sud-est sous
+  les blocs posés, dessinée AVANT le tri en profondeur (`drawPlacedShadows`)
+  ; ombres de contact orientées nord-ouest→sud-est (`softShadow`) ; voile
+  nocturne sur canvas hors-écran percé en `destination-out` (halo joueur,
+  fours) puis lueur additive vacillante des fours allumés.
+- **Parallaxe caméra** : décalage lissé vers la direction de déplacement
+  (`camLeadX/Y` dans `update`), ajouté à la cible de `camera.follow`.
 - **Zéro allocation par frame** dans la boucle de rendu : tags de profondeur
   numériques portés par les entités, objets d'options réutilisés, clés de
   cache numériques — pas de pression sur le GC.
@@ -516,6 +691,9 @@ Le moteur tient 60 fps sur des PC modestes :
   au sol en O(n) via grille réutilisée.
 - **Mode performance adaptatif** : échantillonnage des frames coûteuses et
   réduction automatique des effets (DPR, ombres) sur les petits appareils.
+- **Niveaux graphiques** (`settings.graphics`) : Faible = voile de nuit plat
+  et sans ombres portées ; Moyen = ombres + halos percés ; Élevé = + lueurs
+  additives vacillantes et vignette. Le mode performance force « Faible ».
 - Les constantes vivent dans `config.js` (`PERFORMANCE`, DPR max 1.5…).
 
 ### Ce que mesure `npm run bench`
@@ -591,7 +769,13 @@ tourné vers la **gauche** (la marche à droite est le miroir automatique),
 | Apparence du personnage (options) | `js/config.js` + `js/character.js` | listes `HAIR_STYLES`… + `drawHair()` |
 | HUD, barre rapide, panneaux | `js/ui.js` + `css/style.css` | classes `HUD`, `Hotbar`, `InventoryPanel`… |
 | Contrôles / touches | `js/input.js` + `js/main.js` + `js/game.js` | mapping touche → action |
+| Fenêtre de chat (canaux, apparence) | `js/chat-global.js` + `css/style.css` | classe `GlobalChat`, bloc `.gchat` |
+| Portée du talkie-walkie | `js/net-protocol.js` | `PROXIMITY_TILES` (filtrage dans `net-server.js`) |
+| Débit / longueur des messages | `net-server.js` + `js/net-protocol.js` | `CHAT_MIN_INTERVAL_MS`, `MAX_CHAT_LEN` |
+| Réseau social (comptes, fil, j'aime) | `social-server.js` + `js/phone.js` | `createSocial()` / `SocialClient`, `PhonePanel` |
+| Écran du téléphone | `index.html` + `css/style.css` | `#phone`, blocs `.phone-*` / `.social-*` |
 | Équilibrage (vitesse, portée, minage) | `js/config.js` + `js/blocks.js` | `PLAYER_SPEED`, `REACH`, `breakTime`… |
+| La monnaie (objet, somme de départ) | `js/blocks.js` + `js/economy.js` | `ITEM_DEFS.coin` / `MONEY_ITEM`, `CURRENCY.startingGrant`, store du `Wallet` |
 
 ## Conventions du code
 

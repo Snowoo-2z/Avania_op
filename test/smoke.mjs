@@ -296,12 +296,72 @@ assert(ITEM_DEFS.iron_pickaxe.durability === 250, 'la pioche en fer est bien plu
 
 console.log('▶ Niveaux d\'outils');
 const { TOOL_TIERS, toolTierIndex, blockMinTierIndex } = await import('../js/blocks.js');
-assert(TOOL_TIERS.join(',') === 'wood,stone,iron', '3 niveaux d\'outils');
+assert(TOOL_TIERS.join(',') === 'wood,stone,iron,diamond', '4 niveaux d\'outils');
 assert(toolTierIndex(ITEM_DEFS.wooden_pickaxe) === 0, 'bois = niveau 0');
 assert(toolTierIndex(ITEM_DEFS.stone_pickaxe) === 1, 'pierre = niveau 1');
 assert(toolTierIndex(ITEM_DEFS.iron_pickaxe) === 2, 'fer = niveau 2');
+assert(toolTierIndex(ITEM_DEFS.diamond_pickaxe) === 3, 'diamant = niveau 3 (le sommet)');
 assert(blockMinTierIndex('ironOre') === 1, 'le fer demande la pierre');
 assert(blockMinTierIndex('rock') === 0, 'la roche ne demande rien de plus');
+
+// Les outils en diamant : mêmes formes que le fer, en mieux.
+for (const t of ['pickaxe', 'axe', 'shovel', 'sword']) {
+  const id = `diamond_${t}`;
+  const def = ITEM_DEFS[id];
+  assert(def, `l'outil ${id} existe`);
+  assert(def.tier === 'diamond' && def.toolType === t, `${id} : bon palier et bon type`);
+  assert(def.durability > ITEM_DEFS[`iron_${t}`].durability, `${id} tient plus longtemps que le fer`);
+  const recipe = RECIPES.find((r) => r.id === id);
+  assert(recipe && recipe.inputs.diamond, `${id} se crafte avec des gemmes`);
+}
+assert(ITEM_DEFS.diamond_pickaxe.efficiency > ITEM_DEFS.iron_pickaxe.efficiency,
+  'la pioche en diamant mine plus vite que celle en fer');
+
+// Dégâts : plus le matériau de l'épée est noble, plus elle tranche.
+const { toolDamage } = await import('../js/blocks.js');
+assert(toolDamage(null) === 1, 'mains nues : 1 dégât');
+assert(toolDamage(ITEM_DEFS.wood) === 1, 'un matériau ne frappe pas');
+assert(toolDamage(ITEM_DEFS.wooden_sword) === 3, 'épée bois : 3');
+assert(toolDamage(ITEM_DEFS.stone_sword) === 4, 'épée pierre : 4');
+assert(toolDamage(ITEM_DEFS.iron_sword) === 5, 'épée fer : 5');
+assert(toolDamage(ITEM_DEFS.diamond_sword) === 7, 'épée diamant : 7 (le maximum)');
+assert(toolDamage(ITEM_DEFS.wooden_axe) === 2, 'hache bois : 2 (plus que les mains nues)');
+assert(toolDamage(ITEM_DEFS.iron_axe) === 4, 'hache fer : 4');
+assert(toolDamage(ITEM_DEFS.diamond_axe) === 6, 'hache diamant : 6');
+assert(toolDamage(ITEM_DEFS.diamond_pickaxe) === 1, 'une pioche, même en diamant, frappe à 1');
+// Craft bout en bout : 3 gemmes + 2 bâtons → pioche en diamant.
+const dInv = new Inventory();
+dInv.add('diamond', 3);
+dInv.add('stick', 2);
+assert(dInv.craft(RECIPES.find((r) => r.id === 'diamond_pickaxe')) === true, '3 diamants + 2 bâtons → pioche');
+assert(dInv.count('diamond_pickaxe') === 1, 'la pioche en diamant est fabriquée');
+assert(dInv.count('diamond') === 0 && dInv.count('stick') === 0, 'les ingrédients sont consommés');
+
+console.log('▶ Agriculture');
+const { CROPS, CROP_MATURE, DIGGABLE_FLOOR } = await import('../js/blocks.js');
+assert(CROPS.join(',') === 'wheat0,wheat1,wheat2,wheat3', '4 stades de blé');
+assert(CROP_MATURE === 'wheat3', 'le stade mûr est le dernier');
+assert(DIGGABLE_FLOOR.flowers?.drop === 'seeds', 'faucher les fleurs donne des graines');
+assert(DIGGABLE_FLOOR.farmland, 'la terre labourée se retransforme en terre');
+assert(ITEM_DEFS.seeds.place === 'wheat0', 'les graines se sèment');
+assert(ITEM_DEFS.bread.food > 0 && ITEM_DEFS.cookedBeef.food > 0, 'pain et steak nourrissent');
+assert(toolDamage(ITEM_DEFS.diamond_hoe) === 1, 'la houe n\'est pas une arme');
+assert(RECIPES.some((r) => r.id === 'bread' && r.inputs.wheat === 3), '3 blés → 1 pain');
+for (const t of ['wooden_hoe', 'stone_hoe', 'iron_hoe', 'diamond_hoe']) {
+  assert(ITEM_DEFS[t]?.toolType === 'hoe', `${t} est une houe`);
+  assert(RECIPES.some((r) => r.id === t), `${t} se crafte`);
+}
+// On ne sème QUE sur de la terre labourée.
+const farmWorld = new World(20260821);
+const fx = 40, fy = 40;
+const fi = farmWorld.idx(fx, fy);
+farmWorld.blocks[fi] = null;
+farmWorld.floor[fi] = 'grass';
+assert(farmWorld.placeBlock(fx, fy, 'seeds') === false, 'impossible de semer dans l\'herbe');
+farmWorld.floor[fi] = 'farmland';
+assert(farmWorld.placeBlock(fx, fy, 'seeds') === true, 'mais oui sur terre labourée');
+assert(farmWorld.blocks[fi] === 'wheat0', 'le semis apparaît');
+assert(BLOCK_DEFS.wheat0.solid === false, 'le blé ne bloque pas le passage');
 
 console.log('▶ Porte craftable');
 const doorRecipe = RECIPES.find((r) => r.id === 'door');
@@ -549,6 +609,52 @@ assert(purse.history.length === 2, 'les mouvements sont journalisés');
 purse.advanceDay();
 assert(purse.day === 2, 'les jours passés sur l\'île sont comptés');
 
+// --- La monnaie rangée DANS l'inventaire (objet `coin`) ---
+// Le Wallet n'a alors plus de compteur : lire le solde = compter les
+// pièces, ajouter = remplir une case, dépenser = retirer des pièces.
+console.log('▶ Monnaie rangée dans l\'inventaire');
+const { MONEY_ITEM } = await import('../js/blocks.js'); // ITEM_DEFS est déjà importé plus haut
+assert(!!ITEM_DEFS[MONEY_ITEM], 'la monnaie est un objet de l\'inventaire');
+assert(!ITEM_DEFS[MONEY_ITEM].place, 'elle n\'est pas posable dans le monde');
+assert(ITEM_DEFS[MONEY_ITEM].maxStack >= CURRENCY.startingGrant,
+  'la somme de bienvenue tient sur UNE seule case (pas trois piles de 64)');
+
+const purseInv = new Inventory();
+const store = {
+  count: () => purseInv.count(MONEY_ITEM),
+  add: (n) => purseInv.add(MONEY_ITEM, n),
+  remove: (n) => purseInv.remove(MONEY_ITEM, n),
+};
+const bag = new Wallet({ allowStorage: false, store });
+assert(bag.money === 0, 'pas une pièce en poche au départ');
+assert(bag.add(CURRENCY.startingGrant, 'bienvenue') === CURRENCY.startingGrant,
+  'la somme de bienvenue entre dans l\'inventaire');
+assert(bag.money === CURRENCY.startingGrant, 'le solde se lit depuis les cases');
+assert(purseInv.count(MONEY_ITEM) === CURRENCY.startingGrant, 'ce sont bien des pièces empilées');
+assert(purseInv.slots.filter((s) => s && s.id === MONEY_ITEM).length === 1,
+  'et elles tiennent sur une seule case');
+assert(bag.spend(40, 'achat') === true, 'payer retire des pièces');
+assert(purseInv.count(MONEY_ITEM) === CURRENCY.startingGrant - 40,
+  'l\'inventaire reflète la dépense');
+assert(bag.spend(CURRENCY.startingGrant, 'trop cher') === false, 'pas de découvert possible');
+assert(purseInv.count(MONEY_ITEM) === CURRENCY.startingGrant - 40, 'un refus ne retire rien');
+assert(bag.shouldGrant() === true,
+  'la somme de bienvenue est remise à chaque session (l\'argent ne survit pas à l\'inventaire)');
+
+// Inventaire plein : l'argent est un objet, il peut manquer de la place.
+const fullBagInv = new Inventory();
+for (let i = 0; i < fullBagInv.slotCount; i++) fullBagInv.slots[i] = { id: 'wood', count: 1 };
+const fullBag = new Wallet({
+  allowStorage: false,
+  store: {
+    count: () => fullBagInv.count(MONEY_ITEM),
+    add: (n) => fullBagInv.add(MONEY_ITEM, n),
+    remove: (n) => fullBagInv.remove(MONEY_ITEM, n),
+  },
+});
+assert(fullBag.add(50, 'trop tard') === 0, 'un inventaire plein ne peut pas recevoir d\'écus');
+assert(fullBag.money === 0, 'et le solde reste à zéro plutôt que d\'inventer de l\'argent');
+
 // ============================================================
 //  LA GROTTE
 // ============================================================
@@ -578,11 +684,15 @@ for (const depth of [1, 2, 3, 5, CAVE.maxDepth]) {
   const distDown = Math.abs(cave.ladderDown.ty - cave.spawn.y / TILE)
     + Math.abs(cave.ladderDown.tx - cave.spawn.x / TILE);
   assert(distDown > 12, `prof. ${depth} : le puits descendant est loin de l'arrivée (${distDown} cases)`);
-  // Pierre et fer uniquement, comme demandé.
+  // Pierre, fer, charbon et (dès la prof. 2) diamant uniquement, comme demandé.
   const kinds = new Set(cave.blocks.filter(Boolean));
-  const allowed = new Set(['caveStone', 'caveIron', 'caveLadderDown', 'caveLadderUp']);
-  assert([...kinds].every((k) => allowed.has(k)), `prof. ${depth} : uniquement pierre, fer et puits`);
+  const allowed = new Set(['caveStone', 'caveIron', 'caveCoal', 'caveDiamond', 'caveLadderDown', 'caveLadderUp']);
+  assert([...kinds].every((k) => allowed.has(k)), `prof. ${depth} : uniquement pierre, fer, charbon, diamant et puits`);
   assert(kinds.has('caveStone') && kinds.has('caveIron'), `prof. ${depth} : de la pierre ET du fer`);
+  assert(kinds.has('caveCoal'), `prof. ${depth} : du charbon dès le niveau 1`);
+  if (depth === 1) {
+    assert(!kinds.has('caveDiamond'), 'prof. 1 : aucun diamant en surface de la grotte');
+  }
   // Déterminisme : deux joueurs descendent dans la même grotte.
   const twin = new World(20260821, { kind: 'cave', depth });
   assert(twin.floor.join('') === cave.floor.join('') && twin.blocks.join('|') === cave.blocks.join('|'),
@@ -592,6 +702,21 @@ for (const depth of [1, 2, 3, 5, CAVE.maxDepth]) {
 // Plus on descend, plus c'est riche (la récompense du risque).
 const ironAt = (d) => new World(20260821, { kind: 'cave', depth: d }).blocks.filter((b) => b === 'caveIron').length;
 assert(ironAt(CAVE.maxDepth) > ironAt(1), 'le fer est plus abondant au fond qu\'à l\'entrée');
+
+// Le diamant : absent du niveau 1, présent en profondeur, bien plus rare
+// que le fer.
+const diamondAt = (d) => new World(20260821, { kind: 'cave', depth: d }).blocks.filter((b) => b === 'caveDiamond').length;
+assert(diamondAt(1) === 0, 'aucun diamant au niveau 1');
+assert(diamondAt(2) > 0, `le diamant apparaît dès la profondeur 2 (${diamondAt(2)} filons)`);
+assert(diamondAt(CAVE.maxDepth) > 0, `et au fond (${diamondAt(CAVE.maxDepth)} filons)`);
+assert(diamondAt(CAVE.maxDepth) < ironAt(CAVE.maxDepth),
+  `le diamant reste bien plus rare que le fer (${diamondAt(CAVE.maxDepth)} < ${ironAt(CAVE.maxDepth)})`);
+
+// Le filon de diamant se mine à la pioche et lâche un diamant.
+assert(BLOCK_DEFS.caveDiamond.breakable === true, 'le filon de diamant se casse');
+assert(BLOCK_DEFS.caveDiamond.requiredTool === 'pickaxe', 'à la pioche');
+assert(BLOCK_DEFS.caveDiamond.drop === 'diamond', 'et il lâche un diamant');
+assert(ITEM_DEFS.diamond, 'le diamant existe comme objet d\'inventaire');
 assert(new World(20260821, { kind: 'cave', depth: 1 }).merchantSpots.length === 2,
   'les deux marchands ont leur emplacement au niveau 1');
 assert(new World(20260821, { kind: 'cave', depth: 3 }).merchantSpots.length === 0,
@@ -870,6 +995,31 @@ console.log('\n▶ Non-régressions (bugs trouvés par le test navigateur)');
   assert(afterSanitize.offer && afterSanitize.offer.item === 'mask_cloth',
     'une réponse nettoyée produit toujours une offre exploitable');
   assert(afterSanitize.offer.price === 42, 'au bon prix');
+
+  // 1b) Un modèle colle parfois /sell en fin de phrase ou derrière un
+  //     tiret, pas en début de ligne : l'offre devait quand même sortir.
+  const inline = parseMerchantReply('C\'est à prendre ou à laisser. /sell mask_filter 120');
+  assert(inline.commands.length === 1 && inline.commands[0].type === 'sell'
+    && inline.commands[0].price === 120,
+    'un /sell en cours de ligne est détecté');
+  assert(inline.speech.includes('prendre ou à laisser'), 'et la prose reste');
+  const dashed = parseMerchantReply('- /sell mask_filter 120');
+  assert(dashed.commands.length === 1, 'un /sell précédé d\'un tiret est détecté');
+
+  // 1c) Repli IA : une annonce de prix SANS commande /sell (source cloud)
+  //     doit quand même produire les boutons d'achat.
+  const stAi = createMerchantState('gaspard', { day: 1, totalPlayers: 1 });
+  const prose = interpretCommands(
+    { text: 'Le masque à filtre, je te le laisse à 120 écus.', source: 'cloud' },
+    stAi, ITEM_DEFS);
+  assert(prose.offer && prose.offer.item === 'mask_filter' && prose.offer.price === 120,
+    'l\'IA qui annonce un prix en prose fait apparaître l\'offre');
+  // Mais le cerveau local, qui émet toujours /sell, ne déclenche pas ce repli.
+  const stLocal = createMerchantState('gaspard', { day: 1, totalPlayers: 1 });
+  const local = interpretCommands(
+    { text: 'La traversée me coûte déjà 18 écus.', source: 'local' },
+    stLocal, ITEM_DEFS);
+  assert(local.offer === null, 'le repli prose est réservé au mode IA');
 
   // 2) Le vocabulaire du joueur, pas seulement les libellés du marchand.
   //    « ta meilleure protection » ne correspondait à rien chez Aldric

@@ -44,6 +44,12 @@ export const KEY_ACTIONS = [
   { id: 'sort', label: "Trier l'inventaire", trigger: 'key:r', group: 'Interface' },
   { id: 'drop', label: 'Lâcher un objet', trigger: 'key:q', group: 'Interface' },
   { id: 'settings', label: 'Ouvrir les paramètres', trigger: 'key:o', group: 'Interface' },
+
+  // Communication (multijoueur)
+  // Le chat global, lui, n'a PAS de touche : sa fenêtre est toujours
+  // visible en bas de l'écran, on clique dedans pour écrire.
+  { id: 'proximityChat', label: 'Talkie-walkie (chat de proximité)', trigger: 'key:v', group: 'Communication' },
+  { id: 'phone', label: 'Téléphone (réseau social)', trigger: 'key:p', group: 'Communication' },
 ];
 
 // Cartographie partagée et MUTABLE actionId -> déclencheur.

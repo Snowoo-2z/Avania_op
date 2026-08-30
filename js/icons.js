@@ -22,6 +22,7 @@ const TOOL_COLORS = {
   wood:  { base: '#c48642', light: '#e8b46a', dark: '#7a4a22', mid: '#a86a32', edge: '#f0d090' },
   stone: { base: '#a4a4ac', light: '#d8d8de', dark: '#5a5a64', mid: '#888890', edge: '#f0f0f4' },
   iron:  { base: '#c6ccd2', light: '#eef2f6', dark: '#676f78', mid: '#96a0a9', edge: '#ffffff' },
+  diamond: { base: '#59d8e8', light: '#c9f7fc', dark: '#0e5a68', mid: '#2fb9cf', edge: '#eafeff' },
   stick: { base: '#c89a5e', light: '#e8c888', dark: '#6e4426', mid: '#a87a42', edge: '#f2d8a0' },
   wrap:  { base: '#6a3a1e', light: '#8a5a32', dark: '#3a1e10', mid: '#5a2e16', edge: '#a87848' },
 };
@@ -225,6 +226,177 @@ function drawRawIron(ctx) {
   ctx.restore();
 }
 
+// --- Charbon : pépite noire mate aux reflets gris ---
+function drawCoal(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  const COAL = '#17171c', HI = '#4a4a55', OUT = '#000000';
+  ctx.fillStyle = OUT;
+  ctx.fillRect(-8, -6, 16, 12);
+  ctx.fillRect(-6, -8, 12, 16);
+  ctx.fillStyle = COAL;
+  ctx.fillRect(-7, -5, 14, 10);
+  ctx.fillRect(-5, -7, 10, 14);
+  ctx.fillStyle = HI;
+  ctx.fillRect(-5, -7, 10, 2);
+  ctx.fillRect(-7, -5, 2, 6);
+  ctx.fillStyle = '#6a6a78';
+  ctx.fillRect(-3, -4, 2, 2);
+  ctx.fillRect(2, 1, 2, 1);
+  ctx.restore();
+}
+
+// --- Torche : manche bois + tête en feu ---
+function drawTorchIcon(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  // manche
+  ctx.fillStyle = '#6a4520';
+  ctx.fillRect(-2, -4, 4, 12);
+  ctx.fillStyle = '#8a5f30';
+  ctx.fillRect(-2, -4, 1.5, 12);
+  // ligature
+  ctx.fillStyle = '#3c2c12';
+  ctx.fillRect(-2.5, -6, 5, 2);
+  // flamme
+  ctx.fillStyle = '#e8632c';
+  ctx.fillRect(-3.5, -12, 7, 6);
+  ctx.fillStyle = '#f7a13c';
+  ctx.fillRect(-2.5, -11, 5, 5);
+  ctx.fillStyle = '#ffd979';
+  ctx.fillRect(-1.5, -10, 3, 3);
+  ctx.restore();
+}
+
+// --- Panneau : planche claire sur poteau ---
+function drawSignIcon(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.fillStyle = '#6a4520';
+  ctx.fillRect(-1.5, -2, 3, 10);
+  ctx.fillStyle = '#5a3818';
+  ctx.fillRect(-9, -9, 18, 10);
+  ctx.fillStyle = '#d8b878';
+  ctx.fillRect(-8, -8, 16, 8);
+  ctx.fillStyle = 'rgba(106,69,32,0.5)';
+  ctx.fillRect(-6, -6, 12, 1);
+  ctx.fillRect(-6, -3, 9, 1);
+  ctx.restore();
+}
+
+// --- Étal (seller) : comptoir + auvent rayé, couleur du niveau ---
+function drawSellerIcon(ctx, tier) {
+  const AWNING = { 1: ['#c89a5e', '#a87940'], 2: ['#9aa3ab', '#6d7880'], 3: ['#4fd6e8', '#2a92a6'] }[tier];
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.fillStyle = '#5a3818';
+  ctx.fillRect(-8, -2, 2, 9);
+  ctx.fillRect(6, -2, 2, 9);
+  ctx.fillStyle = tier === 1 ? '#8a5f30' : tier === 2 ? '#7d8890' : '#2a92a6';
+  ctx.fillRect(-9, 0, 18, 5);
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = AWNING[i % 2];
+    ctx.fillRect(-9 + i * 4.5, -8, 4.5, 5);
+  }
+  ctx.fillStyle = '#d8c26a';
+  ctx.fillRect(-5, -2, 4, 2);
+  ctx.fillStyle = '#b0875f';
+  ctx.fillRect(1, -2, 4, 2);
+  ctx.restore();
+}
+
+// --- Diamant : gemme taillée bleu-vert, très brillante ---
+function drawDiamond(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  const GEM = '#4fd6e8', GEM_HI = '#c9f7fc', GEM_MID = '#7ee6f2', GEM_OUT = '#0e5a68';
+  // silhouette de gemme (couronne + pointe), en rectangles chanfreinés
+  ctx.fillStyle = GEM_OUT;
+  ctx.fillRect(-9, -8, 18, 6);      // table
+  ctx.fillRect(-11, -4, 22, 5);     // couronne
+  ctx.fillRect(-8, 1, 16, 5);       // culasse
+  ctx.fillRect(-4, 6, 8, 4);        // pointe
+  // remplissage
+  ctx.fillStyle = GEM;
+  ctx.fillRect(-8, -7, 16, 4);
+  ctx.fillRect(-10, -3, 20, 3);
+  ctx.fillRect(-7, 1, 14, 4);
+  ctx.fillRect(-3, 6, 6, 3);
+  // facettes claires
+  ctx.fillStyle = GEM_MID;
+  ctx.fillRect(-10, -3, 4, 3);
+  ctx.fillRect(2, 1, 5, 4);
+  ctx.fillStyle = GEM_HI;
+  ctx.fillRect(-8, -7, 6, 2);
+  ctx.fillRect(-10, -3, 3, 1);
+  // éclat taillé
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(-6, -6, 2, 2);
+  ctx.restore();
+}
+
+// --- Houe : manche + lame perpendiculaire, l'outil de la ferme ---
+function drawHoe(ctx, head, handle) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.rotate(0.5);
+  ctx.fillStyle = handle.dark; ctx.fillRect(-2, -12, 4, 24);
+  ctx.fillStyle = handle.base; ctx.fillRect(-1, -12, 2, 24);
+  ctx.fillStyle = head.dark; ctx.fillRect(-11, -14, 15, 5);
+  ctx.fillStyle = head.base; ctx.fillRect(-10, -13, 13, 3);
+  ctx.fillStyle = head.light; ctx.fillRect(-10, -13, 13, 1);
+  ctx.restore();
+}
+
+// --- Graines : petit sachet ouvert qui laisse voir les grains ---
+function drawSeeds(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.fillStyle = '#8a6a3c'; ctx.fillRect(-9, -4, 18, 12);
+  ctx.fillStyle = '#a8865a'; ctx.fillRect(-9, -4, 18, 3);
+  ctx.fillStyle = '#6e4426'; ctx.fillRect(-9, 6, 18, 2);
+  // grains qui débordent
+  ctx.fillStyle = '#d8c26a';
+  ctx.fillRect(-6, -7, 3, 3); ctx.fillRect(0, -8, 3, 3); ctx.fillRect(4, -6, 3, 3);
+  ctx.fillStyle = '#e8d47a';
+  ctx.fillRect(-5, -6, 1, 1); ctx.fillRect(1, -7, 1, 1);
+  ctx.restore();
+}
+
+// --- Blé : gerbe dorée liée ---
+function drawWheatItem(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  for (let s = -1; s <= 1; s++) {
+    const x = s * 5;
+    ctx.fillStyle = '#c9b45a';
+    ctx.fillRect(x - 1, -6, 2, 16);
+    ctx.fillStyle = '#e8d47a';
+    ctx.fillRect(x - 2, -12, 4, 7);
+    ctx.fillStyle = '#d8c26a';
+    ctx.fillRect(x - 1, -11, 2, 5);
+  }
+  ctx.fillStyle = '#a8865a';
+  ctx.fillRect(-7, 4, 14, 3); // lien
+  ctx.restore();
+}
+
+// --- Pain : miche dorée entaillée ---
+function drawBread(ctx) {
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  ctx.fillStyle = '#8a5a26';
+  ctx.fillRect(-11, -4, 22, 10);
+  ctx.fillRect(-9, -7, 18, 4);
+  ctx.fillStyle = '#c98f4a';
+  ctx.fillRect(-10, -6, 20, 10);
+  ctx.fillStyle = '#e8b46a';
+  ctx.fillRect(-9, -6, 18, 3);
+  ctx.fillStyle = '#8a5a26';
+  ctx.fillRect(-5, -5, 2, 4); ctx.fillRect(0, -5, 2, 4); ctx.fillRect(5, -5, 2, 4);
+  ctx.restore();
+}
+
 // --- Lingot de fer : barre arrondie au reflet métallique ---
 function drawIronIngot(ctx) {
   ctx.save();
@@ -241,6 +413,40 @@ function drawIronIngot(ctx) {
   ctx.fillRect(-2, 2, 5, 3);
   ctx.fillStyle = withAlpha('#000000', 0.2);
   ctx.fillRect(-11, 4, 22, 1);
+  ctx.restore();
+}
+
+// --- Écus : petite pile de pièces d'or (la monnaie de l'île) ---
+// Trois pièces empilées en léger décalage, façon voxel : tranche sombre
+// en bas, face claire dessus, reflet en haut à gauche. Le même dessin
+// sert d'icône d'inventaire et de sprite au sol (objet lâché).
+function drawCoinPile(ctx) {
+  const gold = { base: '#e8b53c', light: '#f7d97a', dark: '#96691c', edge: '#fff2c0' };
+  ctx.save();
+  ctx.translate(SIZE / 2, SIZE / 2);
+  // Deux pièces au sol, une posée dessus : pile centrée dans la case.
+  const pieces = [
+    { x: -12, y: 1 },
+    { x: -1, y: 4 },
+    { x: -7, y: -9 },
+  ];
+  for (const p of pieces) {
+    // Tranche (épaisseur de la pièce)
+    ctx.fillStyle = gold.dark;
+    ctx.fillRect(p.x, p.y + 4, 14, 4);
+    // Face
+    ctx.fillStyle = gold.base;
+    ctx.fillRect(p.x, p.y, 14, 5);
+    ctx.fillStyle = gold.light;
+    ctx.fillRect(p.x, p.y, 14, 2);
+    ctx.fillRect(p.x, p.y, 2, 5);
+    // Reflet
+    ctx.fillStyle = withAlpha(gold.edge, 0.75);
+    ctx.fillRect(p.x + 2, p.y + 1, 4, 1);
+    // Motif central (l'écusson)
+    ctx.fillStyle = withAlpha(gold.dark, 0.55);
+    ctx.fillRect(p.x + 5, p.y + 2, 4, 2);
+  }
   ctx.restore();
 }
 
@@ -481,8 +687,27 @@ const TOOL_DRAWERS = {
   wooden_sword:   (ctx) => drawSword(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
   stone_sword:    (ctx) => drawSword(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
   iron_sword:     (ctx) => drawSword(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
+  diamond_pickaxe: (ctx) => drawPickaxe(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
+  diamond_axe:     (ctx) => drawAxe(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
+  diamond_shovel:  (ctx) => drawShovel(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
+  diamond_sword:   (ctx) => drawSword(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
+  wooden_hoe:      (ctx) => drawHoe(ctx, TOOL_COLORS.wood, TOOL_COLORS.wood),
+  stone_hoe:       (ctx) => drawHoe(ctx, TOOL_COLORS.stone, TOOL_COLORS.stick),
+  iron_hoe:        (ctx) => drawHoe(ctx, TOOL_COLORS.iron, TOOL_COLORS.stick),
+  diamond_hoe:     (ctx) => drawHoe(ctx, TOOL_COLORS.diamond, TOOL_COLORS.stick),
+  seeds:           (ctx) => drawSeeds(ctx),
+  wheat:           (ctx) => drawWheatItem(ctx),
+  bread:           (ctx) => drawBread(ctx),
   stick:          (ctx) => drawStick(ctx, TOOL_COLORS.stick),
+  coin:           (ctx) => drawCoinPile(ctx), // la monnaie (js/economy.js)
   rawIron:        (ctx) => drawRawIron(ctx),
+  diamond:        (ctx) => drawDiamond(ctx),
+  coal:           (ctx) => drawCoal(ctx),
+  torch:          (ctx) => drawTorchIcon(ctx),
+  sign:           (ctx) => drawSignIcon(ctx),
+  seller1:        (ctx) => drawSellerIcon(ctx, 1),
+  seller2:        (ctx) => drawSellerIcon(ctx, 2),
+  seller3:        (ctx) => drawSellerIcon(ctx, 3),
   ironIngot:      (ctx) => drawIronIngot(ctx),
   door:           (ctx) => drawDoorIcon(ctx),
   wool:           (ctx) => drawWool(ctx),

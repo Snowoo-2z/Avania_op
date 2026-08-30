@@ -17,6 +17,7 @@
 import { ITEM_DEFS } from './blocks.js';
 import {
   merchantBriefing, MERCHANTS, parseMerchantReply, resolveItemId, normalize,
+  itemMatchScore, extractLastNumber,
 } from './merchant.js';
 import {
   accountMessage, merchantReply, merchantGreeting, isMerchantAvailable,
@@ -236,7 +237,35 @@ export function interpretCommands(reply, state, defs = ITEM_DEFS) {
       state.currentPrice = price;
     }
   }
+
+  // Repli réservé au modèle distant : s'il a annoncé un prix en toutes
+  // lettres sans écrire la commande /sell, on retrouve l'article et le
+  // prix dans sa prose pour quand même montrer les deux boutons d'achat.
+  // Le cerveau local, lui, émet toujours /sell : on ne touche pas à son
+  // comportement, ce qui préserve la négociation telle qu'elle est testée.
+  if (!result.offer && reply.source !== 'local' && parsed.speech) {
+    const mentioned = bestItemInSpeech(parsed.speech, def.items, defs);
+    if (mentioned) state.discussing = mentioned;
+    const price = extractLastNumber(parsed.speech);
+    if (state.discussing && price > 0) {
+      const floor = briefingFloor(state, state.discussing, defs);
+      const bounded = Math.max(floor, Math.round(price));
+      result.offer = { item: state.discussing, price: bounded };
+      state.currentPrice = bounded;
+    }
+  }
   return result;
+}
+
+// Article le plus probable cité dans une phrase (pour le repli IA).
+function bestItemInSpeech(text, itemIds, defs) {
+  let best = null;
+  let bestScore = 0;
+  for (const id of itemIds) {
+    const score = itemMatchScore(text, id, defs);
+    if (score > bestScore) { bestScore = score; best = id; }
+  }
+  return bestScore >= 100 ? best : null;
 }
 
 // Prix plancher d'un article, pour borner les propositions de l'IA.

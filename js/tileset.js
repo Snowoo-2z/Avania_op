@@ -88,6 +88,41 @@ function drawDirt(ctx, rng) {
   }
 }
 
+// --- Terre labourée : sillons réguliers, prête à semer ---
+function drawFarmland(ctx, rng) {
+  ctx.fillStyle = '#5a3f22';
+  ctx.fillRect(0, 0, S, S);
+  for (let y = 4; y < S; y += 7) {
+    ctx.fillStyle = withAlpha('#3a2812', 0.8);
+    ctx.fillRect(0, y, S, 3);
+    ctx.fillStyle = withAlpha('#7a5a30', 0.6);
+    ctx.fillRect(0, y - 1, S, 1);
+  }
+  ctx.fillStyle = withAlpha('#8a6a3c', 0.5);
+  for (let i = 0; i < 6; i++) ctx.fillRect(rng() * S, rng() * S, 2, 2);
+}
+
+// --- Blé : un stade de croissance (0 semis → 3 mûr) ---
+function makeWheatRaw(stage) {
+  const STALK = ['#7a8a3a', '#9aa83a', '#b8b44a', '#d8c26a'];
+  const HEAD = ['#9aa83a', '#b8b44a', '#d8c26a', '#e8d47a'];
+  return (ctx, x, y, shadow = true) => {
+    if (shadow) softShadow(ctx, x, y + 1, 10, 3);
+    const n = 4 + stage;          // de 4 à 7 tiges
+    const hgt = 8 + stage * 5;    // de 8 à 23 px de haut
+    for (let s = 0; s < n; s++) {
+      const sx = x - 8 + Math.round(s * (16 / (n - 1)));
+      ctx.fillStyle = STALK[stage];
+      ctx.fillRect(sx, y - hgt, 1, hgt);
+      ctx.fillRect(sx - 1, y - Math.floor(hgt / 2), 1, 2);
+      if (stage >= 2) {
+        ctx.fillStyle = HEAD[stage];
+        ctx.fillRect(sx - 1, y - hgt - 2, 3, 3);
+      }
+    }
+  };
+}
+
 // --- Sable : grains ---
 function drawSand(ctx, rng) {
   ctx.fillStyle = BLOCK_DEFS.sand.color;
@@ -791,186 +826,141 @@ function drawChestTile(ctx, openT = 0) {
 // Design magnifique inspiré d'une porte en chêne Minecraft : deux
 // panneaux sculptés, cadre massif, charnières en fer forgé, poignée
 // dorée avec reflet, grain du bois visible.
+// ------------------------------------------------------------
+//  Portes — rendu vertical, extrudé comme les murs.
+//  Fermée : haut vantail à planches, pentures fer et poignée anneau.
+//  Ouverte : embrasure sombre + vantail rabattu vu de tranche.
+// ------------------------------------------------------------
+
 function drawDoorClosed(ctx) {
   const base = BLOCK_DEFS.door.color;
-  const dark  = shade(base, 0.62);
-  const mid   = shade(base, 0.82);
-  const light = shade(base, 1.12);
-  const hi    = shade(base, 1.28);
+  const H = BLOCK_H;
+  const frame = shade(base, 0.66);
+  const plankA = shade(base, 1.02);
+  const plankB = shade(base, 0.92);
+  const hi = shade(base, 1.3);
+  const lo = shade(base, 0.55);
 
-  // Fond sombre (vu derrière le cadre, dans les creux)
-  ctx.fillStyle = dark;
-  ctx.fillRect(2, 0, S - 4, S);
+  // Corps du vantail : 4 planches verticales alternées.
+  for (let p = 0; p < 4; p++) {
+    ctx.fillStyle = p % 2 ? plankB : plankA;
+    ctx.fillRect(3 + p * 6.5, 2, 6.5, H - 4);
+  }
+  // Rainures verticales entre planches.
+  ctx.fillStyle = lo;
+  for (let p = 1; p < 4; p++) ctx.fillRect(3 + p * 6.5 - 0.5, 2, 1, H - 4);
 
-  // Cadre massif en bois sombre — montants et traverse
-  ctx.fillStyle = mid;
-  ctx.fillRect(2, 0, 4, S);        // montant gauche
-  ctx.fillRect(S - 6, 0, 4, S);    // montant droit
-  ctx.fillRect(2, 0, S - 4, 3);    // traverse haute
-  ctx.fillRect(2, S - 3, S - 4, 3); // traverse basse
-  ctx.fillRect(2, 14, S - 4, 3);   // traverse milieu
-
-  // Reflet du cadre (bord intérieur clair)
-  ctx.fillStyle = withAlpha('#ffffff', 0.18);
-  ctx.fillRect(3, 1, 2, S - 2);
-  ctx.fillRect(3, 1, S - 6, 1);
-
-  // --- Panneau haut (entre traverse haute et milieu) ---
-  ctx.fillStyle = light;
-  ctx.fillRect(7, 4, S - 14, 9);
-  // Relief intérieur : biseau clair en haut et sombre en bas
-  ctx.fillStyle = hi;
-  ctx.fillRect(7, 4, S - 14, 1);
-  ctx.fillRect(7, 4, 1, 9);
-  ctx.fillStyle = shade(base, 0.72);
-  ctx.fillRect(7, 12, S - 14, 1);
-  ctx.fillRect(S - 8, 4, 1, 9);
-
-  // --- Panneau bas (entre traverse milieu et basse) ---
-  ctx.fillStyle = light;
-  ctx.fillRect(7, 18, S - 14, 10);
-  ctx.fillStyle = hi;
-  ctx.fillRect(7, 18, S - 14, 1);
-  ctx.fillRect(7, 18, 1, 10);
-  ctx.fillStyle = shade(base, 0.72);
-  ctx.fillRect(7, 27, S - 14, 1);
-  ctx.fillRect(S - 8, 18, 1, 10);
-
-  // Veines du bois sur les panneaux (pixel art subtil)
-  ctx.strokeStyle = withAlpha('#6a4520', 0.32);
+  // Veines du bois : stries verticales + nœuds discrets.
+  ctx.strokeStyle = withAlpha('#6a4520', 0.35);
   ctx.lineWidth = 1;
-  // panneau haut
   ctx.beginPath();
-  ctx.moveTo(9, 6); ctx.lineTo(13, 5); ctx.lineTo(18, 6);
-  ctx.moveTo(10, 9); ctx.lineTo(15, 8); ctx.lineTo(21, 9);
+  ctx.moveTo(6, 6); ctx.lineTo(6.5, 12); ctx.lineTo(6, 18);
+  ctx.moveTo(16, 20); ctx.lineTo(15.5, 27); ctx.lineTo(16, 34);
+  ctx.moveTo(25, 5); ctx.lineTo(25.5, 11);
+  ctx.moveTo(22, 30); ctx.lineTo(22.5, 38);
   ctx.stroke();
-  // panneau bas
-  ctx.beginPath();
-  ctx.moveTo(9, 21); ctx.lineTo(14, 20); ctx.lineTo(19, 21);
-  ctx.moveTo(10, 24); ctx.lineTo(16, 23); ctx.lineTo(22, 24);
-  ctx.moveTo(9, 26); ctx.lineTo(13, 25.5); ctx.lineTo(18, 26);
-  ctx.stroke();
+  ctx.fillStyle = withAlpha('#5a3818', 0.4);
+  ctx.fillRect(9, 9, 2, 2);
+  ctx.fillRect(20, 26, 2, 2);
 
-  // Nœuds du bois discrets
-  ctx.fillStyle = withAlpha('#5a3818', 0.35);
-  ctx.fillRect(12, 7, 2, 2);
-  ctx.fillRect(18, 23, 2, 2);
-  ctx.fillStyle = withAlpha('#e0b870', 0.28);
-  ctx.fillRect(13, 7, 1, 1);
-  ctx.fillRect(19, 23, 1, 1);
-
-  // --- Charnières en fer forgé ---
-  const hingeX = 3;
-  for (const hy of [5, 23]) {
-    // Platine
-    ctx.fillStyle = '#3e3e44';
-    ctx.fillRect(hingeX, hy, 5, 3);
-    // Reflet métal
-    ctx.fillStyle = withAlpha('#b0b0b8', 0.5);
-    ctx.fillRect(hingeX, hy, 5, 1);
-    // Pivot rond
-    ctx.fillStyle = '#2a2a2e';
-    ctx.fillRect(hingeX, hy, 2, 3);
-    ctx.fillStyle = withAlpha('#ffffff', 0.22);
-    ctx.fillRect(hingeX, hy, 1, 1);
-    // Rivet
-    ctx.fillStyle = '#55555c';
-    ctx.fillRect(hingeX + 3, hy + 1, 1, 1);
+  // Deux pentures horizontales en fer (tiers haut / tiers bas) + rivets.
+  for (const hy of [8, H - 14]) {
+    ctx.fillStyle = '#33333a';
+    ctx.fillRect(2, hy, S - 4, 4);
+    ctx.fillStyle = withAlpha('#b8b8c2', 0.45);
+    ctx.fillRect(2, hy, S - 4, 1);
+    ctx.fillStyle = withAlpha('#000000', 0.35);
+    ctx.fillRect(2, hy + 3, S - 4, 1);
+    ctx.fillStyle = '#5a5a64';
+    for (const rx of [6, 15, 24]) ctx.fillRect(rx, hy + 1.5, 1.5, 1.5);
   }
 
-  // --- Poignée dorée ---
-  const hx = S - 10, hy2 = 14;
-  // Platine de la poignée
-  ctx.fillStyle = '#4a3a18';
-  ctx.fillRect(hx, hy2 + 1, 4, 5);
-  ctx.fillStyle = '#c8a23c';
-  ctx.fillRect(hx + 1, hy2 + 2, 2, 3);
-  // Bouton rond doré
-  ctx.fillStyle = '#e8c44e';
-  ctx.fillRect(hx, hy2 + 3, 4, 2);
-  // Reflet doré
-  ctx.fillStyle = withAlpha('#fff8d0', 0.6);
-  ctx.fillRect(hx + 1, hy2 + 3, 1, 1);
-  // Ombre du bouton
-  ctx.fillStyle = withAlpha('#000000', 0.2);
-  ctx.fillRect(hx + 1, hy2 + 5, 2, 1);
+  // Charnières côté gauche (platines de pivot).
+  for (const hy of [7, H - 15]) {
+    ctx.fillStyle = '#26262c';
+    ctx.fillRect(1, hy, 3, 6);
+    ctx.fillStyle = withAlpha('#c8c8d2', 0.4);
+    ctx.fillRect(1, hy, 1, 6);
+  }
 
-  // --- Serrure (petit trou sous la poignée) ---
-  ctx.fillStyle = '#1a1a1e';
-  ctx.fillRect(hx + 1, hy2 + 7, 2, 1);
+  // Poignée anneau côté droit.
+  const hx = S - 9, hy2 = Math.round(H / 2) - 2;
+  ctx.fillStyle = '#3c2c12';
+  ctx.fillRect(hx, hy2, 4, 4); // platine
+  ctx.strokeStyle = '#e8c44e';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.arc(hx + 2, hy2 + 4, 2.4, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = withAlpha('#fff8d0', 0.7);
+  ctx.fillRect(hx + 0.5, hy2 + 1.5, 1, 1);
 
-  // Contour extérieur sombre pour lisibilité
-  ctx.strokeStyle = shade(base, 0.42);
+  // Lumière : arête haute éclairée, pied dans l'ombre.
+  ctx.fillStyle = hi;
+  ctx.fillRect(2, 1, S - 4, 2);
+  ctx.fillStyle = lo;
+  ctx.fillRect(2, H - 3, S - 4, 3);
+  // Cadre latéral.
+  ctx.fillStyle = frame;
+  ctx.fillRect(0, 0, 3, H);
+  ctx.fillRect(S - 3, 0, 3, H);
+  ctx.fillStyle = withAlpha('#ffffff', 0.14);
+  ctx.fillRect(2, 0, 1, H);
+  ctx.fillRect(S - 4, 0, 1, H);
+  // Contour.
+  ctx.strokeStyle = shade(base, 0.4);
   ctx.lineWidth = 1;
-  ctx.strokeRect(1.5, 0.5, S - 3, S - 1);
+  ctx.strokeRect(0.5, 0.5, S - 1, H - 1);
 }
 
 function drawDoorOpen(ctx) {
-  // Porte ouverte : vue du dessus, la porte est rabattue à plat.
-  // On dessine la même porte mais « en perspective raccourcie ».
   const base = BLOCK_DEFS.door.color;
-  const dark  = shade(base, 0.65);
-  const mid   = shade(base, 0.85);
-  const light = shade(base, 1.1);
-  const hi    = shade(base, 1.22);
+  const H = BLOCK_H;
+  const frame = shade(base, 0.66);
 
-  // Ombre portée sous la porte
-  ctx.fillStyle = withAlpha('#000000', 0.14);
-  ctx.fillRect(3, 15, S - 10, 3);
+  // Embrasure sombre (intérieur) : dégradé plus noir vers le fond.
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#100c14');
+  g.addColorStop(0.7, '#1c1620');
+  g.addColorStop(1, '#2a2130');
+  ctx.fillStyle = g;
+  ctx.fillRect(3, 2, S - 6, H - 2);
 
-  // Corps principal de la porte (rabattue vers le haut de la tuile)
-  const dx = 2, dy = 3, dw = S - 8, dh = 11;
-  ctx.fillStyle = dark;
-  ctx.fillRect(dx, dy, dw, dh);
+  // Seuil : marche claire au bas de l'embrasure.
+  ctx.fillStyle = shade(base, 0.8);
+  ctx.fillRect(3, H - 4, S - 6, 4);
+  ctx.fillStyle = withAlpha('#ffffff', 0.12);
+  ctx.fillRect(3, H - 4, S - 6, 1);
 
-  // Cadre
-  ctx.fillStyle = mid;
-  ctx.fillRect(dx, dy, dw, 2);       // haut
-  ctx.fillRect(dx, dy + dh - 2, dw, 2); // bas
-  ctx.fillRect(dx, dy, 3, dh);       // gauche
-  ctx.fillRect(dx + dw - 3, dy, 3, dh); // droite
-  ctx.fillRect(dx, dy + 5, dw, 2);   // traverse milieu
-
-  // Panneau haut
-  ctx.fillStyle = light;
-  ctx.fillRect(dx + 4, dy + 2, dw - 8, 3);
-  ctx.fillStyle = hi;
-  ctx.fillRect(dx + 4, dy + 2, dw - 8, 1);
-
-  // Panneau bas
-  ctx.fillStyle = light;
-  ctx.fillRect(dx + 4, dy + 7, dw - 8, 3);
-  ctx.fillStyle = hi;
-  ctx.fillRect(dx + 4, dy + 7, dw - 8, 1);
-
-  // Veines raccourcies
-  ctx.strokeStyle = withAlpha('#6a4520', 0.25);
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(dx + 6, dy + 3); ctx.lineTo(dx + 12, dy + 3);
-  ctx.moveTo(dx + 7, dy + 9); ctx.lineTo(dx + 14, dy + 8);
-  ctx.stroke();
-
-  // Charnières (côté gauche, à plat)
-  for (const cy of [dy + 2, dy + 8]) {
-    ctx.fillStyle = '#3e3e44';
-    ctx.fillRect(dx, cy, 3, 2);
-    ctx.fillStyle = withAlpha('#b0b0b8', 0.4);
-    ctx.fillRect(dx, cy, 3, 1);
-    ctx.fillStyle = '#2a2a2e';
-    ctx.fillRect(dx, cy, 2, 2);
-  }
-
-  // Poignée dorée (petite, vue du dessus)
-  ctx.fillStyle = '#c8a23c';
-  ctx.fillRect(dx + dw - 6, dy + 5, 3, 2);
+  // Vantail rabattu à gauche, vu presque de tranche.
+  ctx.fillStyle = shade(base, 0.95);
+  ctx.fillRect(3, 2, 6, H - 4);
+  ctx.fillStyle = shade(base, 1.18);
+  ctx.fillRect(3, 2, 2, H - 4);   // arête qui accroche la lumière
+  ctx.fillStyle = shade(base, 0.6);
+  ctx.fillRect(8, 2, 1, H - 4);   // ombre du vantail sur l'embrasure
+  // Pentures du vantail rabattu.
+  ctx.fillStyle = '#33333a';
+  ctx.fillRect(3, 8, 6, 3);
+  ctx.fillRect(3, H - 14, 6, 3);
+  // Poignée.
   ctx.fillStyle = '#e8c44e';
-  ctx.fillRect(dx + dw - 6, dy + 5, 2, 1);
+  ctx.fillRect(7, Math.round(H / 2) - 1, 1.5, 3);
 
-  // Contour
-  ctx.strokeStyle = shade(base, 0.45);
+  // Cadre latéral + linteau éclairé.
+  ctx.fillStyle = frame;
+  ctx.fillRect(0, 0, 3, H);
+  ctx.fillRect(S - 3, 0, 3, H);
+  ctx.fillRect(0, 0, S, 3);
+  ctx.fillStyle = shade(base, 1.25);
+  ctx.fillRect(0, 0, S, 1.5);
+  ctx.fillStyle = withAlpha('#ffffff', 0.14);
+  ctx.fillRect(2, 0, 1, H);
+  ctx.fillRect(S - 4, 0, 1, H);
+  // Contour.
+  ctx.strokeStyle = shade(base, 0.4);
   ctx.lineWidth = 1;
-  ctx.strokeRect(dx + 0.5, dy + 0.5, dw - 1, dh - 1);
+  ctx.strokeRect(0.5, 0.5, S - 1, H - 1);
 }
 
 function dirtBlockTexture(ctx, top, dark) {
@@ -1096,6 +1086,7 @@ const DRAWERS = {
   grassDark: (c, r) => drawGrass(c, r, BLOCK_DEFS.grassDark.color),
   flowers:   (c, r) => drawFlowers(c, r),
   dirt:      (c, r) => drawDirt(c, r),
+  farmland:  (c, r) => drawFarmland(c, r),
   sand:      (c, r) => drawSand(c, r),
   wood:      (c) => drawBlockTile(c, BLOCK_DEFS.wood.color, woodGrain),
   stone:     (c) => drawBlockTile(c, BLOCK_DEFS.stone.color, stoneTexture),
@@ -1119,7 +1110,7 @@ let built = false;
 export function buildTileset() {
   if (built) return cache;
   for (const key of Object.keys(DRAWERS)) {
-    const h = isExtrudedBlock(key) ? S + BLOCK_EXTRUDE : S;
+    const h = (isExtrudedBlock(key) || key === 'door' || key === 'doorOpen') ? S + BLOCK_EXTRUDE : S;
     const c = makeCanvas(S, h);
     const ctx = c.getContext('2d');
     ctx.imageSmoothingEnabled = false;
@@ -1226,13 +1217,16 @@ export function getWaterFrame(frame) {
 // ------------------------------------------------------------
 
 export function softShadow(ctx, cx, cy, w, h) {
-  const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, w);
+  // Lumière venant du nord-ouest : l'ombre de contact se décale un peu
+  // vers le sud-est et s'y étire, pour un ancrage directionnel cohérent.
+  const ox = 2, oy = 1.5;
+  const g = ctx.createRadialGradient(cx + ox, cy + oy, 2, cx + ox, cy + oy, w);
   g.addColorStop(0, 'rgba(0,0,0,0.32)');
   g.addColorStop(0.7, 'rgba(0,0,0,0.18)');
   g.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.ellipse(cx, cy, w, h, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx + ox, cy + oy, w, h, 0, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -1417,6 +1411,172 @@ function drawCaveIronObjectRaw(ctx, x, y, shadow = true) {
 
   ctx.fillStyle = 'rgba(150,175,225,0.28)';
   ctx.fillRect(x - 6, y - 30, 13, 2);
+}
+
+// Filon de diamant : même roche sombre que le fer, mais piquée de gemmes
+// bleu-vert lumineuses. Beaucoup plus rare, réservé à la profondeur 2+.
+function drawCaveDiamondObjectRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 1, 15, 5);
+  voxel(ctx, x - 14, y - 17, 28, 18, '#3f3a47');
+  voxel(ctx, x - 11, y - 25, 22, 18, '#4d4759');
+  voxel(ctx, x - 6, y - 30, 13, 7, '#5d5670');
+
+  const GEM = '#4fd6e8';
+  const GEM_HI = '#b9f4fb';
+  const GEM_OUT = '#0e5a68';
+  const gems = [
+    [x - 10, y - 19, 5, 4], [x + 2, y - 24, 5, 4], [x - 5, y - 27, 4, 3],
+    [x - 2, y - 12, 6, 4], [x + 6, y - 16, 4, 3],
+  ];
+  for (const [gx, gy, gw, gh] of gems) {
+    ctx.fillStyle = GEM_OUT;
+    ctx.fillRect(gx - 1, gy - 1, gw + 2, gh + 2);
+    ctx.fillStyle = GEM;
+    ctx.fillRect(gx, gy, gw, gh);
+    ctx.fillStyle = GEM_HI;
+    ctx.fillRect(gx, gy, gw, 1);
+  }
+  // Gemme centrale facettée, très brillante.
+  ctx.fillStyle = GEM_OUT;
+  ctx.fillRect(x - 4, y - 21, 9, 8);
+  ctx.fillStyle = GEM;
+  ctx.fillRect(x - 3, y - 20, 7, 6);
+  ctx.fillStyle = GEM_HI;
+  ctx.fillRect(x - 3, y - 20, 7, 2);
+  ctx.fillStyle = '#eafeff';
+  ctx.fillRect(x - 2, y - 19, 3, 1);
+
+  ctx.fillStyle = 'rgba(120,220,240,0.30)';
+  ctx.fillRect(x - 6, y - 30, 13, 2);
+}
+
+// Filon de charbon : même roche que les autres filons, piquée de pépites
+// noires mates aux rares reflets gris. Le minerai de base, dès le niveau 1.
+function drawCaveCoalObjectRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 1, 15, 5);
+  voxel(ctx, x - 14, y - 17, 28, 18, '#443f4c');
+  voxel(ctx, x - 11, y - 25, 22, 18, '#544e5e');
+  voxel(ctx, x - 6, y - 30, 13, 7, '#665f72');
+
+  const COAL = '#17171c';
+  const COAL_HI = '#4a4a55';
+  const COAL_OUT = '#000000';
+  const nuggets = [
+    [x - 11, y - 19, 6, 4], [x + 2, y - 24, 6, 4], [x - 5, y - 27, 5, 3],
+    [x - 2, y - 12, 7, 4], [x + 6, y - 16, 4, 3],
+  ];
+  for (const [gx, gy, gw, gh] of nuggets) {
+    ctx.fillStyle = COAL_OUT;
+    ctx.fillRect(gx - 1, gy - 1, gw + 2, gh + 2);
+    ctx.fillStyle = COAL;
+    ctx.fillRect(gx, gy, gw, gh);
+    ctx.fillStyle = COAL_HI;
+    ctx.fillRect(gx, gy, gw, 1);
+  }
+  // Pépite centrale mate, à peine luisante.
+  ctx.fillStyle = COAL_OUT;
+  ctx.fillRect(x - 4, y - 21, 9, 8);
+  ctx.fillStyle = COAL;
+  ctx.fillRect(x - 3, y - 20, 7, 6);
+  ctx.fillStyle = COAL_HI;
+  ctx.fillRect(x - 3, y - 20, 7, 2);
+  ctx.fillStyle = '#6a6a78';
+  ctx.fillRect(x - 2, y - 19, 2, 1);
+}
+
+// Torche posée : manche de bois + tête charbonneuse. La flamme, elle,
+// est animée par-dessus à chaque frame (js/game.js) pour vaciller.
+function drawTorchRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 1, 7, 3);
+  // Manche incliné.
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-0.06);
+  ctx.fillStyle = '#6a4520';
+  ctx.fillRect(-1.5, -14, 3, 14);
+  ctx.fillStyle = '#8a5f30';
+  ctx.fillRect(-1.5, -14, 1, 14);
+  // Ligature sous la tête.
+  ctx.fillStyle = '#3c2c12';
+  ctx.fillRect(-2, -16, 4, 2);
+  // Tête charbonneuse.
+  ctx.fillStyle = '#17171c';
+  ctx.fillRect(-2.5, -20, 5, 5);
+  ctx.fillStyle = '#4a4a55';
+  ctx.fillRect(-2.5, -20, 5, 1);
+  ctx.restore();
+}
+
+// Panneau de bois posé : poteau + planche claire encadrée, volontairement
+// vierge — le texte est dessiné par-dessus à chaque frame (js/game.js).
+function drawSignRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 1, 8, 3);
+  // Poteau.
+  ctx.fillStyle = '#6a4520';
+  ctx.fillRect(x - 1.5, y - 12, 3, 12);
+  ctx.fillStyle = '#8a5f30';
+  ctx.fillRect(x - 1.5, y - 12, 1, 12);
+  // Planche : cadre sombre + fond clair lisible pour le texte.
+  ctx.fillStyle = '#5a3818';
+  ctx.fillRect(x - 14, y - 26, 28, 16);
+  ctx.fillStyle = '#d8b878';
+  ctx.fillRect(x - 13, y - 25, 26, 14);
+  // Veines horizontales discrètes.
+  ctx.fillStyle = 'rgba(106,69,32,0.25)';
+  ctx.fillRect(x - 13, y - 21, 26, 1);
+  ctx.fillRect(x - 13, y - 16, 26, 1);
+  // Reflet haut.
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(x - 13, y - 25, 26, 1);
+  // Clous aux coins.
+  ctx.fillStyle = '#3c2c12';
+  ctx.fillRect(x - 12, y - 24, 1.5, 1.5);
+  ctx.fillRect(x + 10.5, y - 24, 1.5, 1.5);
+  ctx.fillRect(x - 12, y - 13, 1.5, 1.5);
+  ctx.fillRect(x + 10.5, y - 13, 1.5, 1.5);
+}
+
+// Étals de vente (sellers) : comptoir + auvent rayé, déclinés en trois
+// niveaux de matériau (bois → fer → diamant). Le contenu et le prix sont
+// gérés par le panneau (js/ui.js), le sprite reste décoratif.
+function drawSellerRaw(tier) {
+  const AWNING = { 1: ['#c89a5e', '#a87940'], 2: ['#9aa3ab', '#6d7880'], 3: ['#4fd6e8', '#2a92a6'] }[tier];
+  return (ctx, x, y, shadow = true) => {
+    if (shadow) softShadow(ctx, x, y + 1, 14, 4);
+    // Pieds du comptoir.
+    ctx.fillStyle = '#5a3818';
+    ctx.fillRect(x - 12, y - 8, 3, 8);
+    ctx.fillRect(x + 9, y - 8, 3, 8);
+    // Corps du comptoir.
+    ctx.fillStyle = tier === 1 ? '#8a5f30' : tier === 2 ? '#7d8890' : '#2a92a6';
+    ctx.fillRect(x - 13, y - 14, 26, 7);
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fillRect(x - 13, y - 9, 26, 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(x - 13, y - 14, 26, 1);
+    // Marchandise posée : trois petits tas.
+    ctx.fillStyle = '#d8c26a';
+    ctx.fillRect(x - 10, y - 17, 5, 3);
+    ctx.fillStyle = '#b0875f';
+    ctx.fillRect(x - 2, y - 17, 5, 3);
+    ctx.fillStyle = '#9aa83a';
+    ctx.fillRect(x + 6, y - 17, 4, 3);
+    // Poteaux de l'auvent.
+    ctx.fillStyle = '#5a3818';
+    ctx.fillRect(x - 13, y - 30, 2, 16);
+    ctx.fillRect(x + 11, y - 30, 2, 16);
+    // Auvent rayé, bord festonné.
+    for (let i = 0; i < 6; i++) {
+      ctx.fillStyle = AWNING[i % 2];
+      ctx.fillRect(x - 14 + i * 5, y - 30, 5, 6);
+      ctx.fillRect(x - 14 + i * 5, y - 24, 3, 2);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.fillRect(x - 14, y - 30, 30, 1);
+    // Écusson de niveau sur le comptoir.
+    ctx.fillStyle = tier === 3 ? '#b9f4fb' : tier === 2 ? '#d3dade' : '#e8c44e';
+    ctx.fillRect(x - 2, y - 12, 4, 3);
+  };
 }
 
 // Entrée de la grotte (surface) : arche de roche sombre ouvrant sur
@@ -1614,6 +1774,18 @@ function buildObjectSprites() {
   // les fissures de minage déjà pré-rendues continuent de s'appliquer).
   objectCache.caveStone = makeObjectSprite(40, 44, 20, 34, drawCaveStoneObjectRaw);
   objectCache.caveIron = makeObjectSprite(40, 44, 20, 34, drawCaveIronObjectRaw);
+  objectCache.caveDiamond = makeObjectSprite(40, 44, 20, 34, drawCaveDiamondObjectRaw);
+  objectCache.caveCoal = makeObjectSprite(40, 44, 20, 34, drawCaveCoalObjectRaw);
+  objectCache.torch = makeObjectSprite(16, 24, 8, 21, drawTorchRaw);
+  objectCache.sign = makeObjectSprite(30, 30, 15, 27, drawSignRaw);
+  objectCache.seller1 = makeObjectSprite(32, 34, 16, 31, drawSellerRaw(1));
+  objectCache.seller2 = makeObjectSprite(32, 34, 16, 31, drawSellerRaw(2));
+  objectCache.seller3 = makeObjectSprite(32, 34, 16, 31, drawSellerRaw(3));
+  // Les quatre stades du blé (agriculture), petits et lisibles.
+  objectCache.wheat0 = makeObjectSprite(32, 36, 16, 30, makeWheatRaw(0));
+  objectCache.wheat1 = makeObjectSprite(32, 36, 16, 30, makeWheatRaw(1));
+  objectCache.wheat2 = makeObjectSprite(32, 36, 16, 30, makeWheatRaw(2));
+  objectCache.wheat3 = makeObjectSprite(32, 36, 16, 30, makeWheatRaw(3));
   // L'entrée de la grotte déborde largement de sa tuile (point de repère).
   objectCache.caveMouth = makeObjectSprite(76, 88, 38, 80, drawCaveMouthObjectRaw);
   objectCache.caveLadderDown = makeObjectSprite(44, 48, 22, 38, drawCaveLadderDownRaw);
@@ -1812,6 +1984,48 @@ function drawBlockTileConnected(ctx, x, y, color, texture, faces, opts = {}) {
   paintFace('front', x0, fy0, fw, fh);
   if (!rightSame) {
     paintFace('right', S - RIGHT_FACE_W, rightY0, RIGHT_FACE_W, BLOCK_H - rightY0);
+  }
+
+  // Ombrage volumétrique (le cube « sort » de l'écran) :
+  //  - dessus : léger dégradé diagonal, lumière venant du nord-est ;
+  //  - avant : dégradé vertical, plus sombre vers le bas ;
+  //  - droite : teinte un peu plus foncée que l'avant (deux plans distincts) ;
+  //  - pli ombré à la jonction dessus ↔ avant.
+  if (showTop && fw > 0 && topH > 0) {
+    const tg = ctx.createLinearGradient(x0, topY0, x1, topBottom);
+    tg.addColorStop(0, 'rgba(255,255,255,0.13)');
+    tg.addColorStop(0.55, 'rgba(255,255,255,0.02)');
+    tg.addColorStop(1, 'rgba(0,0,0,0.10)');
+    ctx.fillStyle = tg;
+    ctx.fillRect(x0, topY0, fw, topH);
+  }
+  if (fw > 0 && fh > 0) {
+    const fg = ctx.createLinearGradient(0, fy0, 0, BLOCK_H);
+    fg.addColorStop(0, 'rgba(255,255,255,0.12)');
+    fg.addColorStop(0.3, 'rgba(255,255,255,0)');
+    fg.addColorStop(1, 'rgba(0,0,0,0.32)');
+    ctx.fillStyle = fg;
+    ctx.fillRect(x0, fy0, fw, fh);
+    // Occlusion au pied du mur : le cube « pèse » sur le sol.
+    if (!(southSame || sittingOn)) {
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.fillRect(x0, BLOCK_H - 2, fw, 2);
+    }
+  }
+  if (!rightSame) {
+    // Dégradé horizontal sur la face est : l'arête avant accroche la lumière.
+    const rg = ctx.createLinearGradient(S - RIGHT_FACE_W, 0, S, 0);
+    rg.addColorStop(0, 'rgba(255,255,255,0.05)');
+    rg.addColorStop(0.4, 'rgba(0,0,0,0.16)');
+    rg.addColorStop(1, 'rgba(0,0,0,0.26)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(S - RIGHT_FACE_W, rightY0, RIGHT_FACE_W, BLOCK_H - rightY0);
+  }
+  if (showTop && !southSame && fw > 0) {
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.fillRect(x0, topBottom, fw, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    ctx.fillRect(x0, topBottom + 1, fw, 1);
   }
 
   // 5. Silhouette : uniquement les arêtes libres, pixels à .5 pour un trait net.

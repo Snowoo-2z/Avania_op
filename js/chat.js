@@ -74,6 +74,13 @@ export class ChatPanel {
   open(merchant) {
     this.merchant = merchant;
     this.pendingOffer = null;
+    // Si une négociation était en cours (un article et un prix sur la
+    // table), on la fait réapparaître à la réouverture : le joueur qui
+    // revient n'a pas à redemander pour revoir les boutons d'achat.
+    const st = merchant && merchant.state;
+    if (st && st.discussing && st.currentPrice > 0) {
+      this.pendingOffer = { item: st.discussing, price: st.currentPrice };
+    }
     this.history = [];
     this.isOpen = true;
     this.root.classList.remove('hidden');

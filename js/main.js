@@ -9,7 +9,7 @@
 import { PERFORMANCE, TILE } from './config.js';
 import {
   openCharacterCreation, HUD, WalletHUD, Hotbar, InventoryPanel, Crafting,
-  FurnacePanel, ChestPanel,
+  FurnacePanel, ChestPanel, SignEditor, SellerPanel, StealGame, playAlarm,
 } from './ui.js';
 import { SlotManager } from './slots.js';
 import { initIcons } from './icons.js';
@@ -18,8 +18,15 @@ import { Settings } from './settings.js';
 import { mountIcons } from './svgicons.js';
 import { bindings, triggerFromKey, triggerFromMouse } from './keys.js';
 import { Wallet, CURRENCY } from './economy.js';
+// L'objet « pièce » qui matérialise la monnaie dans l'inventaire.
+import { MONEY_ITEM } from './blocks.js';
 import { IntroSequence } from './intro.js';
 import { ChatPanel } from './chat.js';
+// Communication (multijoueur) : la fenêtre de chat (canal global +
+// talkie-walkie) et le téléphone avec son réseau social.
+import { GlobalChat } from './chat-global.js';
+import { PhonePanel, SocialClient } from './phone.js';
+import { CHAT_PROXIMITY } from './net-protocol.js';
 import { ITEM_DEFS } from './blocks.js';
 import { MERCHANTS, createMerchantState } from './merchant.js';
 import {
@@ -171,6 +178,13 @@ async function boot() {
 
   const game = new Game(canvas, appearance, settings);
 
+  // Déclarés AVANT le client réseau : il peut recevoir un message
+  // ('chatHistory', 'social') pendant les `await` du démarrage, donc
+  // avant que les objets d'interface soient construits. Une déclaration
+  // plus bas les laisserait en zone morte temporelle à ce moment-là.
+  let globalChat;
+  let phonePanel;
+
   // --- Multijoueur (présence temps réel) ---
   // « Best effort » : si le serveur ne répond pas (hors ligne, en
   // train de se réveiller sur Render...), le jeu continue en solo.
@@ -214,6 +228,24 @@ async function boot() {
     onFurnaceSync: (zone, furnaces) => {
       for (const f of furnaces) game.applyRemoteFurnaceChange(zone, f.tx, f.ty, f.state);
     },
+    // Panneaux partagés : texte + propriétaire, posés/écrits/cassés ailleurs.
+    onSignChange: (zone, tx, ty, text, owner) => {
+      game.applyRemoteSignChange(zone, tx, ty, text, owner);
+    },
+    onSignSync: (zone, signs) => game.applySignSync(zone, signs),
+    // Étals partagés : état complet (stock/prix/cagnotte) ou null = cassé.
+    onSellerChange: (zone, tx, ty, state) => {
+      game.applyRemoteSellerChange(zone, tx, ty, state);
+    },
+    onSellerSync: (zone, sellers) => game.applySellerSync(zone, sellers),
+    // Message ciblé : tentative de vol (toast) ou alarme (téléport proposé).
+    onNotify: (payload) => handleSellerNotify(payload),
+    // PvP : coup reçu → j'applique ; PV distants → barre de vie.
+    onPlayerAttack: (from, dmg) => game.applyPlayerAttack(from, dmg),
+    onPlayerHp: (id, hp) => {
+      const r = multiplayer.players.find((p) => p.id === id);
+      if (r) { r.hp = hp; r.maxHp = 20; }
+    },
     // Étape 5 (animaux partagés) : un troupeau connu (mobSync) peut
     // être vide — c'est le signal que ce client est probablement le
     // premier à visiter cette zone : il propose alors son propre
@@ -229,6 +261,22 @@ async function boot() {
     onMobSpawn: (zone, mobs) => game.applyMobSpawn(zone, mobs),
     onMobState: (zone, mobs) => game.applyMobState(zone, mobs),
     onMobHit: (zone, mob) => game.applyMobHit(zone, mob),
+    // Étape 6 (chat + réseau social) : voir les branchements plus bas
+    // (globalChat / phonePanel sont construits après le client réseau).
+    onChat: (msg) => {
+      if (!globalChat) return;
+      globalChat.push(msg);
+      // Un message de proximité s'affiche aussi en bulle au-dessus de
+      // celui qui parle : c'est ce qui le rend lisible sans quitter le
+      // monde des yeux (réglable dans Paramètres → Communication).
+      if (msg.channel === CHAT_PROXIMITY) game.showRemoteBubble(msg.id, msg.text);
+    },
+    onChatHistory: (messages) => {
+      if (!globalChat) return;
+      for (const msg of messages) globalChat.push(msg);
+    },
+    // Le fil du téléphone a bougé (quelqu'un a publié, aimé ou supprimé).
+    onSocial: (payload) => phonePanel?.applySocial(payload),
   });
   game.otherPlayers = multiplayer.players;
   game.uiCallbacks.onZoneChange = (zone) => multiplayer.setZone(zone);
@@ -270,7 +318,6 @@ async function boot() {
 
   game.start();
   hud.show();
-  document.getElementById('controls-hint').classList.remove('hidden');
   document.getElementById('craft-btn').classList.remove('hidden');
 
   document.getElementById('settings-btn').classList.remove('hidden');
@@ -320,10 +367,18 @@ async function boot() {
   let crafting;
   let furnacePanel;
   let chestPanel;
+  let signEditor;
+  let sellerPanel;
+  let stealGame;
   let merchantChat;
+  // Le téléphone met le jeu en pause (comme les autres panneaux) : on y
+  // écrit au clavier, donc le personnage ne doit pas partir se promener
+  // pendant ce temps. Le CHAT, lui, ne pause jamais — on discute en
+  // marchant, c'est tout l'intérêt du canal global.
   const syncPause = () => game.setPaused(Boolean(
     inventoryPanel?.isOpen || crafting?.isOpen || furnacePanel?.isOpen
-    || chestPanel?.isOpen || merchantChat?.isOpen || settings?.isOpen,
+    || chestPanel?.isOpen || signEditor?.isOpen || sellerPanel?.isOpen
+    || merchantChat?.isOpen || settings?.isOpen || phonePanel?.isOpen,
   ));
   // Fermer les paramètres (croix, fond, Échap) doit aussi dé-pauser le jeu.
   settings.onToggle = syncPause;
@@ -377,14 +432,108 @@ async function boot() {
   game.uiCallbacks.openFurnace = (tx, ty) => furnacePanel.open(tx, ty);
   game.uiCallbacks.openChest = (tx, ty) => chestPanel.open(tx, ty);
 
+  // Panneaux : seul le propriétaire écrit (le jeu vérifie entry.owner).
+  signEditor = new SignEditor(
+    document.getElementById('sign-edit'),
+    game,
+    () => syncPause(),
+  );
+  game.uiCallbacks.openSign = (tx, ty) => signEditor.open(tx, ty);
+  // Identité locale pour la propriété des panneaux (-1 tant que non
+  // connecté : en solo, on est toujours « soi-même »).
+  game.uiCallbacks.getOwnerId = () => multiplayer.localId;
+  // Diffusion des poses/écritures/casses de panneaux de la zone.
+  game.uiCallbacks.onSignChange = (tx, ty, text, owner) => multiplayer.sendSignChange(tx, ty, text, owner);
+  // Diffusion des changements d'étals (stock, prix, cagnotte, casse).
+  game.uiCallbacks.onSellerChange = (tx, ty, state) => multiplayer.sendSellerChange(tx, ty, state);
+  // Message ciblé vers le propriétaire d'un étal (tentative de vol/alarme).
+  game.uiCallbacks.onNotifySend = (to, kind, text, extra) => multiplayer.sendNotify(to, kind, text, extra);
+  // PvP : je déclare un coup porté (la victime applique) + j'annonce mes PV.
+  game.uiCallbacks.onPlayerAttack = (id, dmg) => multiplayer.sendPlayerAttack(id, dmg);
+  game.uiCallbacks.onPlayerHp = (hp) => multiplayer.sendPlayerHp(Math.round(hp));
+
+  // ============================================================
+  //  Communication : chat (global + proximité) et téléphone
+  // ============================================================
+
+  // Fenêtre de chat toujours visible. `onSend` renvoie true si le
+  // message est réellement parti sur le réseau : la fenêtre l'affiche
+  // dans tous les cas (en solo, on se parle à soi-même plutôt que de
+  // voir son texte disparaître), mais sait alors qu'il faut le signaler.
+  globalChat = new GlobalChat(document.getElementById('global-chat'), {
+    onSend: (text, channel) => {
+      const sent = multiplayer.sendChat(text, channel);
+      // Notre propre message au talkie-walkie apparaît en bulle au-dessus
+      // de notre personnage : le serveur ne nous le renvoie pas en écho.
+      if (sent && channel === CHAT_PROXIMITY) game.showLocalBubble(text);
+      return sent;
+    },
+  });
+  // Emplacement de la fenêtre (Paramètres → Communication).
+  const applyChatSide = (side) => {
+    document.getElementById('global-chat')?.setAttribute('data-side', side === 'right' ? 'right' : 'left');
+  };
+  settings.onChatSide = applyChatSide;
+  applyChatSide(settings.chatSide);
+
+  // Téléphone : réseau social du village (comptes + publications partagés
+  // par tous les joueurs, en direct via le WebSocket du jeu).
+  const socialClient = new SocialClient();
+  phonePanel = new PhonePanel(document.getElementById('phone'), {
+    client: socialClient,
+    onOpenChange: () => syncPause(),
+  });
+  window.__globalChat = globalChat;
+  window.__phone = phonePanel;
+
   // ============================================================
   //  Monnaie, arrivée sur l'île, grotte et marchands
   // ============================================================
 
-  const wallet = new Wallet();
-  const walletHUD = new WalletHUD(document.getElementById('hud-right'), wallet);
+  // La monnaie vit DANS l'inventaire : une pile de pièces (l'objet
+  // `coin` de js/blocks.js), le nombre affiché sur la case EST la somme.
+  // Plus de compteur dans le HUD — la bourse se regarde comme le reste
+  // du butin, et elle peut se lâcher au sol ou se ranger dans un coffre.
+  const moneyStore = {
+    count: () => game.inventory.count(MONEY_ITEM),
+    // add renvoie le montant réellement entré (l'inventaire peut être
+    // plein : l'argent est un objet, il lui faut une case).
+    add: (n) => game.inventory.add(MONEY_ITEM, n),
+    remove: (n) => game.inventory.remove(MONEY_ITEM, n),
+  };
+  const wallet = new Wallet({ store: moneyStore });
+  window.__wallet = wallet;
+  const walletHUD = new WalletHUD(document.getElementById('hud-right'));
   walletHUD.show();
   walletHUD.setGear(game.gear);
+
+  // Étals de vente : achat, vol (mini-jeu) et gestion propriétaire.
+  stealGame = new StealGame(document.getElementById('steal-game'));
+  sellerPanel = new SellerPanel(
+    document.getElementById('seller'), game, wallet, stealGame, () => syncPause(),
+  );
+  game.uiCallbacks.openSeller = (tx, ty) => sellerPanel.open(tx, ty);
+
+  // Alarme d'étal niv. 3 : bannière + téléportation chez le propriétaire.
+  let alarmTarget = null;
+  const alarmBanner = document.getElementById('alarm-banner');
+  const showAlarm = (payload) => {
+    alarmTarget = { zone: payload.zone || 'surface', tx: payload.tx || 0, ty: payload.ty || 0 };
+    document.getElementById('alarm-text').textContent = payload.text || 'Alarme !';
+    alarmBanner.classList.remove('hidden');
+    playAlarm();
+  };
+  document.getElementById('alarm-go')?.addEventListener('click', () => {
+    if (alarmTarget) game.teleportToZone(alarmTarget.zone, alarmTarget.tx, alarmTarget.ty);
+    alarmBanner.classList.add('hidden');
+  });
+  document.getElementById('alarm-ignore')?.addEventListener('click', () => {
+    alarmBanner.classList.add('hidden');
+  });
+  function handleSellerNotify(payload) {
+    if (payload.kind === 'alarm') { showAlarm(payload); return; }
+    game.notify(payload.text || 'Quelque chose s\'est passé.');
+  }
 
   // --- Les deux marchands. Leur ÉTAT survit aux allées et venues dans
   //     la grotte : ce qu'ils ont vendu, leur humeur et leur patience
@@ -568,7 +717,8 @@ async function boot() {
   });
   intro.onFinish = () => {
     syncPause();
-    walletHUD.setMoney(wallet.money, 0);
+    // Pas de compteur d'argent à rafraîchir : la somme remise par le
+    // représentant est déjà visible dans la barre rapide (pile de pièces).
   };
 
   // La boucle de jeu pilote la scène, puis l'invite d'interaction.
@@ -628,12 +778,33 @@ async function boot() {
       if (chestPanel.isOpen) chestPanel.close();
       settings.toggle();
       acted = true;
+    } else if (bindings.phone === t) {
+      // Téléphone (réseau social) : un seul panneau à la fois.
+      e.preventDefault();
+      if (!phonePanel.isOpen) {
+        if (inventoryPanel.isOpen) inventoryPanel.close();
+        if (crafting.isOpen) crafting.close();
+        if (furnacePanel.isOpen) furnacePanel.close();
+        if (chestPanel.isOpen) chestPanel.close();
+        if (merchantChat.isOpen) merchantChat.close();
+      }
+      phonePanel.toggle();
+      acted = true;
+    } else if (bindings.proximityChat === t) {
+      // Talkie-walkie : bascule le canal de la fenêtre de chat entre
+      // « global » et « proximité ». On ne l'ouvre pas de force : le
+      // joueur qui parle dans sa barbe ne doit pas se faire voler le
+      // clavier (la fenêtre est de toute façon toujours visible).
+      e.preventDefault();
+      globalChat.toggleChannel();
+      acted = true;
     }
     if (acted) syncPause();
   };
   window.addEventListener('keydown', (e) => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
     if ((e.key || '').toLowerCase() === 'escape') {
+      if (phonePanel.isOpen) { phonePanel.close(); syncPause(); return; }
       if (merchantChat.isOpen) { merchantChat.close(); syncPause(); return; }
       if (settings.isOpen) { settings.close(); syncPause(); return; }
       if (intro.active) { intro.skip(); return; }
@@ -641,6 +812,9 @@ async function boot() {
       crafting.close();
       furnacePanel.close();
       chestPanel.close();
+      signEditor.close();
+      sellerPanel.close();
+      stealGame.cancel();
       if (tutorial.isOpen) closeTutorial();
       syncPause();
       return;
@@ -668,8 +842,10 @@ async function boot() {
       lastHudPlayers = playerCount;
       hud.update({ name, playerCount });
     }
-    walletHUD.setMoney(wallet.money, 0);
     walletHUD.setDepth(game.world);
+    // La fenêtre de chat indique l'état du serveur : hors ligne, les
+    // messages restent locaux (elle le dit plutôt que de les perdre).
+    globalChat.setOnline(multiplayer.connected);
   }
   refreshHUD();
   setInterval(refreshHUD, 500);

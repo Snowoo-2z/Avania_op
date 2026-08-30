@@ -80,26 +80,6 @@ kbd {
   box-shadow: 0 0 8px var(--accent);
 }
 
-/* ---------------- Aide commandes ---------------- */
-.controls-hint {
-  position: fixed;
-  left: 16px;
-  bottom: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  z-index: 10;
-  pointer-events: none;
-}
-.ctrl {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--muted);
-}
-.ctrl kbd { min-width: 46px; text-align: center; }
 
 /* ---------------- Barre rapide (inventaire) ---------------- */
 .hotbar {
@@ -487,7 +467,6 @@ html.low-power .craft-btn:hover {
   .creator { grid-template-columns: 1fr; }
   .panel { padding: 22px; }
   .panel-header h1 { font-size: 36px; letter-spacing: 5px; }
-  .controls-hint { display: none; }
 }
 
 /* ============================================================
@@ -2738,7 +2717,7 @@ html.low-power .craft-output.ready {
    AVANIA — Monnaie, interactions & grotte
    ============================================================ */
 
-/* ---------------- Bourse (haut droite) ---------------- */
+/* ---------------- État du monde (haut droite) ---------------- */
 .hud-right {
   left: auto;
   right: 16px;
@@ -2747,66 +2726,6 @@ html.low-power .craft-output.ready {
   align-items: flex-end;
   gap: 8px;
 }
-.wallet {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 18px 9px 14px;
-  border: 1px solid #6b5320;
-  border-radius: 999px;
-  background:
-    linear-gradient(160deg, rgba(58, 44, 16, 0.92), rgba(28, 22, 10, 0.92));
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.42),
-    inset 0 1px 0 rgba(255, 224, 150, 0.28),
-    inset 0 -2px 0 rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(8px);
-  font-weight: 900;
-  pointer-events: none;
-}
-.wallet-coin {
-  display: inline-flex;
-  color: #f2c14e;
-  filter: drop-shadow(0 0 6px rgba(242, 193, 78, 0.55));
-  font-size: 19px;
-}
-.wallet-coin .ic-svg { width: 19px; height: 19px; }
-.wallet-amount {
-  font-size: 17px;
-  font-variant-numeric: tabular-nums;
-  color: #ffe6a8;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
-  transition: transform 0.16s ease;
-}
-.wallet-amount.bump { transform: scale(1.22); }
-.wallet-label {
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.9px;
-  text-transform: uppercase;
-  color: #c9a44a;
-}
-/* +N / −N qui flotte au-dessus de la bourse */
-.wallet-delta {
-  position: absolute;
-  right: 14px;
-  top: -6px;
-  font-size: 13px;
-  font-weight: 900;
-  opacity: 0;
-  pointer-events: none;
-}
-.wallet-delta.show { animation: walletDelta 1.5s ease-out forwards; }
-.wallet-delta.gain { color: #8ee06a; text-shadow: 0 1px 0 rgba(0,0,0,.6); }
-.wallet-delta.loss { color: #ff8f7a; text-shadow: 0 1px 0 rgba(0,0,0,.6); }
-@keyframes walletDelta {
-  0%   { opacity: 0; transform: translateY(6px); }
-  18%  { opacity: 1; transform: translateY(0); }
-  75%  { opacity: 1; transform: translateY(-10px); }
-  100% { opacity: 0; transform: translateY(-20px); }
-}
-
 /* Profondeur + équipement */
 .depth-chip,
 .gear-chip {
@@ -3198,20 +3117,534 @@ html.low-power .craft-output.ready {
 }
 .mc-hint--blocked { color: #ff9c86; }
 
-/* Petits écrans : la bourse ne doit pas écraser le HUD de gauche */
+/* Petits écrans : les puces du HUD ne doivent rien écraser */
 @media (max-width: 700px) {
   .hud-right { top: 12px; right: 12px; }
-  .wallet { padding: 7px 13px 7px 11px; }
-  .wallet-amount { font-size: 15px; }
   .mc-offer { flex-wrap: wrap; }
   .mc-offer-actions { margin-left: 0; align-items: stretch; }
 }
 
 /* Mode performance : pas de flou ni d'ombre portée sur l'interface */
-html.low-power .wallet,
 html.low-power .depth-chip,
 html.low-power .gear-chip,
 html.low-power .mc-frame,
 html.low-power .dialog-frame {
   backdrop-filter: none;
+}
+
+/* ============================================================
+   Chat (étape 6) — canal global toujours visible + talkie-walkie
+   ============================================================
+   La fenêtre vit en bas de l'écran, à gauche par défaut et à droite si
+   le joueur le choisit (Paramètres → Communication). Elle n'a pas de
+   touche : on clique dans le champ pour écrire.
+
+   Discrétion : le journal est semi-transparent et ses vieux messages
+   sont estompés — on joue dans le monde, pas dans du texte. Elle redevient
+   nette au survol, dès qu'un message arrive, ou quand on écrit. */
+.gchat {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(340px, calc(100vw - 32px));
+  font-size: 12.5px;
+  pointer-events: none; /* le jeu reste jouable « à travers » le journal */
+}
+.gchat[data-side="right"] { left: auto; right: 16px; align-items: flex-end; }
+
+.gchat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 168px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.gchat:hover .gchat-log,
+.gchat.is-active .gchat-log {
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.gchat-msg {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgba(16, 26, 19, 0.62);
+  backdrop-filter: blur(4px);
+  line-height: 1.35;
+  opacity: 1;
+  transition: opacity 0.6s ease, background 0.2s ease;
+  overflow-wrap: anywhere;
+}
+.gchat-msg.is-old { opacity: 0.45; }
+.gchat:hover .gchat-msg.is-old,
+.gchat.is-active .gchat-msg.is-old { opacity: 0.8; }
+
+.gchat-who {
+  flex: 0 0 auto;
+  font-weight: 800;
+  color: var(--accent);
+}
+.gchat-text { color: var(--text); }
+.gchat-msg--self { background: rgba(34, 56, 40, 0.72); }
+.gchat-msg--self .gchat-who { color: var(--accent-2); }
+.gchat-msg--proximity .gchat-who { color: #7fc7f0; }
+.gchat-msg--proximity::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #7fc7f0;
+  box-shadow: 0 0 6px rgba(127, 199, 240, 0.8);
+}
+.gchat-msg--system {
+  background: none;
+  color: var(--muted);
+  font-style: italic;
+  padding-left: 2px;
+}
+
+.gchat-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px 5px 5px;
+  border-radius: 999px;
+  background: rgba(16, 26, 19, 0.78);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  pointer-events: auto;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.gchat-bar:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(124, 207, 106, 0.18);
+}
+.gchat.is-proximity .gchat-bar { border-color: #4d8db0; }
+.gchat.is-proximity .gchat-bar:focus-within {
+  box-shadow: 0 0 0 3px rgba(127, 199, 240, 0.2);
+}
+.gchat.is-offline .gchat-bar { opacity: 0.72; }
+
+.gchat-channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: #24382c;
+  color: var(--muted);
+  font: 800 11px var(--font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.gchat-channel:hover { filter: brightness(1.2); }
+.gchat-channel-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 7px var(--accent);
+}
+.gchat.is-proximity .gchat-channel { background: #1d3442; color: #bfe3f7; }
+.gchat.is-proximity .gchat-channel-dot { background: #7fc7f0; box-shadow: 0 0 7px #7fc7f0; }
+
+.gchat-form { flex: 1 1 auto; display: flex; }
+#gchat-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--text);
+  font: 700 12.5px var(--font);
+  outline: none;
+}
+#gchat-input::placeholder { color: rgba(154, 183, 162, 0.75); font-weight: 700; }
+.gchat-status {
+  flex: 0 0 auto;
+  padding-right: 4px;
+  font: 800 10px var(--font);
+  color: var(--accent-2);
+  text-transform: uppercase;
+}
+
+/* ============================================================
+   Téléphone (étape 6) — le réseau social du village
+   ============================================================ */
+.phone {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+}
+.phone-frame {
+  position: relative;
+  width: min(380px, calc(100vw - 32px));
+  height: min(620px, calc(100vh - 40px));
+  display: flex;
+  flex-direction: column;
+  padding: 14px 14px 18px;
+  border-radius: 30px;
+  background: linear-gradient(180deg, #23362a, #16261c);
+  border: 3px solid #0d1710;
+  box-shadow: var(--shadow), inset 0 0 0 2px rgba(255, 255, 255, 0.06);
+}
+.phone-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.phone-notch {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 74px; height: 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.phone-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.phone-brand .ic { width: 16px; height: 16px; }
+.phone-head .craft-close { margin-left: auto; }
+
+.phone-screen, .phone-home {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+/* --- Accueil : les applications --- */
+.phone-home { align-items: center; justify-content: flex-start; padding-top: 18px; }
+.phone-clock {
+  font: 800 42px var(--font);
+  letter-spacing: 0.02em;
+  color: var(--text);
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+}
+.phone-apps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+  gap: 12px;
+  width: 100%;
+  padding: 8px 4px;
+}
+.phone-app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 6px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s;
+}
+.phone-app:hover { transform: translateY(-3px); border-color: var(--accent); }
+.phone-app-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 48px; height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(160deg, #7ccf6a, #3f8a46);
+  color: #12210f;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.35);
+}
+.phone-app-icon .ic { width: 26px; height: 26px; }
+.phone-app-badge {
+  position: absolute;
+  top: -6px; right: -6px;
+  min-width: 20px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: #e2593f;
+  color: #fff;
+  font: 800 10px var(--font);
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.phone-app-name { font: 800 11px var(--font); color: var(--muted); }
+.phone-home-hint {
+  margin-top: auto;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* --- Connexion / création de compte --- */
+.phone-auth {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 2px;
+}
+.phone-auth h3 { font-size: 17px; letter-spacing: 0.02em; }
+.phone-field { display: flex; flex-direction: column; gap: 5px; font: 800 10px var(--font); color: var(--muted); text-transform: uppercase; }
+.phone-field input {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  font: 700 14px var(--font);
+  outline: none;
+}
+.phone-field input:focus { border-color: var(--accent); }
+.phone-error { min-height: 16px; font: 800 11.5px var(--font); color: #f0917a; }
+.phone-auth-actions { display: flex; flex-direction: column; gap: 8px; }
+.phone-auth-note { font-size: 10.5px; color: var(--muted); }
+
+/* --- Le fil --- */
+.social-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.social-back, .social-logout {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--muted);
+  cursor: pointer;
+}
+.social-back { width: 30px; height: 30px; display: grid; place-items: center; }
+.social-back .ic { width: 16px; height: 16px; }
+.social-logout { margin-left: auto; padding: 5px 9px; font: 800 10px var(--font); text-transform: uppercase; }
+.social-me { font: 800 11px var(--font); color: var(--accent); }
+
+.social-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid var(--border);
+}
+#social-text {
+  width: 100%;
+  resize: none;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: 700 13px var(--font);
+  outline: none;
+}
+#social-text::placeholder { color: rgba(154, 183, 162, 0.7); }
+.social-compose-actions { display: flex; align-items: center; gap: 8px; }
+.social-count { margin-right: auto; font: 800 10px var(--font); color: var(--muted); }
+.social-publish {
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #14240f;
+  font: 800 12px var(--font);
+  cursor: pointer;
+}
+.social-publish:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.social-feed {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 2px;
+  scrollbar-width: thin;
+}
+.social-empty { padding: 18px 6px; color: var(--muted); font-size: 12px; text-align: center; }
+.social-post {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid var(--border);
+}
+.social-post-head { display: flex; align-items: center; gap: 8px; }
+.social-avatar {
+  display: grid;
+  place-items: center;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  font: 800 12px var(--font);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.social-post-who { font: 800 12px var(--font); color: var(--text); overflow-wrap: anywhere; }
+.social-post-who.is-me { color: var(--accent); }
+.social-post-when { margin-left: auto; flex: 0 0 auto; font: 700 10px var(--font); color: var(--muted); }
+.social-post-text { font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.social-post-actions { display: flex; align-items: center; gap: 8px; }
+.social-like, .social-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--muted);
+  font: 800 11px var(--font);
+  cursor: pointer;
+}
+.social-like .ic { width: 13px; height: 13px; }
+.social-like:hover { color: var(--text); border-color: var(--accent); }
+.social-like.is-liked { color: #f0917a; border-color: rgba(240, 145, 122, 0.6); }
+.social-delete { margin-left: auto; }
+.social-delete:hover { color: #f0917a; border-color: rgba(240, 145, 122, 0.6); }
+
+/* --- Paramètres : emplacement du chat --- */
+.chat-side-btns { display: flex; gap: 6px; }
+.chat-side-btn {
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--muted);
+  font: 800 11px var(--font);
+  cursor: pointer;
+}
+.chat-side-btn.active { color: #14240f; background: var(--accent); border-color: var(--accent); }
+
+/* ============================================================
+   Panneau d'écriture (sign) : petite fenêtre bois & parchemin
+   ============================================================ */
+.panel-frame--sign {
+  width: min(420px, calc(100vw - 24px));
+}
+.sign-body {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sign-body textarea {
+  width: 100%;
+  resize: none;
+  border: 2px solid #5a3818;
+  border-radius: 6px;
+  background: #d8b878;
+  color: #4a2f14;
+  font-family: monospace;
+  font-size: 14px;
+  padding: 8px;
+  outline: none;
+}
+.sign-body textarea:focus {
+  border-color: #c9a44a;
+}
+.sign-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ============================================================
+   Étal de vente + mini-jeu de vol + alarme
+   ============================================================ */
+.panel-frame--seller {
+  width: min(430px, calc(100vw - 24px));
+}
+.seller-body {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.seller-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.seller-line label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.seller-line input[type="number"] {
+  width: 90px;
+  border: 2px solid #5a3818;
+  border-radius: 6px;
+  background: #f4e6c8;
+  color: #4a2f14;
+  padding: 4px 6px;
+}
+.seller-item-img {
+  width: 28px;
+  height: 28px;
+  image-rendering: pixelated;
+}
+.steal-game {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(6, 5, 14, 0.55);
+}
+.steal-game.hidden { display: none; }
+.steal-game canvas {
+  background: #f4e6c8;
+  border: 3px solid #5a3818;
+  border-radius: 50%;
+}
+.steal-game p {
+  color: #f4e6c8;
+  font-weight: 700;
+}
+.alarm-banner {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #5a1616;
+  color: #ffe0dc;
+  border: 2px solid #e04038;
+  border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(224, 64, 56, 0.5);
+  animation: alarm-pulse 0.8s infinite alternate;
+}
+.alarm-banner.hidden { display: none; }
+@keyframes alarm-pulse {
+  from { box-shadow: 0 4px 12px rgba(224, 64, 56, 0.35); }
+  to { box-shadow: 0 4px 26px rgba(224, 64, 56, 0.85); }
 }

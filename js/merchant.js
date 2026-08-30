@@ -199,11 +199,18 @@ export function parseMerchantReply(raw) {
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    if (!trimmed.startsWith('/')) {
-      speech.push(trimmed);
-      continue;
-    }
-    const parts = trimmed.slice(1).split(/\s+/);
+
+    // La commande peut être SEULE sur sa ligne (cas voulu) mais un modèle
+    // la colle souvent en fin de phrase ou derrière un tiret. On la cherche
+    // donc n'importe où dans la ligne : ce qui précède reste du discours.
+    const cmdIndex = trimmed.search(/\/(?:sell|out)\b/);
+    const speechPart = cmdIndex === -1 ? trimmed : trimmed.slice(0, cmdIndex).trim();
+    const cmdPart = cmdIndex === -1 ? null : trimmed.slice(cmdIndex).trim();
+
+    if (speechPart) speech.push(speechPart);
+    if (!cmdPart) continue;
+
+    const parts = cmdPart.slice(1).split(/\s+/);
     const name = (parts[0] || '').toLowerCase();
     const rest = parts.slice(1).join(' ');
     if (name === 'out') {

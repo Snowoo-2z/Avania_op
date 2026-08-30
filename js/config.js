@@ -46,7 +46,7 @@ export const REACH = TILE * 3;
 // Extrusion visuelle des blocs posés : un petit volume 3D
 // (face avant + face droite) pour que les constructions aient
 // de la profondeur, comme des cubes posés sur le sol.
-export const BLOCK_EXTRUDE = 8;
+export const BLOCK_EXTRUDE = 12;
 export const BLOCK_SIDE = 5;
 
 // --- Palette générale (ambiance chaleureuse) ---
