@@ -30,7 +30,12 @@ assert(w1.blocks.join('|') === w2.blocks.join('|'), 'ressources identiques (dét
 // construction de joueur).
 const floorSet = new Set(w1.floor);
 const natural = ['grass', 'grassDark', 'flowers', 'dirt', 'sand', 'water', 'rockFace'];
-assert([...floorSet].every((f) => natural.includes(f)), 'sol = variantes naturelles + falaise (aucune construction)');
+// Les ouvrages du port (côte est) : quai bétonné et pontons de bois.
+// Comme la falaise, ils font partie du monde — pas d'une construction de
+// joueur (voir js/harbor.js).
+const portFloors = ['quay', 'dock'];
+assert([...floorSet].every((f) => natural.includes(f) || portFloors.includes(f)),
+  'sol = variantes naturelles + falaise + port (aucune construction)');
 
 // le spawn est praticable
 assert(!w1.isSolidAt(w1.spawn.x, w1.spawn.y), 'le spawn est sur une case libre');
@@ -43,6 +48,24 @@ assert(w1.isSolidTile(0, 0), 'le bord du monde est solide');
 const hasTrees = w1.blocks.some((b) => b === 'tree');
 const hasRocks = w1.blocks.some((b) => b === 'rock');
 assert(hasTrees && hasRocks, 'arbres et rochers présents pour récolter');
+
+console.log('▶ Le port (côte est)');
+assert(w1.floor[w1.idx(113, 70)] === 'water', 'la darse est creusée dans la côte');
+assert(w1.floor[w1.idx(109, 64)] === 'quay', 'le quai est bétonné');
+assert(!w1.isSolidTile(109, 64), 'on marche sur le quai');
+assert(w1.floor[w1.idx(116, 48)] === 'dock', 'la jetée nord est un ponton');
+assert(!w1.isSolidTile(116, 48), 'on marche sur la jetée');
+assert(w1.isSolidTile(116, 47), 'le parapet de pierre arrête la chute');
+assert(w1.blockAt(113, 64) === 'ferry', 'le ferry est amarré au quai');
+assert(w1.isSolidTile(113, 64), 'on ne traverse pas le ferry');
+assert(w1.blockAt(125, 48) === 'lighthouse', 'le phare veille à la pointe');
+assert(w1.blockAt(110, 56) === 'crane', 'une grue est en place sur le quai');
+assert(w1.blockAt(110, 51) === 'bollard', 'les bollards bordent le quai');
+assert(!w1.isSolidTile(110, 51), 'on marche sur un bollard');
+assert(w1.blockAt(99, 53) === 'brick', 'le hangar a des murs de briques');
+assert(w1.blockAt(99, 62) === 'door', 'le hangar ouvre au sud');
+assert(w1.blockAt(96, 55) === 'chest', 'un coffre attend dans le hangar');
+assert(w1.floor[w1.idx(80, 64)] === 'dirt', 'la route relie le port au centre');
 
 console.log('▶ Casser / Poser des blocs');
 // trouve un arbre

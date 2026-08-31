@@ -187,6 +187,15 @@ async function boot() {
 
   const game = new Game(canvas, appearance, settings);
 
+  // Sprite du ferry : le SVG du port remplace le repli procédural dès
+  // qu'il est chargé. Facultatif — en cas d'échec le jeu garde le repli.
+  try {
+    const { loadBoatSprite } = await import('./tileset.js');
+    await loadBoatSprite();
+  } catch (err) {
+    console.warn('AVANIA: sprite du ferry indisponible', err);
+  }
+
   // Déclarés AVANT le client réseau : il peut recevoir un message
   // ('chatHistory', 'social') pendant les `await` du démarrage, donc
   // avant que les objets d'interface soient construits. Une déclaration

@@ -9,6 +9,7 @@ import { TILE, WORLD_W, WORLD_H } from './config.js';
 import { mulberry32 } from './utils.js';
 import { BLOCK_DEFS, ITEM_DEFS, DIGGABLE_FLOOR, SOLID_FLOOR, CROPS } from './blocks.js';
 import { generateCaveLevel, buildCaveEntrance, CAVE } from './cave.js';
+import { buildHarbor } from './harbor.js';
 
 const W = WORLD_W;
 const H = WORLD_H;
@@ -110,7 +111,13 @@ export class World {
     this.setBlock(cx + 2, cy - 4, 'ironOre');
     this.setBlock(cx - 3, cy - 4, 'ironOre');
 
-    // 5) La falaise et l'entrée de la grotte, à un endroit fixe de l'île.
+    // 5) Le port, sur la côte EST : une darse creusée dans la carte, deux
+    //    jetées, un quai, un hangar et le ferry amarré (voir js/harbor.js).
+    //    C'est le seul ouvrage pré-construit de l'île : un point de
+    //    ralliement, et le départ des traversées.
+    buildHarbor(this);
+
+    // 6) La falaise et l'entrée de la grotte, à un endroit fixe de l'île.
     //    Placée en dernier : elle écrase toute ressource qui se
     //    trouverait là, pour que l'accès reste toujours dégagé.
     this.caveEntrance = buildCaveEntrance(this);

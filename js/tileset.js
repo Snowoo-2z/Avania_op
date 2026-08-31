@@ -137,6 +137,65 @@ function drawSand(ctx, rng) {
   }
 }
 
+// --- Quai : dalles de béton armé, joints et traces d'usage ---
+function drawQuayTile(ctx, rng) {
+  ctx.fillStyle = BLOCK_DEFS.quay.color;
+  ctx.fillRect(0, 0, S, S);
+  // dalles coulées : joints en croix, arête plus claire au nord
+  ctx.fillStyle = withAlpha('#7f8380', 0.55);
+  ctx.fillRect(0, 15, S, 2);
+  ctx.fillRect(15, 0, 2, S);
+  ctx.fillStyle = withAlpha('#ffffff', 0.16);
+  ctx.fillRect(0, 14, S, 1);
+  ctx.fillRect(14, 0, 1, S);
+  // grain de ciment
+  ctx.fillStyle = withAlpha('#8d918c', 0.45);
+  for (let i = 0; i < 18; i++) ctx.fillRect(rng() * S, rng() * S, 1.5, 1.5);
+  ctx.fillStyle = withAlpha('#dcdfda', 0.32);
+  for (let i = 0; i < 9; i++) ctx.fillRect(rng() * S, rng() * S, 1.5, 1.5);
+  // cambouis et traces de pneus
+  ctx.fillStyle = withAlpha('#5b5f5a', 0.18);
+  for (let i = 0; i < 5; i++) ctx.fillRect(rng() * S, rng() * S, 5, 2);
+  // anneaux d'amarrage scellés aux quatre coins
+  ctx.fillStyle = withAlpha('#6d7470', 0.55);
+  ctx.fillRect(3, 3, 3, 3);
+  ctx.fillRect(S - 6, 3, 3, 3);
+  ctx.fillRect(3, S - 6, 3, 3);
+  ctx.fillRect(S - 6, S - 6, 3, 3);
+}
+
+// --- Ponton : lames de bois posées au-dessus de l'eau ---
+function drawDockTile(ctx, rng) {
+  // Le jour entre deux lames laisse voir l'eau en dessous.
+  ctx.fillStyle = '#2b4a63';
+  ctx.fillRect(0, 0, S, S);
+  for (let y = 0; y < S; y += 8) {
+    ctx.fillStyle = BLOCK_DEFS.dock.color;
+    ctx.fillRect(0, y, S, 6);
+    ctx.fillStyle = withAlpha('#ffffff', 0.11);
+    ctx.fillRect(0, y, S, 1);
+    ctx.fillStyle = withAlpha('#000000', 0.24);
+    ctx.fillRect(0, y + 5, S, 1);
+  }
+  // veines du bois
+  ctx.strokeStyle = withAlpha('#6b4526', 0.42);
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 5; i++) {
+    const y = 2 + Math.floor(rng() * 4) * 8;
+    ctx.beginPath();
+    ctx.moveTo(rng() * 10, y);
+    ctx.lineTo(S, y + (rng() < 0.5 ? 0 : 1));
+    ctx.stroke();
+  }
+  // équerres métalliques de maintien
+  ctx.fillStyle = '#8d9398';
+  ctx.fillRect(0, 3, S, 2);
+  ctx.fillRect(0, 19, S, 2);
+  ctx.fillStyle = withAlpha('#000000', 0.26);
+  ctx.fillRect(0, 5, S, 1);
+  ctx.fillRect(0, 21, S, 1);
+}
+
 // --- Eau animée : frame selon la phase ---
 function drawWater(ctx, rng, phase) {
   ctx.fillStyle = BLOCK_DEFS.water.color;
@@ -1088,6 +1147,8 @@ const DRAWERS = {
   dirt:      (c, r) => drawDirt(c, r),
   farmland:  (c, r) => drawFarmland(c, r),
   sand:      (c, r) => drawSand(c, r),
+  quay:      (c, r) => drawQuayTile(c, r),
+  dock:      (c, r) => drawDockTile(c, r),
   wood:      (c) => drawBlockTile(c, BLOCK_DEFS.wood.color, woodGrain),
   stone:     (c) => drawBlockTile(c, BLOCK_DEFS.stone.color, stoneTexture),
   plank:     (c) => drawBlockTile(c, BLOCK_DEFS.plank.color, plankTexture),
@@ -1722,6 +1783,183 @@ function drawCaveLadderUpRaw(ctx, x, y, shadow = true) {
   ctx.fill();
 }
 
+// ------------------------------------------------------------
+//  Le port (côte est) : grue, conteneurs, bollards, phare, ferry.
+//  Décor de monde généré par js/harbor.js. Même écriture « voxel »
+//  que les arbres et les rochers pour rester cohérent avec le reste.
+// ------------------------------------------------------------
+
+// Grue de quai : portique sur rails, flèche tendue au-dessus de l'eau.
+function drawCraneRaw(ctx, x, y, shadow = true) {
+  const steel = '#6d747b';
+  const steelDark = '#4a5158';
+  const yellow = '#d8a12c';
+  const yellowDark = '#a87a1c';
+  if (shadow) softShadow(ctx, x, y + 2, 22, 7);
+  // deux boggies sur rails, bandes de sécurité
+  voxel(ctx, x - 20, y - 8, 12, 8, steel);
+  voxel(ctx, x + 8, y - 8, 12, 8, steel);
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = yellow;
+    ctx.fillRect(x - 20 + i * 4, y - 6, 2, 5);
+    ctx.fillRect(x + 8 + i * 4, y - 6, 2, 5);
+  }
+  // montants en treillis
+  voxel(ctx, x - 15, y - 44, 5, 36, steel);
+  voxel(ctx, x + 10, y - 44, 5, 36, steel);
+  ctx.strokeStyle = steelDark;
+  ctx.lineWidth = 1.3;
+  for (let i = 0; i < 6; i++) {
+    const yy = y - 12 - i * 6;
+    ctx.beginPath();
+    ctx.moveTo(x - 15, yy); ctx.lineTo(x + 15, yy - 6);
+    ctx.moveTo(x + 15, yy); ctx.lineTo(x - 15, yy - 6);
+    ctx.stroke();
+  }
+  // poutre de portique + flèche
+  voxel(ctx, x - 18, y - 50, 36, 6, yellow);
+  voxel(ctx, x - 18, y - 56, 46, 5, yellow);
+  ctx.fillStyle = yellowDark;
+  ctx.fillRect(x - 18, y - 45, 36, 2);
+  ctx.strokeStyle = steelDark;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(x + 6, y - 56); ctx.lineTo(x - 10, y - 50); ctx.stroke();
+  // cabine du grutier
+  voxel(ctx, x - 6, y - 44, 11, 10, '#e2e5e1');
+  ctx.fillStyle = '#22303a'; ctx.fillRect(x - 5, y - 42, 9, 5);
+  ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.fillRect(x - 5, y - 42, 9, 2);
+  // câble et palonnier
+  ctx.strokeStyle = '#3a4147';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.moveTo(x + 18, y - 51); ctx.lineTo(x + 18, y - 30); ctx.stroke();
+  voxel(ctx, x + 13, y - 30, 10, 6, '#8d9398');
+  // feu de balisage
+  ctx.fillStyle = '#e05a3c'; ctx.fillRect(x - 19, y - 58, 3, 3);
+}
+
+// Conteneur maritime : tôle ondulée, coins ISO, portes.
+function makeContainerRaw(base, light, dark) {
+  return (ctx, x, y, shadow = true) => {
+    if (shadow) softShadow(ctx, x, y + 1, 15, 5);
+    voxel(ctx, x - 15, y - 20, 30, 20, base);      // face avant
+    ctx.fillStyle = light;                          // toit
+    ctx.fillRect(x - 15, y - 26, 30, 6);
+    ctx.fillStyle = withAlpha('#ffffff', 0.18);
+    ctx.fillRect(x - 15, y - 26, 30, 2);
+    ctx.fillStyle = dark;
+    ctx.fillRect(x - 15, y - 21, 30, 1);
+    // nervures de tôle
+    ctx.fillStyle = withAlpha('#000000', 0.16);
+    for (let i = -12; i < 15; i += 5) ctx.fillRect(x + i, y - 19, 2, 15);
+    ctx.fillStyle = withAlpha('#ffffff', 0.10);
+    for (let i = -11; i < 15; i += 5) ctx.fillRect(x + i, y - 19, 1, 15);
+    ctx.fillStyle = withAlpha('#000000', 0.14);
+    for (let i = -11; i < 15; i += 4) ctx.fillRect(x + i, y - 25, 1, 4);
+    // pièces de coin
+    ctx.fillStyle = dark;
+    ctx.fillRect(x - 15, y - 26, 3, 3);
+    ctx.fillRect(x + 12, y - 26, 3, 3);
+    ctx.fillRect(x - 15, y - 4, 3, 4);
+    ctx.fillRect(x + 12, y - 4, 3, 4);
+    // joint de portes + marquage
+    ctx.fillStyle = withAlpha('#000000', 0.28);
+    ctx.fillRect(x - 1, y - 19, 2, 16);
+    ctx.fillStyle = withAlpha('#ffffff', 0.22);
+    ctx.fillRect(x - 11, y - 24, 7, 1);
+    ctx.fillRect(x + 4, y - 24, 5, 1);
+  };
+}
+
+// Bollard d'amarrage : petit, on marche dessus.
+function drawBollardRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 1, 8, 3);
+  ctx.fillStyle = '#4a5158';
+  ctx.fillRect(x - 7, y - 5, 14, 5);
+  ctx.fillStyle = '#5c6266';
+  ctx.fillRect(x - 7, y - 5, 14, 2);
+  voxel(ctx, x - 5, y - 13, 10, 9, '#8d9398');   // fût
+  voxel(ctx, x - 7, y - 18, 14, 6, '#a2a8ad');   // tête
+  ctx.fillStyle = '#6d747b';                      // traversin
+  ctx.fillRect(x - 9, y - 20, 18, 3);
+  ctx.fillStyle = 'rgba(255,255,255,0.30)';
+  ctx.fillRect(x - 6, y - 18, 5, 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(x - 7, y - 1, 14, 2);
+}
+
+// Phare : socle rocheux, tour blanche à bandes rouges, lanterne allumée.
+function drawLighthouseRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 1, 18, 6);
+  const white = '#eceff0';
+  const red = '#c0453c';
+  // socle
+  voxel(ctx, x - 17, y - 12, 34, 14, '#6a6a72');
+  ctx.fillStyle = '#7d7d85';
+  ctx.fillRect(x - 17, y - 12, 34, 3);
+  // fût, en trois tronçons
+  voxel(ctx, x - 12, y - 32, 24, 20, white);
+  ctx.fillStyle = red; ctx.fillRect(x - 12, y - 26, 24, 6);
+  voxel(ctx, x - 10, y - 50, 20, 18, white);
+  ctx.fillStyle = red; ctx.fillRect(x - 10, y - 43, 20, 5);
+  voxel(ctx, x - 8, y - 64, 16, 14, white);
+  // galerie et rambarde
+  voxel(ctx, x - 12, y - 70, 24, 6, '#8d9398');
+  ctx.fillStyle = '#b6bbbe';
+  ctx.fillRect(x - 12, y - 70, 24, 2);
+  ctx.fillStyle = '#6d747b';
+  for (let i = -10; i <= 10; i += 5) ctx.fillRect(x + i, y - 68, 1, 5);
+  // lanterne
+  voxel(ctx, x - 7, y - 82, 14, 12, '#2b3a44');
+  ctx.fillStyle = '#ffd98a';
+  ctx.fillRect(x - 5, y - 80, 10, 8);
+  ctx.fillStyle = '#fff3cf';
+  ctx.fillRect(x - 4, y - 79, 4, 6);
+  // toit
+  voxel(ctx, x - 8, y - 88, 16, 6, red);
+  // halo lumineux
+  ctx.fillStyle = 'rgba(255,214,130,0.16)';
+  ctx.beginPath(); ctx.arc(x, y - 76, 17, 0, Math.PI * 2); ctx.fill();
+}
+
+// Ferry (solution de repli, dessinée en code). Le vrai sprite est le SVG
+// assets/boat-ferry.svg, chargé au démarrage par loadBoatSprite() : il
+// remplace celui-ci dès qu'il est prêt (même gabarit 96 × 96).
+function drawFerryFallbackRaw(ctx, x, y, shadow = true) {
+  if (shadow) softShadow(ctx, x, y + 6, 40, 12);
+  ctx.fillStyle = '#2b3339';                       // flanc
+  ctx.fillRect(x - 36, y - 46, 72, 94);
+  ctx.fillStyle = '#e5e8e6';                       // coque
+  ctx.fillRect(x - 34, y - 44, 68, 90);
+  ctx.strokeStyle = '#1d2328';                     // défense
+  ctx.lineWidth = 4;
+  ctx.strokeRect(x - 34, y - 44, 68, 90);
+  ctx.strokeStyle = 'rgba(47,67,86,0.5)';          // filet marine
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x - 30, y - 40, 60, 82);
+  ctx.fillStyle = '#a9ada8';                       // pont
+  ctx.fillRect(x - 28, y - 38, 56, 78);
+  ctx.fillStyle = '#c3c7c3';                       // superstructure
+  ctx.fillRect(x - 20, y - 22, 40, 48);
+  ctx.fillStyle = '#f2f4f2';                       // toit
+  ctx.fillRect(x - 21, y - 26, 42, 44);
+  ctx.fillStyle = '#22303a';                       // bande vitrée
+  ctx.fillRect(x - 17, y + 14, 34, 6);
+  ctx.fillStyle = '#e8eae6';                       // radôme
+  ctx.fillRect(x - 7, y - 14, 14, 4);
+  ctx.fillStyle = '#6d747b';                       // échappement
+  ctx.beginPath(); ctx.arc(x + 12, y - 8, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#14181c';
+  ctx.beginPath(); ctx.arc(x + 12, y - 8, 2.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#9ea39e';                       // pont arrière
+  ctx.fillRect(x - 12, y + 24, 24, 12);
+  ctx.fillStyle = '#4a5158';                       // arbres d'hélice
+  ctx.fillRect(x - 16, y + 40, 3, 8);
+  ctx.fillRect(x + 13, y + 40, 3, 8);
+  ctx.fillStyle = '#2f363c';
+  ctx.beginPath(); ctx.ellipse(x - 15, y + 50, 6, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x + 15, y + 50, 6, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+}
+
 function makeObjectSprite(width, height, anchorX, anchorY, draw) {
   const canvas = makeCanvas(width, height);
   const ctx = canvas.getContext('2d');
@@ -1790,6 +2028,59 @@ function buildObjectSprites() {
   objectCache.caveMouth = makeObjectSprite(76, 88, 38, 80, drawCaveMouthObjectRaw);
   objectCache.caveLadderDown = makeObjectSprite(44, 48, 22, 38, drawCaveLadderDownRaw);
   objectCache.caveLadderUp = makeObjectSprite(44, 48, 22, 38, drawCaveLadderUpRaw);
+  // Le port (côte est) : ouvrages générés par js/harbor.js.
+  objectCache.crane = makeObjectSprite(60, 82, 26, 70, drawCraneRaw);
+  objectCache.containerRed = makeObjectSprite(36, 34, 18, 28,
+    makeContainerRaw('#b4473c', '#c75a4d', '#7d2f27'));
+  objectCache.containerBlue = makeObjectSprite(36, 34, 18, 28,
+    makeContainerRaw('#3f7fa8', '#5794bb', '#2c5a79'));
+  objectCache.containerGreen = makeObjectSprite(36, 34, 18, 28,
+    makeContainerRaw('#4a7a52', '#5f9166', '#33563a'));
+  objectCache.bollard = makeObjectSprite(22, 26, 11, 22, drawBollardRaw);
+  objectCache.lighthouse = makeObjectSprite(48, 100, 24, 88, drawLighthouseRaw);
+  // Le ferry : repli procédural, remplacé par le SVG dès qu'il est chargé.
+  objectCache.ferry = makeObjectSprite(96, 96, 48, 48, drawFerryFallbackRaw);
+}
+
+// ------------------------------------------------------------
+//  Sprite du ferry : on préfère le SVG (assets/boat-ferry.svg) au
+//  repli procédural. Le chargement est asynchrone et FACULTATIF :
+//  en cas d'échec (fichier absent, exécution en Node pour les tests)
+//  le repli reste en place et le jeu tourne sans rien changer.
+// ------------------------------------------------------------
+export const BOAT_SPRITE_SIZE = 96;
+
+export function loadBoatSprite(url = 'assets/boat-ferry.svg') {
+  return new Promise((resolve) => {
+    try {
+      if (typeof Image === 'undefined') return resolve(null);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const size = BOAT_SPRITE_SIZE;
+          const canvas = makeCanvas(size, size);
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, size, size);
+          // Masque (silhouette) : sert aux fissures et à l'overlay de dégâts.
+          const mask = makeCanvas(size, size);
+          const mctx = mask.getContext('2d');
+          mctx.drawImage(canvas, 0, 0);
+          mctx.globalCompositeOperation = 'source-in';
+          mctx.fillStyle = '#ffffff';
+          mctx.fillRect(0, 0, size, size);
+          objectCache.ferry = { canvas, mask, anchorX: size / 2, anchorY: size / 2 };
+          resolve(objectCache.ferry);
+        } catch (err) {
+          console.warn('AVANIA: sprite du ferry', err);
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    } catch (err) {
+      resolve(null);
+    }
+  });
 }
 
 // Dessine un objet de la grotte (ou tout objet statique simple) par son id.

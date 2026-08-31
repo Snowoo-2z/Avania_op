@@ -11,6 +11,7 @@
     "test:multiplayer": "node test/multiplayer.mjs",
     "test:multiplayer:client": "node test/multiplayer-client.mjs",
     "bench": "node scripts/frame-bench.mjs",
+    "preview:port": "node scripts/preview-port.mjs",
     "test:chat": "node test/chat-social.mjs"
   },
   "license": "MIT",

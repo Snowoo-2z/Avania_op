@@ -32,6 +32,7 @@ import {
   DEFAULT_MOB_COUNTS, findMobSpawnSpot, makeMobFromNetwork,
 } from './mobs/index.js';
 import { CAVE, canDescendTo } from './cave.js';
+import { PORT_SIGNS } from './harbor.js';
 // Chat de proximité (étape 6) : le nettoyage du texte d'une bulle utilise
 // le même garde-fou que le réseau, pour qu'un message affiché au-dessus
 // d'un joueur ne puisse jamais contenir de caractère de contrôle.
@@ -321,6 +322,9 @@ export class Game {
     // Panneaux posés : { text, owner } (clé = index de tuile). Seul le
     // joueur dont l'id === owner peut écrire dessus.
     this.signData = new Map();
+    // Les panneaux du port font partie du décor : on les sème une fois,
+    // sans jamais écraser ce qu'un joueur aurait pu y écrire ensuite.
+    this.seedPortSigns();
     // Étals de vente posés : { tier, owner, item, stock, price, till }.
     this.sellerData = new Map();
     // Verrous de vol locaux (clé -> this.time d'expiration) : après un vol
@@ -2734,6 +2738,20 @@ export class Game {
     if (this.world && zone === this.world.id) return this.furnaceData;
     const saved = this.dimStates.get(zone);
     return saved ? saved.furnaceData : null;
+  }
+
+  // Les trois panneaux du port font partie du décor : on les sème au
+  // démarrage, avec owner = -1 (personne ne peut les réécrire — il faut
+  // les casser). Un texte déjà enregistré n'est jamais écrasé.
+  seedPortSigns() {
+    if (this.world.kind !== 'surface') return;
+    for (const s of PORT_SIGNS) {
+      if (!this.world.inBounds(s.tx, s.ty)) continue;
+      const i = this.world.idx(s.tx, s.ty);
+      if (this.world.blocks[i] !== 'sign') continue;
+      if (this.signData.has(i)) continue;
+      this.signData.set(i, { text: s.text, owner: -1 });
+    }
   }
 
   signDataMapForZone(zone) {

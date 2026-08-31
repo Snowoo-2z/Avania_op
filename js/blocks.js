@@ -18,6 +18,13 @@ export const BLOCK_DEFS = {
   sand:      { id: 'sand',      label: 'Sable',   kind: 'floor',  solid: false, breakable: false, drop: null,   color: '#e2c88a' },
   water:     { id: 'water',     label: 'Eau',     kind: 'floor',  solid: true,  breakable: false, drop: null,   color: '#4a9fd8' },
 
+  // --- sols du port (côte est, voir js/harbor.js) ---
+  // Praticables : on marche sur un ponton comme sur un quai. Non creusables :
+  // ce sont des ouvrages, pas de la terre. Poser un bloc dessus reste possible
+  // (le joueur peut agrandir le port).
+  quay:      { id: 'quay',      label: 'Quai',    kind: 'floor',  solid: false, breakable: false, drop: null,   color: '#a9ada8' },
+  dock:      { id: 'dock',      label: 'Ponton',  kind: 'floor',  solid: false, breakable: false, drop: null,   color: '#a8794a' },
+
   // --- sols de la grotte (dimension souterraine) ---
   // caveFloor : le sol praticable. caveWall : la roche massive qui
   // enserre les galeries — c'est un SOL solide (comme l'eau), pas un
@@ -160,7 +167,53 @@ export const BLOCK_DEFS = {
     id: 'caveLadderUp', label: 'Puits remontant', kind: 'object', solid: true, breakable: false,
     drop: null, color: '#3a3440', requiredTool: null, breakTime: 0,
   },
+
+  // ------------------------------------------------------------
+  //  Le port (côte est) : ouvrages et mobilier.
+  //  Décor de monde généré par js/harbor.js — non cassable, comme
+  //  l'entrée de la grotte : ce sont des repères permanents.
+  // ------------------------------------------------------------
+  // Le ferry amarré au quai. Solide : on ne le traverse pas (l'embarquement
+  // arrivera avec la navigation). Son sprite 3×3 tuiles est le SVG
+  // assets/boat-ferry.svg (voir js/tileset.js loadBoatSprite).
+  ferry: {
+    id: 'ferry', label: 'Ferry', kind: 'object', solid: true, breakable: false,
+    drop: null, color: '#e5e8e6', requiredTool: null, breakTime: 0,
+  },
+  // Grue de quai (portique de manutention).
+  crane: {
+    id: 'crane', label: 'Grue de quai', kind: 'object', solid: true, breakable: false,
+    drop: null, color: '#d8a12c', requiredTool: null, breakTime: 0,
+  },
+  // Conteneurs maritimes : trois couleurs, réparties selon la tuile.
+  containerRed: {
+    id: 'containerRed', label: 'Conteneur (rouge)', kind: 'object', solid: true, breakable: false,
+    drop: null, color: '#b4473c', requiredTool: null, breakTime: 0,
+  },
+  containerBlue: {
+    id: 'containerBlue', label: 'Conteneur (bleu)', kind: 'object', solid: true, breakable: false,
+    drop: null, color: '#3f7fa8', requiredTool: null, breakTime: 0,
+  },
+  containerGreen: {
+    id: 'containerGreen', label: 'Conteneur (vert)', kind: 'object', solid: true, breakable: false,
+    drop: null, color: '#4a7a52', requiredTool: null, breakTime: 0,
+  },
+  // Bollard d'amarrage : petit, on marche dessus.
+  bollard: {
+    id: 'bollard', label: 'Bollard', kind: 'object', solid: false, breakable: false,
+    drop: null, color: '#8d9398', requiredTool: null, breakTime: 0,
+  },
+  // Phare, à la pointe de la jetée nord.
+  lighthouse: {
+    id: 'lighthouse', label: 'Phare', kind: 'object', solid: true, breakable: false,
+    drop: null, color: '#eceff0', requiredTool: null, breakTime: 0,
+  },
 };
+
+// Les trois couleurs de conteneurs, dans un ordre stable : js/harbor.js
+// choisit la teinte avec un hash de tuile (donc identique pour tous les
+// joueurs, sans avoir à stocker la couleur).
+export const CONTAINER_KINDS = ['containerRed', 'containerBlue', 'containerGreen'];
 
 // Les stades de croissance du blé, dans l'ordre (semis → mûr).
 export const CROPS = ['wheat0', 'wheat1', 'wheat2', 'wheat3'];

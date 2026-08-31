@@ -70,13 +70,9 @@
       <feGaussianBlur stdDeviation="1.6"/>
     </filter>
 
-    <!-- Contour de la coque (réutilisé) -->
-    <path id="hullOuter" d="M26 12 L102 12 L112 22 L112 106 L102 116 L26 116 L16 106 L16 22 Z"/>
-    <!-- Pont intérieur (même forme, rentrée de 9 px) -->
-    <path id="deckInner" d="M30 21 L98 21 L103 26 L103 102 L98 107 L30 107 L25 102 L25 26 Z"/>
 
-    <clipPath id="deckClip"><use href="#deckInner"/></clipPath>
-    <clipPath id="hullClip"><use href="#hullOuter"/></clipPath>
+    <clipPath id="deckClip"><path d="M30 21 L98 21 L103 26 L103 102 L98 107 L30 107 L25 102 L25 26 Z"/></clipPath>
+    <clipPath id="hullClip"><path d="M26 12 L102 12 L112 22 L112 106 L102 116 L26 116 L16 106 L16 22 Z"/></clipPath>
   </defs>
 
   <!-- Sillage : jets d'hélice + vague d'étrave (décoratif, supprimable) -->
@@ -95,13 +91,13 @@
   <g id="boat" filter="url(#soft)">
 
     <!-- Flanc visible sous la coque (poupe) -->
-    <use href="#hullOuter" y="4" fill="url(#hullShade)"/>
+    <path d="M26 12 L102 12 L112 22 L112 106 L102 116 L26 116 L16 106 L16 22 Z" y="4" fill="url(#hullShade)"/>
     <!-- Face Supérieure du pavois -->
-    <use href="#hullOuter" fill="url(#bulwark)"/>
+    <path d="M26 12 L102 12 L112 22 L112 106 L102 116 L26 116 L16 106 L16 22 Z" fill="url(#bulwark)"/>
     <!-- Boudoir / défense caoutchouc sur tout le pourtour -->
-    <use href="#hullOuter" fill="none" stroke="#1d2328" stroke-width="4"/>
+    <path d="M26 12 L102 12 L112 22 L112 106 L102 116 L26 116 L16 106 L16 22 Z" fill="none" stroke="#1d2328" stroke-width="4"/>
     <!-- Filet bleu marine juste derrière la défense -->
-    <use href="#hullOuter" fill="none" stroke="#2f4356" stroke-width="1.4" opacity="0.5"
+    <path d="M26 12 L102 12 L112 22 L112 106 L102 116 L26 116 L16 106 L16 22 Z" fill="none" stroke="#2f4356" stroke-width="1.4" opacity="0.5"
          transform="translate(64 64) scale(0.9167 0.923) translate(-64 -64)"/>
 
     <!-- Dalots (évacuations d'eau de pont) dans le pavois -->
@@ -120,9 +116,9 @@
       <!-- zones de circulation plus marquées (usure de la peinture) -->
       <rect x="18" y="14" width="92" height="100" fill="url(#deckShade)"/>
       <!-- occlusion ambiante le long du pavois -->
-      <use href="#deckInner" fill="none" stroke="#1d262c" stroke-width="6" opacity="0.22"/>
+      <path d="M30 21 L98 21 L103 26 L103 102 L98 107 L30 107 L25 102 L25 26 Z" fill="none" stroke="#1d262c" stroke-width="6" opacity="0.22"/>
     </g>
-    <use href="#deckInner" fill="none" stroke="#8f948f" stroke-width="2"/>
+    <path d="M30 21 L98 21 L103 26 L103 102 L98 107 L30 107 L25 102 L25 26 Z" fill="none" stroke="#8f948f" stroke-width="2"/>
 
     <!-- ================= Rampe d'embarquement (proue) ================= -->
     <g id="ramp">
@@ -316,6 +312,6 @@
     </g>
 
     <!-- Contour final -->
-    <use href="#hullOuter" fill="none" stroke="#2b3339" stroke-width="1.4" opacity="0.8"/>
+    <path d="M26 12 L102 12 L112 22 L112 106 L102 116 L26 116 L16 106 L16 22 Z" fill="none" stroke="#2b3339" stroke-width="1.4" opacity="0.8"/>
   </g>
 </svg>
