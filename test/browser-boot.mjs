@@ -20,6 +20,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { createCanvas } from '@napi-rs/canvas';
+import { TILE } from '../js/config.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -408,6 +409,142 @@ console.log('\n▶ Jauge de faim');
   game.player.starveT = 0;
   game.player.lastHurtAt = -99;
   await frames(3);
+}
+
+console.log('\n▶ PvP : étal protégé, coup visible, butin au sol');
+{
+  // Une tuile libre à côté du joueur pour poser l'étal de test.
+  const ptx = Math.floor(game.player.x / TILE);
+  const pty = Math.floor(game.player.y / TILE);
+  let stx = null; let sty = null;
+  outer:
+  for (let r = 2; r <= 4; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const tx = ptx + dx; const ty = pty + dy;
+        if (!game.world.inBounds(tx, ty)) continue;
+        if (game.world.isSolidTile(tx, ty)) continue;
+        if (game.world.blockAt(tx, ty)) continue;
+        if (tx === ptx && ty === pty) continue;
+        stx = tx; sty = ty; break outer;
+      }
+    }
+  }
+  if (stx === null) { // diagnostic temporaire
+    let oob = 0, solid = 0, block = 0;
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+      const tx = ptx + dx, ty = pty + dy;
+      if (!game.world.inBounds(tx, ty)) { oob++; continue; }
+      if (game.world.isSolidTile(tx, ty)) { solid++; continue; }
+      if (game.world.blockAt(tx, ty)) { block++; continue; }
+    }
+    console.log(`   [debug] joueur=(${game.player.x.toFixed(0)},${game.player.y.toFixed(0)}) tuile=(${ptx},${pty}) oob=${oob} solid=${solid} block=${block} inBounds(${ptx},${pty})=${game.world.inBounds(ptx, pty)} solid?=${game.world.isSolidTile(ptx, pty)} blockAt=${JSON.stringify(game.world.blockAt(ptx, pty))} performanceMode=${game.performanceMode}`);
+  }
+  assert(stx !== null, `une tuile libre existe près du joueur (${stx},${sty})`);
+  const sIdx = game.world.idx(stx, sty);
+  game.world.blocks[sIdx] = 'seller1';
+  game.reindexPlacedChunk(stx, sty);
+
+  // 1) UN AUTRE joueur a posé l'étal : la pioche n'amorce même pas.
+  game.sellerData.set(sIdx, { tier: 1, owner: 999, item: 'wood', stock: 3, price: 5, till: 0 });
+  game.targetTx = stx; game.targetTy = sty; game.inReach = true;
+  for (let i = 0; i < 600; i++) game.mineTarget(1 / 60);
+  assert(game.world.blocks[sIdx] === 'seller1',
+    'un passant NE PEUT PAS casser l\'étal d\'un autre');
+  assert(game.mining.progress === 0, 'et le minage n\'a même pas commencé');
+
+  // 2) Le propriétaire (hors ligne : id local -1) casse son propre étal.
+  game.sellerData.set(sIdx, { tier: 1, owner: -1, item: 'wood', stock: 2, price: 5, till: 7 });
+  for (let i = 0; i < 1200 && game.world.blocks[sIdx] === 'seller1'; i++) game.mineTarget(1 / 60);
+  assert(game.world.blocks[sIdx] !== 'seller1', 'le propriétaire casse son étal');
+  assert(game.sellerData.get(sIdx) === undefined, 'l\'état de l\'étal est purgé');
+
+  // 3) Le coup porté à un joueur : swing + étincelles + envoi réseau.
+  const rival = {
+    id: 42, name: 'Rival', x: game.player.x + 40, y: game.player.y,
+    facing: 'left', moving: false, walkPhase: 0, hp: 20, maxHp: 20,
+    zone: game.world.id, appearance: {},
+  };
+  game.otherPlayers.push(rival);
+  game.input.mouse.x = (rival.x - game.camera.x) * game.camera.zoom;
+  game.input.mouse.y = ((rival.y - 8) - game.camera.y) * game.camera.zoom;
+  game.pvpCooldown = 0;
+  let sent = null;
+  const prevAttack = game.uiCallbacks.onPlayerAttack;
+  game.uiCallbacks.onPlayerAttack = (id, dmg) => { sent = { id, dmg }; };
+  const partsBefore = game.particles.length;
+  const prevPerf = game.performanceMode;
+  const prevGfx = game.settings.graphics;
+  game.performanceMode = false; // jsdom passe pour un appareil modeste : on force les particules
+  game.settings.graphics = 'high';
+  const aimed = game.tryAttackPlayer();
+  assert(aimed === true && sent && sent.id === 42,
+    `le clic sur un joueur déclenche le coup (dégâts ${sent && sent.dmg})`);
+  assert(game.pvpSwingT > 0, 'l\'arme balance (enfin une animation)');
+  assert(game.particles.length > partsBefore, 'des étincelles giclent sur la victime');
+  game.performanceMode = prevPerf;
+  game.settings.graphics = prevGfx;
+
+  // 4) La victime SAIT qu'elle encaisse : PV en baisse + voile rouge.
+  const hpBefore = game.player.hp;
+  game.applyPlayerAttack(42, 3);
+  assert(game.player.hp === hpBefore - 3, `les dégâts sont appliqués (${hpBefore} → ${game.player.hp})`);
+  assert($('hurt-flash').classList.contains('flash'), 'la victime voit le voile rouge');
+
+  // 5) Mort en PvP : TOUT l'inventaire tombe au sol, partagé au réseau,
+  //    puis le vainqueur (ici : nous, en marchant dessus) le ramasse.
+  const snapshot = game.inventory.slots.map((s) => (s ? { ...s } : null));
+  game.inventory.add('wood', 5);
+  const dropsSent = [];
+  const takenSent = [];
+  const prevDropsSend = game.uiCallbacks.onDropsSend;
+  const prevTakenSend = game.uiCallbacks.onDropTakenSend;
+  game.uiCallbacks.onDropsSend = (batch) => dropsSent.push(...batch);
+  game.uiCallbacks.onDropTakenSend = (netId) => takenSent.push(netId);
+  game.player.hp = 2;
+  game.applyPlayerAttack(42, 5); // coup fatal
+  assert(game.inventory.count('wood') === 0, 'mort : l\'inventaire est vidé');
+  const woodDrop = game.droppedItems.find((d) => d.id === 'wood' && d.count === 5);
+  assert(!!woodDrop && !!woodDrop.netId, 'le stuff est au sol avec un identifiant réseau');
+  await until(() => dropsSent.some((d) => d.netId === woodDrop.netId), 2000);
+  assert(dropsSent.some((d) => d.netId === woodDrop.netId),
+    'le butin est annoncé aux autres joueurs de la zone');
+  assert(game.player.hp === game.player.maxHp, 'respawn : PV rendus');
+
+  // Le « vainqueur » marche sur le butin : ramassage + annonce de retrait.
+  game.player.x = woodDrop.x;
+  game.player.y = woodDrop.y;
+  woodDrop.born = game.time - 10;
+  await until(() => game.inventory.count('wood') >= 5, 2000);
+  assert(game.inventory.count('wood') === 5, 'le vainqueur ramasse le stuff du vaincu');
+  await until(() => takenSent.includes(woodDrop.netId), 2000);
+  assert(takenSent.includes(woodDrop.netId), 'et le drop disparaît chez les autres (dropTaken)');
+
+  // 6) Un drop venu du réseau apparaît et se retire chez nous aussi.
+  game.applyRemoteDrops(game.world.id,
+    [{ netId: 'test-drop-1', item: 'stone', count: 2, x: game.player.x + 4, y: game.player.y, vx: 0, vy: 0 }]);
+  assert(game.droppedItems.some((d) => d.netId === 'test-drop-1'),
+    'un drop annoncé par un autre apparaît chez nous');
+  game.removeRemoteDrop(game.world.id, 'test-drop-1');
+  assert(!game.droppedItems.some((d) => d.netId === 'test-drop-1'),
+    'et disparaît quand quelqu\'un d\'autre le ramasse');
+  game.applyRemoteDrops(game.world.id,
+    [{ netId: 'test-drop-2', item: 'objet-inconnu-du-jeu', count: 1, x: game.player.x, y: game.player.y, vx: 0, vy: 0 }]);
+  assert(!game.droppedItems.some((d) => d.netId === 'test-drop-2'),
+    'un drop d\'objet inconnu du jeu n\'est jamais ajouté (filtre côté jeu)');
+
+  // Remise à neuf : inventaire, PNJ factice, écoutables, sol nettoyé.
+  game.droppedItems.length = 0;
+  game.inventory.drainAll();
+  for (const s of snapshot) if (s) game.inventory.add(s.id, s.count);
+  game.otherPlayers = game.otherPlayers.filter((p) => p.id !== 42);
+  game.uiCallbacks.onPlayerAttack = prevAttack;
+  game.uiCallbacks.onDropsSend = prevDropsSend;
+  game.uiCallbacks.onDropTakenSend = prevTakenSend;
+  game.player.hp = game.player.maxHp;
+  game.player.hunger = game.player.maxHunger;
+  game.player.lastHurtAt = -99;
+  await frames(2);
 }
 
 console.log('\n▶ L\'entrée de la grotte');

@@ -49,7 +49,7 @@ import {
   sanitizeFurnaceState, sanitizeMobList, sanitizeMobInfo,
   sanitizeMobStateList, sanitizeMobHit, sanitizeSignState, sanitizeSellerState,
   sanitizeChatText, sanitizeChatChannel, CHAT_GLOBAL, CHAT_PROXIMITY,
-  PROXIMITY_PX, MAX_CHAT_HISTORY,
+  PROXIMITY_PX, MAX_CHAT_HISTORY, sanitizeDropList,
 } from './js/net-protocol.js';
 
 // --- Réglages, pensés pour Render free ---
@@ -815,6 +815,23 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
         const known = j.get(hit.id);
         if (known) { known.hp = hit.hp; known.alive = hit.alive; }
         broadcastToZone(player.zone, { t: 'mobHit', zone: player.zone, mob: hit }, ws);
+        return;
+      }
+      // Objets au sol partagés (butin de PvP, lâcher volontaire) : relais
+      // pur à la zone, SANS journal — un drop est transitoire (quelques
+      // minutes), le ramassage (« dropTaken ») le retire chez tout le
+      // monde. Le quota JSON par connexion borne déjà le spam.
+      if (msg.t === 'drop') {
+        const drops = sanitizeDropList(msg.drops);
+        if (drops.length === 0) return;
+        broadcastToZone(player.zone, { t: 'drop', zone: player.zone, drops }, ws);
+        return;
+      }
+      if (msg.t === 'dropTaken') {
+        const netId = typeof msg.netId === 'string' ? msg.netId.slice(0, 32) : '';
+        if (!netId) return;
+        broadcastToZone(player.zone, { t: 'dropTaken', zone: player.zone, netId }, ws);
+        return;
       }
     });
 

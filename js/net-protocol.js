@@ -543,3 +543,49 @@ export function sanitizeSocialPostList(src) {
   return out;
 }
 
+// ------------------------------------------------------------
+//  Objets au sol PARTAGÉS (butin de PvP, lâcher volontaire)
+//
+//  Chaque drop porte un netId unique (id du poseur + séquence + sel) :
+//  le client qui ramasse diffuse « dropTaken » et tous les autres
+//  retirent l'objet. Transitoire par nature : RIEN n'est journalisé
+//  côté serveur (un objet au sol vit quelques minutes, inutile de le
+//  resynchroniser à un arrivant).
+// ------------------------------------------------------------
+export const MAX_DROPS_PER_MESSAGE = 16;
+const MAX_DROP_COORD = MAX_WORLD_TILE * TILE_PX * 2; // pixels, marge large
+const MAX_DROP_SPEED = 600;
+
+export function sanitizeDropInfo(src) {
+  if (!src || typeof src !== 'object') return null;
+  const netId = typeof src.netId === 'string' && src.netId.length > 0 && src.netId.length <= 32
+    ? src.netId
+    : null;
+  const item = validId(src.item) ? src.item : null;
+  if (!netId || !item) return null;
+  const count = Math.trunc(Number(src.count));
+  const bounded = (v, max) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.max(-max, Math.min(max, n)) : 0;
+  };
+  return {
+    netId,
+    item,
+    count: Number.isFinite(count) ? Math.max(1, Math.min(999, count)) : 1,
+    x: bounded(src.x, MAX_DROP_COORD),
+    y: bounded(src.y, MAX_DROP_COORD),
+    vx: bounded(src.vx, MAX_DROP_SPEED),
+    vy: bounded(src.vy, MAX_DROP_SPEED),
+  };
+}
+
+export function sanitizeDropList(src) {
+  const out = [];
+  if (!Array.isArray(src)) return out;
+  for (let i = 0; i < src.length && out.length < MAX_DROPS_PER_MESSAGE; i++) {
+    const drop = sanitizeDropInfo(src[i]);
+    if (drop) out.push(drop);
+  }
+  return out;
+}
+

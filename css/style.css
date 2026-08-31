@@ -134,6 +134,25 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+/* Voile rouge quand on encaisse un coup (PvP) : plein écran, non cliquable,
+   animé une seule fois par coup (classe .flash reposée via reflow). */
+#hurt-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+  opacity: 0;
+  background: radial-gradient(ellipse at center,
+    rgba(214, 57, 68, 0) 42%,
+    rgba(214, 57, 68, 0.5) 100%);
+}
+#hurt-flash.flash { animation: hurt-flash 0.45s ease-out; }
+@keyframes hurt-flash {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+html.low-power #hurt-flash { display: none; }
+
 /* Jauge de faim : même pill que la vie, empilée AU-DESSUS (bottom 102px
    + hauteur de la pill vie + espace). Orange : la viande, le blé. */
 .hunger-hud {

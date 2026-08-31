@@ -180,6 +180,18 @@ export class Inventory {
     return Math.floor(amount) - remaining;
   }
 
+  // Vide TOUT l'inventaire et renvoie les piles récupérées : c'est le
+  // butin qui tombe au sol quand on meurt en PvP (voir game.js).
+  drainAll() {
+    const out = [];
+    for (let i = 0; i < this.slots.length; i++) {
+      if (this.slots[i]) out.push(this.slots[i]);
+      this.slots[i] = null;
+    }
+    this._touch();
+    return out;
+  }
+
   remove(item, amount = 1) {
     if (amount <= 0 || !this.has(item, amount)) return false;
     this._removeInternal(item, amount);

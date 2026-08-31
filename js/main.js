@@ -247,6 +247,9 @@ async function boot() {
       game.applyRemoteSellerChange(zone, tx, ty, state);
     },
     onSellerSync: (zone, sellers) => game.applySellerSync(zone, sellers),
+    // Objets au sol partagés (butin de PvP, lâcher volontaire).
+    onDropSpawn: (zone, drops) => game.applyRemoteDrops(zone, drops),
+    onDropTaken: (zone, netId) => game.removeRemoteDrop(zone, netId),
     // Message ciblé : tentative de vol (toast) ou alarme (téléport proposé).
     onNotify: (payload) => handleSellerNotify(payload),
     // PvP : coup reçu → j'applique ; PV distants → barre de vie.
@@ -470,6 +473,9 @@ async function boot() {
   // PvP : je déclare un coup porté (la victime applique) + j'annonce mes PV.
   game.uiCallbacks.onPlayerAttack = (id, dmg) => multiplayer.sendPlayerAttack(id, dmg);
   game.uiCallbacks.onPlayerHp = (hp) => multiplayer.sendPlayerHp(Math.round(hp));
+  // Drops partagés : l'annonce (spawn) part groupée, le ramassage aussi.
+  game.uiCallbacks.onDropsSend = (drops) => multiplayer.sendDrops(drops);
+  game.uiCallbacks.onDropTakenSend = (netId) => multiplayer.sendDropTaken(netId);
 
   // ============================================================
   //  Communication : chat (global + proximité) et téléphone

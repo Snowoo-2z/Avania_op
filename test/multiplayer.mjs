@@ -281,6 +281,37 @@ try {
   alice.off('message', onExtra);
   assert(!extraFrame, 'aucune trame renvoyée si aucune position n\'a changé depuis la dernière');
 
+  console.log('\n▶ Drops partagés (butin de PvP, lâcher volontaire)');
+  {
+    // Alice fait apparaître un objet au sol : Bob (même zone) doit le voir.
+    const dropSeen = waitForJson(bob, (m) => m.t === 'drop');
+    alice.send(JSON.stringify({
+      t: 'drop',
+      drops: [{ netId: 'a-1', item: 'wood', count: 3, x: 100, y: 120, vx: 0, vy: 0 }],
+    }));
+    const dm = await dropSeen;
+    assert(Array.isArray(dm.drops) && dm.drops.length === 1
+      && dm.drops[0].netId === 'a-1' && dm.drops[0].item === 'wood' && dm.drops[0].count === 3,
+      'le drop traverse vers les autres joueurs de la zone');
+    // Le ramassage par Alice le retire chez Bob.
+    const takeSeen = waitForJson(bob, (m) => m.t === 'dropTaken' && m.netId === 'a-1');
+    alice.send(JSON.stringify({ t: 'dropTaken', netId: 'a-1' }));
+    await takeSeen;
+    assert(true, 'et le ramassage (« dropTaken ») le retire chez les autres');
+    // Un drop trop gros (id d'objet de 100 caractères) ne traverse pas :
+    // le relais est borné en taille, le catalogue reste côté jeu.
+    let leaked = false;
+    const onLeak = (data, isBinary) => {
+      if (isBinary) return;
+      try { if (JSON.parse(data.toString('utf8')).t === 'drop') leaked = true; } catch { /* non-JSON */ }
+    };
+    bob.on('message', onLeak);
+    alice.send(JSON.stringify({ t: 'drop', drops: [{ netId: 'a-2', item: 'x'.repeat(100), count: 1 }] }));
+    await sleep(300);
+    bob.off('message', onLeak);
+    assert(!leaked, 'un drop mal formé (id géant) est refusé au relais');
+  }
+
   console.log('\n▶ Départ propre');
   const leaveSeenByAlice = waitForJson(alice, (m) => m.t === 'leave' && m.id === welcomeBob.id);
   bob.close();

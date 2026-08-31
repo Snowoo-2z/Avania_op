@@ -1240,6 +1240,23 @@ console.log('\n▶ Non-régressions (bugs trouvés par le test navigateur)');
   assert(itemMatchScore('je vends des patates', 'mask_cloth', ITEM_DEFS) === 0,
     'un propos hors catalogue ne correspond à rien');
 
+  // 2b) Objets au sol partagés (butin de PvP) : netId + objet valide
+  //     exigés, compteurs et vitesses bornés, liste plafonnée.
+  const { sanitizeDropInfo, sanitizeDropList } = await import('../js/net-protocol.js');
+  const okDrop = sanitizeDropInfo({ netId: '3-7-abc', item: 'wood', count: 3, x: 100, y: 200, vx: -50, vy: 9999 });
+  assert(okDrop && okDrop.netId === '3-7-abc' && okDrop.count === 3 && okDrop.vy === 600,
+    'un drop valide passe (vitesse bornée)');
+  assert(sanitizeDropInfo({ netId: '', item: 'wood', count: 1 }) === null,
+    'un drop sans netId est refusé');
+  assert(sanitizeDropInfo({ netId: 'x', item: 'objet-inconnu-du-jeu', count: 1 }) !== null,
+    'le protocole reste ignorant du catalogue (le filtre vit côté jeu)');
+  assert(sanitizeDropInfo({ netId: 'x', item: 42, count: 1 }) === null
+    && sanitizeDropInfo({ netId: 'x'.repeat(64), item: 'wood', count: 1 }) === null,
+    'un drop sans objet texte ou au netId trop long est refusé');
+  assert(sanitizeDropList(Array.from({ length: 30 }, (_, i) => ({
+    netId: `n${i}`, item: 'wood', count: 1,
+  }))).length === 16, 'une rafale de drops est plafonnée par message');
+
   // 3) Les marchands attendent sur le parvis, pas seulement sous terre.
   //    world.merchantSpots n'était renseigné que pour la grotte : à la
   //    surface, personne ne venait jamais.
