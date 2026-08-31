@@ -29,7 +29,7 @@ import {
 import { BLOCK_DEFS } from '../js/blocks.js';
 import { TILE, BLOCK_EXTRUDE } from '../js/config.js';
 
-// Fenêtre rendue (tuiles). Assez large pour le bassin et le hangar, avec
+// Fenêtre rendue (tuiles). Assez large pour le bassin et la cour, avec
 // de la marge en haut pour le phare (sprite de 100 px).
 const X0 = 88, Y0 = 40, X1 = 127, Y1 = 88;
 const W = X1 - X0 + 1;

@@ -12,10 +12,10 @@
 //     y=64 │ ▓▓▓▓▓▓▓▓▓▓▓                                        │
 //     y=78 │ ▓▓▓ quai ▓▓▓                                        │
 //     y=81 └───────────── jetée sud (ponton + parapet) ──────────┘
-//          tx=108  tx=111                        tx=125    tx=127
+//          tx=104  tx=111                        tx=125    tx=127
+//           (cour)
 //
-//  À l'ouest : la cour de stockage (terre), le hangar en briques et
-//  la route qui redescend vers le centre de l'île.
+//  À l'ouest : la cour de stockage (terre) et ses piles de conteneurs.
 // ============================================================
 
 import { CONTAINER_KINDS } from './blocks.js';
@@ -31,10 +31,6 @@ export const PORT = {
   moleS: { x0: 111, y0: 79, x1: 125, y1: 81 },
   // La cour de stockage, à terre.
   yard: { x0: 104, y0: 50, x1: 107, y1: 78 },
-  // Le hangar (murs de briques, vitrages, porte au sud).
-  store: { x0: 95, y0: 53, x1: 103, y1: 62 },
-  // La route de terre qui relie le port au centre de l'île.
-  road: { x0: 72, y0: 64, x1: 107, y1: 65 },
   // Le ferry amarré (tuile d'ancrage : son sprite couvre 3 × 3 tuiles).
   ferry: { tx: 113, ty: 64 },
   // Le phare, à la pointe de la jetée nord.
@@ -43,14 +39,12 @@ export const PORT = {
 
 // Zones nettoyées avant construction (aucun arbre, rocher ni minerai ne
 // doit pousser au milieu d'un mur ou dans le bassin).
-const CLEAR_PORT = { x0: 93, y0: 43, x1: 127, y1: 85 };
-const CLEAR_ROAD = { x0: 70, y0: 62, x1: 107, y1: 67 };
+const CLEAR_PORT = { x0: 102, y0: 43, x1: 127, y1: 85 };
 
 // Panneaux plantés à l'arrivée du port (le texte est semé par js/game.js).
 export const PORT_SIGNS = [
   { tx: 101, ty: 66, text: "PORT D'AVANIA" },
   { tx: 109, ty: 66, text: 'QUAI EST' },
-  { tx: 100, ty: 63, text: 'HANGAR' },
 ];
 
 // Parcourt un rectangle inclusif en ignorant ce qui sort de la carte.
@@ -79,15 +73,14 @@ export function buildHarbor(world) {
   carveBay(world);
   buildQuay(world);
   buildMoles(world);
-  buildYardAndRoad(world);
-  buildWarehouse(world);
+  buildYard(world);
   placeFurniture(world);
   return PORT;
 }
 
 // 1) On rase les ressources naturelles : le port remplace la forêt.
 function clearZone(world) {
-  for (const r of [CLEAR_PORT, CLEAR_ROAD]) {
+  for (const r of [CLEAR_PORT]) {
     eachTile(world, r, (tx, ty, i) => {
       world.blocks[i] = null;
       world.blocks2[i] = null;
@@ -119,41 +112,9 @@ function buildMoles(world) {
   for (let tx = PORT.moleS.x0; tx <= PORT.moleS.x1; tx++) world.setBlock(tx, PORT.moleS.y1, 'stone');
 }
 
-// 5) La cour de stockage et la route qui redescend vers le spawn.
-function buildYardAndRoad(world) {
+// 5) La cour de stockage : de la terre battue derrière le quai.
+function buildYard(world) {
   eachTile(world, PORT.yard, (tx, ty, i) => { world.floor[i] = 'dirt'; });
-  eachTile(world, PORT.road, (tx, ty, i) => { world.floor[i] = 'dirt'; });
-  // petit embranchement de la route vers la porte du hangar
-  const i = world.idx(99, 63);
-  world.floor[i] = 'dirt';
-}
-
-// 6) Le hangar : murs de briques, vitrages, porte au sud, et de quoi
-//    démarrer un chantier à l'intérieur (coffres, four, torches).
-function buildWarehouse(world) {
-  const s = PORT.store;
-  eachTile(world, s, (tx, ty, i) => {
-    const edge = tx === s.x0 || tx === s.x1 || ty === s.y0 || ty === s.y1;
-    world.floor[i] = 'dirt';
-    if (edge) world.blocks[i] = 'brick';
-  });
-
-  // Porte (au centre du mur sud) et fenêtres sur les quatre faces.
-  world.blocks[world.idx(99, s.y1)] = 'door';
-  const windows = [
-    [97, s.y1], [101, s.y1],   // sud
-    [97, s.y0], [101, s.y0],   // nord
-    [s.x0, 56], [s.x0, 59],    // ouest
-    [s.x1, 56], [s.x1, 59],    // est
-  ];
-  for (const [tx, ty] of windows) world.blocks[world.idx(tx, ty)] = 'glass';
-
-  // Intérieur : deux coffres de stockage, un four, deux torches.
-  world.blocks[world.idx(96, 55)] = 'chest';
-  world.blocks[world.idx(102, 55)] = 'chest';
-  world.blocks[world.idx(102, 60)] = 'furnace';
-  world.blocks[world.idx(96, 58)] = 'torch';
-  world.blocks[world.idx(99, 54)] = 'torch';
 }
 
 // 7) Le mobilier : ferry, phare, grues, conteneurs et bollards.

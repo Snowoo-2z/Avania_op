@@ -1921,9 +1921,22 @@ function drawLighthouseRaw(ctx, x, y, shadow = true) {
   ctx.beginPath(); ctx.arc(x, y - 76, 17, 0, Math.PI * 2); ctx.fill();
 }
 
-// Ferry (solution de repli, dessinée en code). Le vrai sprite est le SVG
-// assets/boat-ferry.svg, chargé au démarrage par loadBoatSprite() : il
-// remplace celui-ci dès qu'il est prêt (même gabarit 96 × 96).
+// Gabarit du ferry : 5 × 5 tuiles, pour qu'il porte vraiment à côté du quai.
+// Le SVG et le repli procédural sont tous les deux rendus à cette taille.
+export const BOAT_SPRITE_SIZE = 160;
+
+// Ferry (solution de repli, dessinée en code) : tracé à l'échelle 96 puis
+// agrandi au gabarit courant, autour de son point d'ancrage.
+function drawFerryFallbackScaled(ctx, x, y, shadow = true) {
+  const k = BOAT_SPRITE_SIZE / 96;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(k, k);
+  ctx.translate(-x, -y);
+  drawFerryFallbackRaw(ctx, x, y, shadow);
+  ctx.restore();
+}
+
 function drawFerryFallbackRaw(ctx, x, y, shadow = true) {
   if (shadow) softShadow(ctx, x, y + 6, 40, 12);
   ctx.fillStyle = '#2b3339';                       // flanc
@@ -2039,7 +2052,8 @@ function buildObjectSprites() {
   objectCache.bollard = makeObjectSprite(22, 26, 11, 22, drawBollardRaw);
   objectCache.lighthouse = makeObjectSprite(48, 100, 24, 88, drawLighthouseRaw);
   // Le ferry : repli procédural, remplacé par le SVG dès qu'il est chargé.
-  objectCache.ferry = makeObjectSprite(96, 96, 48, 48, drawFerryFallbackRaw);
+  objectCache.ferry = makeObjectSprite(BOAT_SPRITE_SIZE, BOAT_SPRITE_SIZE,
+    BOAT_SPRITE_SIZE / 2, BOAT_SPRITE_SIZE / 2, drawFerryFallbackScaled);
 }
 
 // ------------------------------------------------------------
@@ -2048,8 +2062,6 @@ function buildObjectSprites() {
 //  en cas d'échec (fichier absent, exécution en Node pour les tests)
 //  le repli reste en place et le jeu tourne sans rien changer.
 // ------------------------------------------------------------
-export const BOAT_SPRITE_SIZE = 96;
-
 export function loadBoatSprite(url = 'assets/boat-ferry.svg') {
   return new Promise((resolve) => {
     try {
@@ -2060,6 +2072,9 @@ export function loadBoatSprite(url = 'assets/boat-ferry.svg') {
           const size = BOAT_SPRITE_SIZE;
           const canvas = makeCanvas(size, size);
           const ctx = canvas.getContext('2d');
+          // Le SVG est un vectoriel : on veut un agrandissement lisse, pas
+          // le rendu « pixel art » par défaut des autres sprites.
+          ctx.imageSmoothingEnabled = true;
           ctx.drawImage(img, 0, 0, size, size);
           // Masque (silhouette) : sert aux fissures et à l'overlay de dégâts.
           const mask = makeCanvas(size, size);

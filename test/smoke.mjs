@@ -8,7 +8,7 @@ import { Player } from '../js/player.js';
 import { Inventory } from '../js/inventory.js';
 import { appearanceColors } from '../js/character.js';
 import { TILE, BLOCK_EXTRUDE } from '../js/config.js';
-import { BLOCK_DEFS, ITEM_DEFS } from '../js/blocks.js';
+import { BLOCK_DEFS, ITEM_DEFS, CONTAINER_KINDS } from '../js/blocks.js';
 import { treeVariantAt, treeDropCount, treeBreakTime, TREE_VARIANTS, resolveBlockFaces } from '../js/tileset.js';
 
 let failures = 0;
@@ -62,10 +62,8 @@ assert(w1.blockAt(125, 48) === 'lighthouse', 'le phare veille à la pointe');
 assert(w1.blockAt(110, 56) === 'crane', 'une grue est en place sur le quai');
 assert(w1.blockAt(110, 51) === 'bollard', 'les bollards bordent le quai');
 assert(!w1.isSolidTile(110, 51), 'on marche sur un bollard');
-assert(w1.blockAt(99, 53) === 'brick', 'le hangar a des murs de briques');
-assert(w1.blockAt(99, 62) === 'door', 'le hangar ouvre au sud');
-assert(w1.blockAt(96, 55) === 'chest', 'un coffre attend dans le hangar');
-assert(w1.floor[w1.idx(80, 64)] === 'dirt', 'la route relie le port au centre');
+assert(w1.floor[w1.idx(105, 60)] === 'dirt', 'la cour de stockage est en terre');
+assert(CONTAINER_KINDS.includes(w1.blockAt(105, 52)), 'les conteneurs sont empilés dans la cour');
 
 console.log('▶ Casser / Poser des blocs');
 // trouve un arbre

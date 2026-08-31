@@ -112,7 +112,8 @@ export class World {
     this.setBlock(cx - 3, cy - 4, 'ironOre');
 
     // 5) Le port, sur la côte EST : une darse creusée dans la carte, deux
-    //    jetées, un quai, un hangar et le ferry amarré (voir js/harbor.js).
+    //    jetées, un quai, une cour de stockage et le ferry amarré
+//    (voir js/harbor.js).
     //    C'est le seul ouvrage pré-construit de l'île : un point de
     //    ralliement, et le départ des traversées.
     buildHarbor(this);
