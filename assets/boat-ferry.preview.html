@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AVANIA — aperçu du ferry carré</title>
+<style>
+  :root{
+    --uiBg:#0f1a13; --uiPanel:#16261c; --uiBorder:#2c4634;
+    --uiText:#eef6ee; --uiMuted:#9ab7a2; --accent:#7ccf6a; --accent2:#f2c14e;
+    --water:#4a9fd8; --waterDeep:#3a86c0;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--uiBg); color:var(--uiText);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  header{padding:22px 24px 10px}
+  h1{margin:0;font-size:20px;letter-spacing:.3px}
+  header p{margin:4px 0 0;color:var(--uiMuted)}
+  .scene{
+    position:relative;height:340px;margin:14px 24px;border-radius:14px;
+    border:1px solid var(--uiBorder);overflow:hidden;
+    background:linear-gradient(180deg,var(--waterDeep) 0%,var(--water) 55%,#57abdd 100%);
+    display:grid;place-items:center;
+  }
+  /* vagues : deux couches qui défilent en sens inverse */
+  .scene::before,.scene::after{
+    content:"";position:absolute;inset:-40% -10%;pointer-events:none;
+    background:
+      radial-gradient(ellipse 60px 10px at 20% 30%, rgba(255,255,255,.22), transparent 70%),
+      radial-gradient(ellipse 90px 12px at 70% 55%, rgba(255,255,255,.16), transparent 70%),
+      radial-gradient(ellipse 70px 9px  at 40% 78%, rgba(255,255,255,.18), transparent 70%);
+    animation:drift 9s linear infinite;
+  }
+  .scene::after{animation-duration:14s;animation-direction:reverse;opacity:.7}
+  @keyframes drift{from{transform:translateX(-6%)}to{transform:translateX(6%)}}
+  .boat{position:relative;width:272px;filter:drop-shadow(0 6px 10px rgba(8,32,54,.35));animation:bob 4.2s ease-in-out infinite}
+  .boat img{width:100%;display:block}
+  @keyframes bob{
+    0%,100%{transform:translateY(0) rotate(-.6deg)}
+    50%    {transform:translateY(-7px) rotate(.6deg)}
+  }
+  .grid{display:flex;gap:18px;flex-wrap:wrap;padding:0 24px 8px}
+  .card{
+    background:var(--uiPanel);border:1px solid var(--uiBorder);border-radius:12px;
+    padding:12px;text-align:center;
+  }
+  .card .tile{
+    width:132px;height:132px;border-radius:8px;display:grid;place-items:center;
+    background:linear-gradient(160deg,#57abdd,var(--waterDeep));
+    background-size:32px 32px;
+    background-image:
+      linear-gradient(rgba(255,255,255,.07) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(255,255,255,.07) 1px,transparent 1px),
+      linear-gradient(160deg,#57abdd,var(--waterDeep));
+    image-rendering:auto;
+  }
+  .card span{display:block;margin-top:8px;color:var(--uiMuted);font-size:12px}
+  h2{font-size:15px;margin:22px 24px 8px}
+  .pal{display:flex;gap:10px;flex-wrap:wrap;padding:0 24px 28px}
+  .sw{width:74px;text-align:center;font-size:11px;color:var(--uiMuted)}
+  .sw i{display:block;height:34px;border-radius:8px;border:1px solid rgba(255,255,255,.14);margin-bottom:4px}
+  footer{padding:0 24px 28px;color:var(--uiMuted);font-size:12px}
+  code{background:var(--uiPanel);border:1px solid var(--uiBorder);border-radius:5px;padding:1px 5px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🚢 Ferry carré — vue de dessus</h1>
+  <p>Sprite de transport de passagers : coque carrée en bois, cabine centrale, bancs latéraux,
+     rampe d'embarquement à la proue, moteur + hélice à la poupe.</p>
+</header>
+
+<div class="scene">
+  <div class="boat"><img src="boat-ferry.svg" alt="Ferry carré, vue de dessus"></div>
+</div>
+
+<h2>Lisibilité selon la taille (sur tuile d'eau 32 px)</h2>
+<div class="grid">
+  <div class="card"><div class="tile"><img src="boat-ferry.svg" width="128" height="128" alt=""></div><span>128 px — asset source</span></div>
+  <div class="card"><div class="tile"><img src="boat-ferry.svg" width="96"  height="96"  alt=""></div><span>96 px — 3 × 3 tuiles</span></div>
+  <div class="card"><div class="tile"><img src="boat-ferry.svg" width="64"  height="64"  alt=""></div><span>64 px — 2 × 2 tuiles</span></div>
+  <div class="card"><div class="tile"><img src="boat-ferry.svg" width="32"  height="32"  alt=""></div><span>32 px — icône (trop petit : à simplifier)</span></div>
+</div>
+
+<h2>Palette (alignée sur <code>js/config.js</code>)</h2>
+<div class="pal">
+  <div class="sw"><i style="background:#7a5230"></i>bois coque</div>
+  <div class="sw"><i style="background:#c08a4e"></i>lattes pont</div>
+  <div class="sw"><i style="background:#d9534f"></i>toit cabine</div>
+  <div class="sw"><i style="background:#f2ede0"></i>crème</div>
+  <div class="sw"><i style="background:#6fb8e8"></i>vitres</div>
+  <div class="sw"><i style="background:#5a5f66"></i>métal</div>
+  <div class="sw"><i style="background:#f2c14e"></i>accent</div>
+  <div class="sw"><i style="background:#4a9fd8"></i>eau</div>
+</div>
+
+<footer>
+  Fichier : <code>assets/boat-ferry.svg</code> — fond transparent, groupe <code>#wake</code> (sillage)
+  supprimable pour l'intégration en jeu.
+</footer>
+
+</body>
+</html>
