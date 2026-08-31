@@ -10,6 +10,7 @@ import { PERFORMANCE, TILE } from './config.js';
 import {
   openCharacterCreation, HUD, WalletHUD, Hotbar, InventoryPanel, Crafting,
   FurnacePanel, ChestPanel, SignEditor, SellerPanel, StealGame, playAlarm,
+  HealthHUD, HungerHUD,
 } from './ui.js';
 import { SlotManager } from './slots.js';
 import { initIcons } from './icons.js';
@@ -90,6 +91,14 @@ resize();
 
 const hud = new HUD(document.getElementById('hud'));
 const hotbar = new Hotbar(document.getElementById('hotbar'), null);
+// Barre de vie : au-dessus de la barre rapide, mise à jour à chaque frame
+// (voir le rappel onFrameEnd plus bas) — les PV régénèrent en continu.
+const healthHUD = new HealthHUD(document.getElementById('health-hud'));
+// Jauge de faim : empilée au-dessus de la barre de vie, même mécanique.
+const hungerHUD = new HungerHUD(document.getElementById('hunger-hud'), {
+  fillId: 'hunger-fill',
+  textId: 'hunger-text',
+});
 
 // --- Écran de chargement animé ---
 const loadingScreen    = document.getElementById('loading-screen');
@@ -238,6 +247,9 @@ async function boot() {
       game.applyRemoteSellerChange(zone, tx, ty, state);
     },
     onSellerSync: (zone, sellers) => game.applySellerSync(zone, sellers),
+    // Objets au sol partagés (butin de PvP, lâcher volontaire).
+    onDropSpawn: (zone, drops) => game.applyRemoteDrops(zone, drops),
+    onDropTaken: (zone, netId) => game.removeRemoteDrop(zone, netId),
     // Message ciblé : tentative de vol (toast) ou alarme (téléport proposé).
     onNotify: (payload) => handleSellerNotify(payload),
     // PvP : coup reçu → j'applique ; PV distants → barre de vie.
@@ -318,6 +330,8 @@ async function boot() {
 
   game.start();
   hud.show();
+  healthHUD.show();
+  hungerHUD.show();
   document.getElementById('craft-btn').classList.remove('hidden');
 
   document.getElementById('settings-btn').classList.remove('hidden');
@@ -459,6 +473,9 @@ async function boot() {
   // PvP : je déclare un coup porté (la victime applique) + j'annonce mes PV.
   game.uiCallbacks.onPlayerAttack = (id, dmg) => multiplayer.sendPlayerAttack(id, dmg);
   game.uiCallbacks.onPlayerHp = (hp) => multiplayer.sendPlayerHp(Math.round(hp));
+  // Drops partagés : l'annonce (spawn) part groupée, le ramassage aussi.
+  game.uiCallbacks.onDropsSend = (drops) => multiplayer.sendDrops(drops);
+  game.uiCallbacks.onDropTakenSend = (netId) => multiplayer.sendDropTaken(netId);
 
   // ============================================================
   //  Communication : chat (global + proximité) et téléphone
@@ -669,8 +686,10 @@ async function boot() {
     merchantChat.open(npc);
     merchantChat.updateStatus();
     if (!merchantChat.el.log.children.length) {
-      const greeting = greetMerchant(state, ITEM_DEFS, game.time);
-      if (greeting.text) merchantChat.applyReply(greeting);
+      // L'accueil (et l'offre d'ouverture) vient de l'IA quand elle est
+      // configurée : greetMerchant est async, les petits points tiennent
+      // la place le temps de la réplique.
+      merchantChat.playGreeting(greetMerchant(state, ITEM_DEFS, game.time));
     }
     syncPause();
   }
@@ -765,6 +784,11 @@ async function boot() {
   game.uiCallbacks.onFrameEnd = (dt) => {
     if (intro.active) intro.update(dt);
     updateInteractPrompt();
+    // Barres de vie et de faim : la régénération et le drainage sont
+    // continus, on suit chaque frame. Les HUD ignorent les frames où la
+    // valeur affichée n'a pas changé.
+    healthHUD.setHp(game.player.hp, game.player.maxHp);
+    hungerHUD.setHp(game.player.hunger, game.player.maxHunger);
   };
 
   // L'arrivée du représentant se joue une seule fois, après le tutoriel :

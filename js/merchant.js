@@ -98,7 +98,7 @@ export const MERCHANTS = {
     items: ['mask_cloth', 'mask_filter', 'mask_sealed'],
     margin: 0.5,        // marge d'ouverture
     minMargin: 0.08,    // il ne descend quasiment jamais sous 8 % de marge
-    patience: 6,        // messages avant de mettre dehors
+    patience: 10,       // messages de NÉGOCIATION avant de mettre dehors
     temper: 0.6,        // 0 = flegmatique, 1 = sanguin
     cooldown: 45,       // secondes pendant lesquelles il refuse de parler
     voice: 'bavard et bonimenteur, il adore raconter la fabrication et'
@@ -113,7 +113,11 @@ export const MERCHANTS = {
     items: ['armor_leather', 'armor_reinforced', 'armor_full'],
     margin: 0.42,
     minMargin: 0.15,    // plus raide que Gaspard
-    patience: 4,
+    // La patience ne compte que la NÉGOCIATION : poser des questions
+    // (catalogue, prix, origine) n'en consomme pas (voir accountMessage).
+    // À 4, un client poli qui demandait simplement son prix était mis
+    // dehors au 4e message — donc sans jamais pouvoir acheter.
+    patience: 8,
     temper: 0.9,
     cooldown: 45,
     voice: 'bourru, phrases courtes, il ne répète pas deux fois et'

@@ -69,6 +69,14 @@ const LEXICON = {
     'je le prends', 'je la prends', 'j achete', 'je prends', 'marche conclu', 'conclu',
     'd accord', 'ok ', 'ok!', 'ok.', 'vas y', 'banco', 'je paye', 'affaire conclue',
     'c est bon je', 'je signe',
+    // Le joueur écrit « je vais le prendre », « tu me le vends ? »,
+    // « je veux acheter » — autant de façons de conclure qui n'étaient
+    // pas reconnues : Aldric restait alors sur « Lequel ? » sans
+    // jamais rien mettre sur la table.
+    'acheter', 'prendre', 'je le veux', 'je la veux',
+    'je vais le prendre', 'je vais la prendre',
+    'me le vends', 'me la vends', 'vends le moi', 'vends la moi',
+    'je suis preneur', 'je suis preneuse', 'ca m interesse', 'interesse',
   ],
   leave: ['au revoir', 'a bientot', 'salut ', 'je pars', 'laisse tomber', 'oubliez', 'oublie', 'ciao', 'bonne journee'],
   discount: ['reduction', 'remise', 'geste', 'un effort', 'moins cher', 'baisser', 'baisse', 'rabais', 'prix d ami', 'cadeau'],
@@ -235,15 +243,30 @@ export function accountMessage(state, message, now = 0) {
   const def = MERCHANTS[state.id];
   const text = String(message || '');
   state.messages += 1;
-  state.patienceLeft -= 1;
 
   const insulted = hasIntent(text, 'insult');
+
+  // Une question d'information — salutation, catalogue, prix, origine,
+  // profondeur — n'use PAS la patience : on ne met pas un client dehors
+  // pour avoir demandé combien ça coûte. C'est le marchandage (offres,
+  // remises demandées) et le bavardage qui l'usent. Avant cette règle,
+  // la patience d'Aldric (4) était consumée par « bonjour »,
+  // « tu vends quoi ? » et « c'est combien ? » : il mettait dehors un
+  // client qui n'avait encore rien proposé — et l'achat n'arrivait jamais.
+  const asksInfo = !hasIntent(text, 'discount')
+    && (hasIntent(text, 'greeting') || hasIntent(text, 'catalog')
+      || hasIntent(text, 'origin') || hasIntent(text, 'depth')
+      || hasIntent(text, 'askPrice'));
+  if (!asksInfo) state.patienceLeft -= 1;
+
   if (insulted) {
     state.mood = Math.max(0, state.mood - 0.45 * def.temper);
     state.patienceLeft -= 2;
   }
-  // Une conversation qui s'étire use aussi la patience, doucement.
-  if (state.messages > 8) state.patienceLeft -= 0.5;
+
+  // Une conversation de négociation qui s'étire use aussi la patience,
+  // doucement.
+  if (!asksInfo && state.messages > 8) state.patienceLeft -= 0.5;
 
   // Une proposition indécente répétée use la patience encore plus vite.
   if (state.lowballs >= 3) state.patienceLeft -= 2;
@@ -281,6 +304,30 @@ export function merchantReply(state, briefing, message, defs = {}) {
 
   const out = [];
 
+  // --- 2) quel article est en discussion ? ---
+  // Calculé AVANT l'intention d'achat : « je prends la renforcée » doit
+  // conclure sur la renforcée, pas sur l'article qui traînait de la
+  // réplique précédente.
+  const mentioned = mentionedItem(text, def.items, defs);
+  if (mentioned) {
+    state.discussing = mentioned;
+    state.currentPrice = suggestedPrice(mentioned, def.margin);
+    state.lowballs = 0;
+  }
+
+  // Met l'article d'appel (entrée de gamme) sur la table et le propose :
+  // sert dès qu'une intention d'achat ou de prix n'est rattachée à
+  // aucun article précis. Sans ça, « c'est combien ? » ou « je prends »
+  // en début de conversation ne débouchaient sur rien de cliquable.
+  const proposeEntryLevel = () => {
+    const id = def.items[0];
+    const price = suggestedPrice(id, def.margin);
+    state.discussing = id;
+    state.currentPrice = price;
+    state.lowballs = 0;
+    return { text: `${out.join(' ')}\n/sell ${id} ${price}` };
+  };
+
   // Intention « j'achète » calculée EN TÊTE : un client qui accepte
   // l'offre en cours doit conclure MÊME si ce message vient d'épuiser
   // la dernière patience. Avant ça, « d'accord je prends » tombait dans
@@ -303,14 +350,6 @@ export function merchantReply(state, briefing, message, defs = {}) {
     return { text: out.join(' ') };
   }
 
-  // --- 2) quel article est en discussion ? ---
-  const mentioned = mentionedItem(text, def.items, defs);
-  if (mentioned) {
-    state.discussing = mentioned;
-    state.currentPrice = suggestedPrice(mentioned, def.margin);
-    state.lowballs = 0;
-  }
-
   const offer = extractLastNumber(text);
   const wantsBuy = wantsBuyEarly;
   const asksCatalog = hasIntent(text, 'catalog');
@@ -331,9 +370,15 @@ export function merchantReply(state, briefing, message, defs = {}) {
   }
 
   // --- 3) premier contact ---
+  // Si rien n'est encore sur la table (le comptoir n'a pas proposé,
+  // ex. discussion entamée ailleurs), il ajoute sa proposition : une
+  // salutation ne doit jamais rester sans bouton d'achat possible.
   if (state.messages === 1 && greets) {
     push(out, pick(rng, lines.greet));
-    if (state.id === 'aldric') push(out, pick(rng, lines.catalog));
+    if (!state.discussing) {
+      push(out, pick(rng, lines.catalog));
+      return proposeEntryLevel();
+    }
     return { text: out.join(' ') };
   }
 
@@ -377,6 +422,19 @@ export function merchantReply(state, briefing, message, defs = {}) {
       push(out, `Je vous le fais à ${state.currentPrice} écus.`);
     }
     return { text: `${out.join(' ')}\n/sell ${state.discussing} ${state.currentPrice}` };
+  }
+
+  // « C'est combien ? » alors qu'aucun article n'est encore en
+  // discussion : il pose son article d'appel sur la table au lieu de
+  // rester vague. Avant ça, la première question de prix d'un client
+  // n'affichait RIEN — d'où des conversations entières sans achat.
+  if (asksPrice && !offer) {
+    const id = def.items[0];
+    const price = suggestedPrice(id, def.margin);
+    push(out, state.id === 'aldric'
+      ? `Premier modèle, ${label(id).toLowerCase()} : ${price} écus.`
+      : `Pour commencer, ${label(id).toLowerCase()} à ${price} écus. Une valeur sûre.`);
+    return proposeEntryLevel();
   }
 
   if (asksDepth) {
@@ -454,8 +512,13 @@ export function merchantReply(state, briefing, message, defs = {}) {
   // --- 8) le joueur accepte le dernier prix proposé ---
   if (wantsBuy) {
     if (!state.discussing || !state.currentPrice) {
-      push(out, state.id === 'aldric' ? 'Lequel ?' : 'Dites moi lequel vous voulez et je vous le mets de côté.');
-      return { text: out.join(' ') };
+      // « Je prends » sans avoir nommé d'article : il montre l'entrée de
+      // gamme au lieu de laisser le client sur un « Lequel ? » sans
+      // issue — le bouton d'achat doit toujours pouvoir apparaître.
+      push(out, state.id === 'aldric'
+        ? 'Lequel ? Bon. Le premier modèle :'
+        : 'Dites moi lequel vous voulez et je vous le mets de côté. Pour lancer :');
+      return proposeEntryLevel();
     }
     push(out, pick(rng, lines.accept));
     return { text: `${out.join(' ')}\n/sell ${state.discussing} ${state.currentPrice}` };
@@ -512,9 +575,13 @@ export function merchantGreeting(state, briefing, defs = {}) {
   // re-proposer l'article le moins cher : cela écraserait l'offre en cours
   // que le comptoir fait réapparaître à la réouverture.
   const inNegotiation = !!state.discussing;
-  if (state.id === 'aldric' || inNegotiation) {
+  if (inNegotiation) {
     return { text: `${pick(rng, lines.greet)} ${pick(rng, lines.catalog)}` };
   }
+  // Première visite : l'article d'appel est mis sur la table TOUT DE
+  // SUITE. Avant, seul Gaspard le faisait — le cas spécial Aldric le
+  // lui interdisait, et son comptoir s'ouvrait sans aucun bouton
+  // d'achat : « on lui parle, il ne met jamais de proposition ».
   const first = def.items[0];
   return {
     text: `${pick(rng, lines.greet)} ${pick(rng, lines.catalog)}`

@@ -18,6 +18,20 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
 
 - 🧱 **Bac à sable** : on récupère des blocs (bois, pierre…), on les stocke et on construit.
 - 🎒 **Inventaire** : une barre rapide pour choisir quoi poser.
+- ❤️ **Barre de vie** : au-dessus de la barre rapide — dégâts PvP, régénération
+  continue, pulsation d'alerte sous 25 % de vie.
+- 🍗 **Jauge de faim** : se vide en jouant (marcher, miner creusent plus).
+  Manger du pain ou du steak la remplit (clic droit) ; ventre trop vide =
+  plus de régénération, ventre vide = famine (jamais mortelle, plancher à 1 PV).
+- 🛡️ **Étals inviolables** : un étal de vente ne peut être cassé que par la
+  personne qui l'a posé — impossible de piller le stock ou la cagnotte
+  d'un autre d'un coup de pioche (le jeu te le dit clairement).
+- ⚔️ **PvP lisible** : frapper un joueur fait enfin VOIR le combat —
+  l'arme balance, des étincelles rouges giclent sur la victime, et celle-ci
+  voit un voile rouge bref (elle sait qu'elle est attaquée, même hors champ).
+- 💀 **Butin à la mort** : quand un joueur tombe en PvP, tout son inventaire
+  tombe au sol à l'endroit de la chute (objets partagés entre joueurs) ;
+  le vainqueur — ou n'importe qui — peut le ramasser.
 - 🪙 **Économie** (à venir) : une monnaie, des métiers, des boutiques.
 - 🏦 **Des rôles** (à venir) : policier, commerçant, banquier, voleur…
 - 📹 **Surveillance** (à venir) : poser des caméras pour protéger ses biens.
@@ -177,8 +191,9 @@ bâtissent le village de leurs mains. La **liberté totale** est la règle :
   rouvrir le comptoir fait **réapparaître l'offre négociée** : pas besoin de
   redemander pour revoir les boutons d'achat.
   Le dialogue passe par un modèle si une clé `AVANIA_AI_API_KEY` est
-  configurée (relais `POST /api/merchant`), sinon par un **cerveau de
-  négociation local** qui applique exactement les mêmes règles.
+  configurée (relais `POST /api/merchant`) — accueil du comptoir compris :
+  c'est le modèle qui salue et pose la première proposition. Sans clé,
+  un **cerveau de négociation local** applique exactement les mêmes règles.
 
 ## 🚀 Lancer le jeu
 

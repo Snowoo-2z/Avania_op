@@ -49,13 +49,17 @@ import {
   sanitizeFurnaceState, sanitizeMobList, sanitizeMobInfo,
   sanitizeMobStateList, sanitizeMobHit, sanitizeSignState, sanitizeSellerState,
   sanitizeChatText, sanitizeChatChannel, CHAT_GLOBAL, CHAT_PROXIMITY,
-  PROXIMITY_PX, MAX_CHAT_HISTORY,
+  PROXIMITY_PX, MAX_CHAT_HISTORY, sanitizeDropList,
 } from './js/net-protocol.js';
 
 // --- Réglages, pensés pour Render free ---
 const MAX_PLAYERS = Number(process.env.AVANIA_MAX_PLAYERS || 24);
 const BROADCAST_HZ = Number(process.env.AVANIA_TICK_HZ || 12.5);
 const BROADCAST_INTERVAL_MS = Math.round(1000 / BROADCAST_HZ);
+// Quota de messages JSON par connexion et par seconde (voir le handler
+// 'message' : seau à jetons, rafale comprise).
+const JSON_RATE_PER_SEC = 30;
+const JSON_BURST = JSON_RATE_PER_SEC * 2;
 // Nom + apparence : mis à jour rarement, en JSON (simple, coût négligeable).
 const MAX_NAME_LEN = 20;
 
@@ -604,6 +608,20 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
         player.lastMoveAt = Date.now();
         return;
       }
+      // Quota de messages JSON par connexion : chaque message est
+      // rediffusé à N joueurs (amplification ×N), et les rares ('block',
+      // 'chest'…) le sont par design. Sans quota, un script de 50
+      // lignes saturait la bande passante de tout le monde et le CPU
+      // du plan gratuit. Un seau à jetons simple : 30 messages/s,
+      // rafale de 60 — très au-dessus de tout usage réel du jeu (un
+      // clic = un message). Au-delà : ignoré, pas de déconnexion.
+      const nowMs = Date.now();
+      if (nowMs - (player.jsonWinAt || 0) >= 1000) {
+        player.jsonWinAt = nowMs;
+        player.jsonBudget = JSON_BURST;
+      }
+      if ((player.jsonBudget || 0) <= 0) return;
+      player.jsonBudget -= 1;
       // Messages JSON, rares : identité (nom + apparence).
       let msg;
       try { msg = JSON.parse(data.toString('utf8')); } catch { return; }
@@ -797,12 +815,30 @@ export function attachMultiplayer(server, { log = console.log, warn = console.wa
         const known = j.get(hit.id);
         if (known) { known.hp = hit.hp; known.alive = hit.alive; }
         broadcastToZone(player.zone, { t: 'mobHit', zone: player.zone, mob: hit }, ws);
+        return;
+      }
+      // Objets au sol partagés (butin de PvP, lâcher volontaire) : relais
+      // pur à la zone, SANS journal — un drop est transitoire (quelques
+      // minutes), le ramassage (« dropTaken ») le retire chez tout le
+      // monde. Le quota JSON par connexion borne déjà le spam.
+      if (msg.t === 'drop') {
+        const drops = sanitizeDropList(msg.drops);
+        if (drops.length === 0) return;
+        broadcastToZone(player.zone, { t: 'drop', zone: player.zone, drops }, ws);
+        return;
+      }
+      if (msg.t === 'dropTaken') {
+        const netId = typeof msg.netId === 'string' ? msg.netId.slice(0, 32) : '';
+        if (!netId) return;
+        broadcastToZone(player.zone, { t: 'dropTaken', zone: player.zone, netId }, ws);
+        return;
       }
     });
 
     ws.on('close', () => {
       players.delete(id);
       releaseId(id);
+      lastSentPositions.delete(id); // pas de signature périmée réutilisée avec un id recyclé
       broadcastJson({ t: 'leave', id });
       log(`AVANIA multi : joueur #${id} déconnecté (${playerCount()}/${MAX_PLAYERS})`);
     });

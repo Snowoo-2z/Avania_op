@@ -68,6 +68,10 @@ export const ICONS = {
   // Cœur (j'aime du réseau social du téléphone).
   heart: wrap('M12 21s-7.5-4.7-9.6-9.1C.7 8.4 2.6 5 6 5c2 0 3.4 1.1 4.2 2.3h3.6C14.6 6.1 16 5 18 5c3.4 0 5.3 3.4 3.6 6.9C19.5 16.3 12 21 12 21z'),
 
+  // Cuissette (jauge de faim au-dessus de la barre rapide) : viande +
+  // manche + deux os ronds, lisible à 15 px.
+  drumstick: wrap('<circle cx="14.5" cy="9.5" r="5.5"/><rect x="3" y="13.3" width="11" height="3.4" rx="1.7" transform="rotate(-45 8.5 15)"/><circle cx="3.7" cy="17.1" r="1.9"/><circle cx="6.7" cy="20.1" r="1.9"/>'),
+
   // Talkie-walkie (chat de proximité).
   radio: wrap('<rect x="3" y="9" width="18" height="12" rx="2.4"/><rect x="6" y="12" width="8" height="6" rx="1.2" fill="rgba(0,0,0,.35)"/><circle cx="17.5" cy="13" r="1.4" fill="rgba(0,0,0,.35)"/><circle cx="17.5" cy="17" r="1.4" fill="rgba(0,0,0,.35)"/><rect x="16.6" y="2.4" width="2" height="6.6" rx="1"/>'),
 

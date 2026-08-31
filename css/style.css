@@ -80,6 +80,129 @@ kbd {
   box-shadow: 0 0 8px var(--accent);
 }
 
+/* ---------------- Barre de vie ---------------- */
+/* Au-dessus de la barre rapide (bottom 20px + hauteur hotbar), centrée.
+   Même carte que le reste du HUD : fond sombre translucide, bord arrondi. */
+.health-hud {
+  position: fixed;
+  bottom: 102px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  background: rgba(16, 26, 19, 0.72);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+  z-index: 10;
+}
+.health-icon { display: inline-flex; color: #e5484d; }
+.health-icon .ic-svg { width: 15px; height: 15px; }
+.health-track {
+  width: 140px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+.health-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ff6b6b, #d63944);
+  transition: width 0.18s ease-out;
+}
+/* Sous 25 % de vie : le cœur et la barre pulsent pour alerter d'un coup d'œil. */
+.health-hud.is-low .health-fill,
+.health-hud.is-low .health-icon {
+  animation: health-pulse 0.9s ease-in-out infinite;
+}
+@keyframes health-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.health-text {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  min-width: 44px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Voile rouge quand on encaisse un coup (PvP) : plein écran, non cliquable,
+   animé une seule fois par coup (classe .flash reposée via reflow). */
+#hurt-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+  opacity: 0;
+  background: radial-gradient(ellipse at center,
+    rgba(214, 57, 68, 0) 42%,
+    rgba(214, 57, 68, 0.5) 100%);
+}
+#hurt-flash.flash { animation: hurt-flash 0.45s ease-out; }
+@keyframes hurt-flash {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+html.low-power #hurt-flash { display: none; }
+
+/* Jauge de faim : même pill que la vie, empilée AU-DESSUS (bottom 102px
+   + hauteur de la pill vie + espace). Orange : la viande, le blé. */
+.hunger-hud {
+  position: fixed;
+  bottom: 146px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  background: rgba(16, 26, 19, 0.72);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+  z-index: 10;
+}
+.hunger-icon { display: inline-flex; color: #e8a13d; }
+.hunger-icon .ic-svg { width: 15px; height: 15px; }
+.hunger-track {
+  width: 140px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+.hunger-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f6c26b, #d98a2b);
+  transition: width 0.18s ease-out;
+}
+/* Ventre presque vide (sous 25 %) : même pulsation d'alerte que la vie
+   (les keyframes health-pulse sont partagées). */
+.hunger-hud.is-low .hunger-fill,
+.hunger-hud.is-low .hunger-icon {
+  animation: health-pulse 0.9s ease-in-out infinite;
+}
+.hunger-text {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  min-width: 44px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 
 /* ---------------- Barre rapide (inventaire) ---------------- */
 .hotbar {
@@ -435,8 +558,18 @@ kbd {
 
 /* ---------------- Mode performance ---------------- */
 html.low-power .hud-card,
-html.low-power .hotbar {
+html.low-power .hotbar,
+html.low-power .health-hud,
+html.low-power .hunger-hud {
   backdrop-filter: none;
+}
+
+/* En mode performance, pas d'animation de pulsation non plus. */
+html.low-power .health-hud.is-low .health-fill,
+html.low-power .health-hud.is-low .health-icon,
+html.low-power .hunger-hud.is-low .hunger-fill,
+html.low-power .hunger-hud.is-low .hunger-icon {
+  animation: none;
 }
 
 html.low-power .hud-card,

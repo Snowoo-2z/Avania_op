@@ -205,6 +205,31 @@ try {
   const stillAlive = await post(srv.port, { ...SAMPLE, message: 'toujours là ?' });
   assert(stillAlive.status === 200, 'et le serveur tourne toujours après');
 
+  // ----------------------------------------------------------
+  console.log('\n▶ Quota par IP : un seul client ne peut pas tout consommer');
+  upstreamMode = 'ok';
+  replyText = 'Tiens, le voilà. /sell mask_cloth 42';
+  // La clé Mistral est GLOBALE : sans quota par client, un seul script
+  // pouvait la vider (proxy LLM gratuit). On redémarre un serveur avec
+  // une limite basse pour tester vite.
+  const limitedSrv = await startServer({
+    MISTRAL_API_KEY: 'msk-test-123',
+    AVANIA_AI_BASE_URL: mockBase,
+    AVANIA_MERCHANT_RATE: '5',
+  });
+  {
+    const burst = await Promise.all(
+      Array.from({ length: 10 }, () => post(limitedSrv.port, SAMPLE)),
+    );
+    const oks = burst.filter((r) => r.status === 200 && r.data.ok === true).length;
+    const throttled = burst.filter((r) => r.status === 429 && r.data.reason === 'rate-limited').length;
+    assert(oks === 5, `les 5 premières passent (${oks})`);
+    assert(throttled === 5, `les suivantes essuient un 429 (${throttled})`);
+    const after = await post(limitedSrv.port, SAMPLE);
+    assert(after.status === 429, 'et le quota tient toujours juste après');
+  }
+  limitedSrv.child.kill();
+
   srv.child.kill();
 } catch (err) {
   console.error('\n❌ ' + (err && err.stack || err));

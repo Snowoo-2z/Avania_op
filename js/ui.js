@@ -235,6 +235,55 @@ export class HUD {
 }
 
 // ------------------------------------------------------------
+//  Barre de vie (au-dessus de la barre rapide)
+//
+//  Les PV existaient (PvP, régénération continue) mais n'étaient
+//  affichés nulle part pour le joueur local. setHp est appelé À CHAQUE
+//  FRAME par la boucle de jeu : on n'écrit donc dans le DOM que lorsque
+//  la valeur AFFICHÉE change — arrondie au demi-point de vie, la
+//  transition CSS lisse le reste. Sous 25 % de vie, la classe is-low
+//  fait pulser le cœur et la barre (coup d'œil suffisant).
+//
+//  La MÊME classe sert à la jauge de faim (HungerHUD, exportée plus
+//  bas) : mêmes règles d'arrondi et de pulsation, autres identifiants
+//  et autre couleur (voir css/style.css, .hunger-hud).
+// ------------------------------------------------------------
+export class HealthHUD {
+  constructor(root, { fillId = 'health-fill', textId = 'health-text' } = {}) {
+    this.root = root;
+    this.el = {
+      fill: root.querySelector(`#${fillId}`),
+      text: root.querySelector(`#${textId}`),
+    };
+    this.lastKey = null;
+  }
+
+  show() { this.root.classList.remove('hidden'); }
+  hide() { this.root.classList.add('hidden'); }
+
+  setHp(hp, max = 20) {
+    const maxSafe = Math.max(1, Math.round(Number(max) || 20));
+    const clamped = Math.max(0, Math.min(maxSafe, Number(hp) || 0));
+    // Demi-point de vie : assez fin pour voir la régénération monter,
+    // assez grossier pour ne pas réécrire le DOM 60 fois par seconde.
+    const shown = Math.round(clamped * 2) / 2;
+    const key = `${shown}/${maxSafe}`;
+    if (key === this.lastKey) return;
+    this.lastKey = key;
+    const pct = Math.max(0, Math.min(100, (shown / maxSafe) * 100));
+    if (this.el.fill) this.el.fill.style.width = `${pct}%`;
+    if (this.el.text) this.el.text.textContent = `${Math.ceil(shown)}/${maxSafe}`;
+    this.root.classList.toggle('is-low', shown <= maxSafe * 0.25);
+  }
+}
+
+// Jauge de faim : mêmes mécaniques que la barre de vie (voir plus
+// haut), simplement branchée sur d'autres identifiants DOM — l'objet
+// affiché et la couleur changent (css/style.css, .hunger-hud), pas la
+// mécanique d'arrondi ni la pulsation « is-low ».
+export class HungerHUD extends HealthHUD {}
+
+// ------------------------------------------------------------
 //  État du monde (haut droite) : surface / profondeur + équipement
 //
 //  Comme pour le reste du HUD, on n'écrit dans le DOM que lorsque la
@@ -1602,6 +1651,9 @@ export class SellerPanel {
     } else {
       on('seller-buy', () => {
         if (entry.stock <= 0 || !entry.item) { g.notify('Plus rien à vendre.'); return; }
+        // Défense en profondeur : sans prix (0), l'objet partait gratuit
+        // si ce handler était atteint autrement que par le bouton.
+        if (!(entry.price > 0)) { g.notify('Le marchand n\'a pas fixé de prix.'); return; }
         if (!this.wallet.canAfford(entry.price)) { g.notify(`Il te manque ${entry.price - this.wallet.money} écus.`); return; }
         if (g.inventory.canAdd(entry.item, 1) === false) { g.notify('Inventaire plein.'); return; }
         this.wallet.spend(entry.price, 'Achat à un étal');

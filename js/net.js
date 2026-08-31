@@ -27,6 +27,7 @@ import {
   sanitizeFurnaceState, sanitizeMobList, sanitizeMobStateList, sanitizeMobHit,
   sanitizeChatText, sanitizeChatChannel, sanitizeChatMessage,
   sanitizeSocialPost, sanitizeSignState, sanitizeSellerState,
+  sanitizeDropList,
 } from './net-protocol.js';
 
 // Cadence d'envoi de la position locale : inutile d'aller plus vite
@@ -76,6 +77,11 @@ export class MultiplayerClient {
     onMobSpawn = null, // (zone, mobs[]) — un ou plusieurs animaux neufs (repop)
     onMobState = null, // (zone, mobs[{id,x,y}]) — correctif de position du coordinateur
     onMobHit = null,   // (zone, {id,hp,alive}) — un animal distant a été frappé/tué
+    // Objets au sol partagés (butin de PvP, lâcher volontaire) : pose et
+    // ramassage sont diffusés à la zone pour que le butin du vaincu soit
+    // ramassable par le vainqueur.
+    onDropSpawn = null, // (zone, drops[]) — des objets apparaissent au sol
+    onDropTaken = null, // (zone, netId) — un drop vient d'être ramassé
     // Étape 6 (chat + réseau social) : le chat est le seul canal qui
     // n'est PAS borné par la zone pour son canal global (on discute aussi
     // depuis la grotte) ; le canal 'proximity' est filtré par le serveur
@@ -108,6 +114,8 @@ export class MultiplayerClient {
     this.onMobSpawn = onMobSpawn;
     this.onMobState = onMobState;
     this.onMobHit = onMobHit;
+    this.onDropSpawn = onDropSpawn;   // (zone, drops[]) — objets au sol partagés
+    this.onDropTaken = onDropTaken;   // (zone, netId) — un drop vient d'être ramassé
     this.onChat = onChat;
     this.onChatHistory = onChatHistory;
     this.onSocial = onSocial;
@@ -355,6 +363,20 @@ export class MultiplayerClient {
       if (this.onMobState) this.onMobState(this.zone, mobs);
       return;
     }
+    // Un joueur (nous y compris via un autre client) a fait apparaître
+    // des objets au sol dans la zone : butin de PvP, lâcher volontaire.
+    if (msg.t === 'drop') {
+      const drops = sanitizeDropList(msg.drops);
+      if (drops.length && this.onDropSpawn) this.onDropSpawn(this.zone, drops);
+      return;
+    }
+    // Ces objets viennent d'être ramassés par quelqu'un : on les retire.
+    if (msg.t === 'dropTaken') {
+      if (typeof msg.netId === 'string' && this.onDropTaken) {
+        this.onDropTaken(this.zone, msg.netId);
+      }
+      return;
+    }
     // Un autre joueur a frappé/tué un animal de notre zone actuelle.
     if (msg.t === 'mobHit') {
       const mob = sanitizeMobHit(msg.mob);
@@ -473,6 +495,17 @@ export class MultiplayerClient {
   }
 
   // PvP : déclare un coup porté à un joueur (la victime applique).
+  // Objets au sol partagés : annonce (spawn) et retrait (ramassage).
+  sendDrops(drops) {
+    if (!this.connected || !Array.isArray(drops) || drops.length === 0) return;
+    this.ws.send(JSON.stringify({ t: 'drop', drops }));
+  }
+
+  sendDropTaken(netId) {
+    if (!this.connected || typeof netId !== 'string' || !netId) return;
+    this.ws.send(JSON.stringify({ t: 'dropTaken', netId }));
+  }
+
   sendPlayerAttack(id, dmg) {
     if (!this.connected) return;
     this.ws.send(JSON.stringify({ t: 'pattack', id, dmg }));

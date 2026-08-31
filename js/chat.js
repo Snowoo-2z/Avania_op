@@ -232,6 +232,37 @@ export class ChatPanel {
     this.focusInput();
   }
 
+  // ------------------------------------------------------------
+  //  Accueil du comptoir
+  //
+  //  La réplique d'ouverture (et l'offre qui l'accompagne) vient de
+  //  l'IA quand un fournisseur est configuré, du cerveau local sinon —
+  //  greetMerchant gère ce choix. L'appel est asynchrone : les petits
+  //  points tiennent la place pendant ce temps, et la saisie est
+  //  bloquée pour que le joueur ne parle pas dans le vide.
+  // ------------------------------------------------------------
+  async playGreeting(greetingPromise) {
+    if (!this.isOpen || !this.merchant || !greetingPromise) return;
+    this.busy = true;
+    if (this.el.send) this.el.send.disabled = true;
+    const typing = this.showTyping();
+    let reply = null;
+    try {
+      reply = await greetingPromise;
+    } catch (err) {
+      console.error('AVANIA: accueil du marchand', err);
+    }
+    if (typing && typing.parentNode) typing.parentNode.removeChild(typing);
+    this.busy = false;
+    if (this.el.send) this.el.send.disabled = false;
+    // Le comptoir a pu être refermé pendant l'attente.
+    if (reply && reply.text && this.isOpen && this.merchant) {
+      this.applyReply(reply);
+      this.updateStatus();
+    }
+    this.focusInput();
+  }
+
   // Interprète la réponse : réplique + éventuelle proposition chiffrée.
   applyReply(reply) {
     const parsed = typeof this.interpret === 'function'

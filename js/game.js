@@ -35,7 +35,9 @@ import { CAVE, canDescendTo } from './cave.js';
 // Chat de proximité (étape 6) : le nettoyage du texte d'une bulle utilise
 // le même garde-fou que le réseau, pour qu'un message affiché au-dessus
 // d'un joueur ne puisse jamais contenir de caractère de contrôle.
-import { sanitizeChatText } from './net-protocol.js';
+import { sanitizeChatText,
+  MAX_DROPS_PER_MESSAGE,
+} from './net-protocol.js';
 
 // Durée d'affichage d'une bulle de talkie-walkie, en secondes de jeu.
 const BUBBLE_SECONDS = 6;
@@ -79,6 +81,17 @@ function mobToNetInfo(mob) {
 }
 
 const REACH_SQ = REACH * REACH;
+// --- Faim (jauge au-dessus de la barre rapide, à côté de la vie) ---
+// Le ventre se vide avec l'activité : ~10 min de marche continue, plus
+// vite en minant, presque rien au repos. Trop vide (HUNGER_REGEN_MIN),
+// la régénération des PV s'arrête ; à zéro, la famine ronge les PV
+// lentement — sans jamais tuer (plancher, voir HUNGER_STARVE_FLOOR).
+const HUNGER_DRAIN_IDLE = 0.012;   // par seconde au repos (~28 min de ventre plein à vide)
+const HUNGER_DRAIN_MOVE = 0.033;   // par seconde en marchant (~10 min)
+const HUNGER_DRAIN_MINE = 0.07;    // supplément pendant un minage en cours
+const HUNGER_REGEN_MIN = 13;       // en dessous (65 %), plus de régénération des PV
+const HUNGER_STARVE_EVERY = 3;     // ventre vide : 1 PV perdus toutes les 3 s
+const HUNGER_STARVE_FLOOR = 1;     // …mais on ne meurt pas de faim
 const SORT_BY_Y = (a, b) => {
   const diff = a.sortY - b.sortY;
   if (diff !== 0) return diff;
@@ -105,6 +118,12 @@ const MAX_DROPS = 240;
 // Délai avant de pouvoir ramasser un objet qu'on vient de lâcher (secondes).
 // Empêche le ramassage instantané quand Q sert aussi à se déplacer (AZERTY).
 const PICKUP_DELAY = 0.6;
+// Les objets au sol sont PARTAGÉS en multijoueur : chaque drop reçoit un
+// netId unique, annoncé à la zone (pose) et au ramassage (retrait). C'est
+// ce qui permet le butin de PvP : l'inventaire du vaincu tombe au sol et
+// n'importe qui peut le ramasser. Maximum par message : voir
+// sanitizeDropList (js/net-protocol.js).
+const DROPS_FLUSH_EVERY = 0.25; // secondes entre deux annonces groupées
 // Distance (au carré) à laquelle on peut interpeller un PNJ avec la
 // touche d'interaction. Un peu plus large que le minage : parler à
 // quelqu'un ne demande pas la même précision que casser un bloc.
@@ -308,6 +327,13 @@ export class Game {
     // raté, on attend avant de retenter (voir SELLER_TIERS).
     this.stealLocks = new Map();
     this.pvpCooldown = 0;
+    // Swing de l'arme quand on frappe un joueur (le minage a le sien ;
+    // frapper quelqu'un n'affichait AUCUNE animation avant).
+    this.pvpSwingT = 0;
+    // Drops à annoncer au réseau, groupés (un message pour plusieurs).
+    this._pendingDropAnnounce = [];
+    this._dropFlushT = 0;
+    this._dropSeq = 0;
     // Rappels branchés par l'UI (ex. ouvrir le panneau du four / du coffre).
     this.uiCallbacks = {
       openFurnace: null,
@@ -594,13 +620,44 @@ export class Game {
     if (this.uiCallbacks.onNetUpdate) this.uiCallbacks.onNetUpdate(dt, this.player);
     this.actionCooldown = Math.max(0, this.actionCooldown - dt);
     this.pvpCooldown = Math.max(0, this.pvpCooldown - dt);
-    // Régén PvP : hors de tout coup récent, les PV remontent doucement.
+    this.pvpSwingT = Math.max(0, this.pvpSwingT - dt);
+    // Faim : le ventre se vide (marcher et miner creusent davantage).
     const lp = this.player;
-    if (lp.hp < lp.maxHp && this.time - lp.lastHurtAt > 6) {
+    const hungerDrain = (lp.moving ? HUNGER_DRAIN_MOVE : HUNGER_DRAIN_IDLE)
+      + (this.mining.progress > 0 ? HUNGER_DRAIN_MINE : 0);
+    lp.hunger = Math.max(0, lp.hunger - hungerDrain * dt);
+    // Régén PvP : hors de tout coup récent ET assez nourri — à ventre
+    // trop vide, le corps ne se répare plus.
+    if (lp.hunger >= HUNGER_REGEN_MIN && lp.hp < lp.maxHp && this.time - lp.lastHurtAt > 6) {
       lp.hp = Math.min(lp.maxHp, lp.hp + dt * 1.2);
+    }
+    // Famine : ventre complètement vide, les PV fondent lentement —
+    // jusqu'au plancher (on ne meurt pas de faim, on reste à 1 PV).
+    if (lp.hunger <= 0 && lp.hp > HUNGER_STARVE_FLOOR) {
+      lp.starveT += dt;
+      if (lp.starveT >= HUNGER_STARVE_EVERY) {
+        lp.starveT = 0;
+        lp.hp = Math.max(HUNGER_STARVE_FLOOR, lp.hp - 1);
+        lp.lastHurtAt = this.time;
+        this.notify('Tu meurs de faim : trouve quelque chose à manger !');
+        if (this.uiCallbacks.onPlayerHp) this.uiCallbacks.onPlayerHp(lp.hp);
+      }
+    } else if (lp.hunger > 0) {
+      lp.starveT = 0;
     }
     // Les fours cuisent en continu, même panneau ouvert (la barre avance).
     this.updateFurnaces(dt);
+    // Annonces groupées des drops (spawn) : un seul message pour toutes
+    // les piles tombées depuis le dernier lot (butin de mort = d'un coup).
+    this._dropFlushT = Math.max(0, this._dropFlushT - dt);
+    if (this._dropFlushT <= 0 && this._pendingDropAnnounce.length
+      && this.uiCallbacks.onDropsSend) {
+      this._dropFlushT = DROPS_FLUSH_EVERY;
+      while (this._pendingDropAnnounce.length) {
+        const batch = this._pendingDropAnnounce.splice(0, MAX_DROPS_PER_MESSAGE);
+        this.uiCallbacks.onDropsSend(batch);
+      }
+    }
     if (this.paused) { this.input.endFrame(); return; }
 
     // Le zoom est un réglage utilisateur (panneau Paramètres).
@@ -1523,8 +1580,46 @@ export class Game {
     this.pvpCooldown = 0.5;
     const held = this.inventory.getSelectedStackRef();
     const dmg = held ? toolDamage(ITEM_DEFS[held.id]) : 1;
+    // Retour visuel IMMÉDIAT pour l'attaquant : l'outil balance et des
+    // étincelles rouges giclent sur la victime. Avant, aucun des deux —
+    // impossible de savoir qu'on venait de toucher quelqu'un.
+    this.pvpSwingT = 0.28;
+    this.spawnHitBurst(target.x, target.y - 10);
     if (this.uiCallbacks.onPlayerAttack) this.uiCallbacks.onPlayerAttack(target.id, dmg);
     return true;
+  }
+
+  // Étincelles de coup en coordonnées PIXELS (la victime est entre deux
+  // tuiles) : rouge sang, petit nuage bref, un par coup porté.
+  spawnHitBurst(x, y) {
+    if (!this._particlesEnabled()) return;
+    if (this.particles.length > MAX_PARTICLES) return;
+    const count = this.performanceMode ? 4 : 8;
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 30 + Math.random() * 55;
+      this.particles.push({
+        x, y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 40,
+        life: 1,
+        decay: 2.6 + Math.random() * 1.6,
+        size: 1 + Math.random() * 1.6,
+        color: Math.random() < 0.7 ? '#d63944' : '#ff8a8a',
+      });
+    }
+  }
+
+  // Voile rouge bref sur tout l'écran : la victime d'un coup SAIT qu'elle
+  // vient d'être touchée (l'écran n'a pas besoin de partir en vrille :
+  // un flash de 0,45 s suffit, et le mode performance peut l'ignorer).
+  hurtFlash() {
+    if (typeof document === 'undefined') return;
+    const el = document.getElementById('hurt-flash');
+    if (!el) return;
+    el.classList.remove('flash');
+    void el.offsetWidth; // relance l'animation CSS même si elle tournait
+    el.classList.add('flash');
   }
 
   // Un joueur distant m'attaque : j'applique les dégâts moi-même (jamais
@@ -1539,9 +1634,16 @@ export class Game {
     p.hp = Math.max(0, p.hp - dmg);
     p.lastHurtAt = this.time;
     this.spawnBreakParticles(Math.floor(p.x / TILE), Math.floor(p.y / TILE), 'player');
+    this.hurtFlash(); // la victime VOIT qu'elle vient d'être touchée
     if (p.hp <= 0) {
-      // Mort : retour au spawn de surface, PV rendus.
+      // Mort en PvP : l'inventaire tombe au sol SUR PLACE — le vainqueur
+      // (et n'importe qui d'ailleurs) peut ramasser le butin. Les drops
+      // sont partagés à la zone (voir spawnDropAt / _announceDropSpawn).
+      this.dropInventoryAt(p.x, p.y);
+      // Retour au spawn de surface, PV et faim rendus.
       p.hp = p.maxHp;
+      p.hunger = p.maxHunger;
+      p.starveT = 0;
       const surface = this.surfaceWorld;
       const sp = surface ? { x: surface.spawn.x, y: surface.spawn.y } : { x: p.x, y: p.y };
       if (this.world !== surface && surface) this.switchWorld(surface, sp.x, sp.y);
@@ -1682,11 +1784,89 @@ export class Game {
     this.spawnDropAt(this.player.x + ox, this.player.y + oy, id, count, a, sp);
   }
 
+  // Butin de mort : vide TOUT l'inventaire au sol autour de (x, y), en
+  // cercle pour que les piles ne s'empilent pas. Les drops reçoivent un
+  // netId et sont annoncés : le vainqueur ramasse le stuff du vaincu.
+  dropInventoryAt(x, y) {
+    const stacks = this.inventory.drainAll();
+    if (!stacks.length) return;
+    const baseA = Math.random() * Math.PI * 2;
+    for (let k = 0; k < stacks.length; k++) {
+      const a = baseA + (k / stacks.length) * Math.PI * 2;
+      this.spawnDropAt(x, y, stacks[k].id, stacks[k].count, a, 95);
+    }
+    this.notify('Ton inventaire est tombé là où tu es tombé…');
+  }
+
+  // Identifiant réseau unique d'un drop : séquence locale + sel, préfixé
+  // par l'id du joueur pour éviter toute collision entre clients.
+  _nextDropNetId() {
+    this._dropSeq += 1;
+    const owner = this.uiCallbacks.getOwnerId ? this.uiCallbacks.getOwnerId() : 0;
+    return `${owner || 0}-${this._dropSeq}-${Math.floor(Math.random() * 1679616).toString(36)}`;
+  }
+
+  // Met un drop en file d'annonce réseau (envoyé par lots, voir la
+  // purge dans update). Les drops REÇUS du réseau ne sont jamais
+  // ré-annoncés : le relais s'arrête au premier client.
+  _announceDropSpawn(d) {
+    if (d.remote || !this.uiCallbacks.onDropsSend || !d.netId) return;
+    this._pendingDropAnnounce.push({
+      netId: d.netId,
+      item: d.id,
+      count: d.count,
+      x: Math.round(d.x),
+      y: Math.round(d.y),
+      vx: Math.round(d.vx),
+      vy: Math.round(d.vy),
+    });
+  }
+
+  _announceDropTaken(netId) {
+    if (this.uiCallbacks.onDropTakenSend) this.uiCallbacks.onDropTakenSend(netId);
+  }
+
+  // Un AUTRE joueur a fait apparaître un objet au sol dans notre zone.
+  applyRemoteDrops(zone, drops) {
+    if (zone !== this.world.id || !Array.isArray(drops)) return;
+    for (const info of drops) {
+      // Le protocole ignore le catalogue d'objets (module sans dépendance) :
+      // c'est ICI qu'un objet inconnu du jeu est filtré, jamais ajouté.
+      if (!ITEM_DEFS[info.item]) continue;
+      if (this.droppedItems.some((d) => d.netId === info.netId)) continue;
+      this.droppedItems.push({
+        id: info.item,
+        count: info.count,
+        x: info.x,
+        y: info.y,
+        vx: info.vx,
+        vy: info.vy,
+        hop: 8,
+        hopV: 0,
+        sortY: info.y,
+        dy: DRAW_DROP,
+        born: this.time,
+        life: DROP_LIFETIME,
+        netId: info.netId,
+        remote: true, // jamais ré-annoncé, jamais re-diffusé
+      });
+    }
+    this.limitDrops();
+  }
+
+  // Un AUTRE joueur a ramassé (ou vu disparaître) ce drop : on le retire,
+  // sinon il resterait au sol pour nous alors qu'il n'existe plus.
+  removeRemoteDrop(zone, netId) {
+    if (zone !== this.world.id) return;
+    const at = this.droppedItems.findIndex((d) => d.netId === netId);
+    if (at >= 0) this.droppedItems.splice(at, 1);
+  }
+
   // Fait apparaître un objet au sol à une position donnée.
   spawnDropAt(x, y, id, count = 1, angle = null, speed = 0) {
     const a = angle === null ? Math.random() * Math.PI * 2 : angle;
     const sp = speed || 40 + Math.random() * 40;
-    this.droppedItems.push({
+    const drop = {
       id,
       count,
       x,
@@ -1699,7 +1879,10 @@ export class Game {
       dy: DRAW_DROP, // tag de rendu (tri sans allocation)
       born: this.time,
       life: DROP_LIFETIME,
-    });
+      netId: this._nextDropNetId(),
+    };
+    this.droppedItems.push(drop);
+    this._announceDropSpawn(drop);
     this.limitDrops();
   }
 
@@ -1853,15 +2036,26 @@ export class Game {
     this.placeSelectedBlock();
   }
 
-  // Consomme l'aliment sélectionné et applique le bonus « bien nourri ».
+  // Consomme l'aliment sélectionné : remplit la faim (la jauge au-dessus
+  // de la barre rapide) ET laisse le bonus « bien nourri » existant.
   eatSelectedFood() {
     const idx = this.inventory.selectedSlotIndex();
     const stack = this.inventory.getSlot(idx);
     const def = stack && ITEM_DEFS[stack.id];
     if (!def?.food) return;
+    const lp = this.player;
+    // Repu : inutile de gaspiller la nourriture (comme dans Minecraft).
+    if (lp.hunger >= lp.maxHunger) {
+      this.notify('Tu n\'as pas faim pour le moment.');
+      this.actionCooldown = 0.25;
+      return;
+    }
     this.inventory.takeSlot(idx, 1);
+    lp.hunger = Math.min(lp.maxHunger, lp.hunger + def.food);
     this.wellFedT = Math.min(120, this.wellFedT + def.food * 10);
-    this.notify(`Miam ! ${def.label} : bien nourri ${Math.round(this.wellFedT)} s.`);
+    this.actionCooldown = 0.35; // un repas, ça se mâche
+    this.notify(`Miam ! ${def.label} : faim ${Math.round(lp.hunger)}/${lp.maxHunger}`
+      + `, bien nourri ${Math.round(this.wellFedT)} s.`);
   }
 
   // Bonus tant que le joueur est bien nourri (mine et marche un peu mieux).
@@ -1933,6 +2127,24 @@ export class Game {
     }
 
     const existingBlock = this.world.blockAt(this.targetTx, this.targetTy);
+    // Étal de vente : seul celui qui l'a POSÉ peut le casser. Un client
+    // qui ne peut pas prouver sa propriété (étal en cours de synchro,
+    // inconnu, ou posé par un autre) n'amorce même pas le minage — le
+    // stock et la cagnotte du vendeur ne peuvent pas être pillés d'un
+    // coup de pioche par un passant.
+    if (existingBlock && BLOCK_DEFS[existingBlock]?.sellerTier) {
+      const entry = this.sellerData.get(this.world.idx(this.targetTx, this.targetTy));
+      const me = this.uiCallbacks.getOwnerId ? this.uiCallbacks.getOwnerId() : -1;
+      if (!entry || entry.owner !== me) {
+        this.resetMining();
+        // Message borné : une fois toutes les 2 s, pas à chaque frame.
+        if (this.time - (this._sellerWarnAt || -99) > 2) {
+          this._sellerWarnAt = this.time;
+          this.notify('Cet étal ne vous appartient pas : seul son propriétaire peut le casser.');
+        }
+        return;
+      }
+    }
     let duration = this.world.breakDurationAt(this.targetTx, this.targetTy);
     if (existingBlock === 'tree') {
       duration = treeBreakTime(treeVariantAt(this.targetTx, this.targetTy));
@@ -2095,7 +2307,7 @@ export class Game {
     const speed = 78 + Math.random() * 52;
     const x = cx + Math.cos(a) * spread;
     const y = cy + Math.sin(a) * spread;
-    this.droppedItems.push({
+    const drop = {
       id,
       count,
       x,
@@ -2108,7 +2320,10 @@ export class Game {
       dy: DRAW_DROP, // tag de rendu (tri sans allocation)
       born: this.time,
       life: DROP_LIFETIME,
-    });
+      netId: this._nextDropNetId(),
+    };
+    this.droppedItems.push(drop);
+    this._announceDropSpawn(drop);
     this.limitDrops();
   }
 
@@ -2188,6 +2403,9 @@ export class Game {
         if (added >= d.count) {
           d.gone = true;
           anyGone = true;
+          // Partagé : les autres joueurs de la zone doivent voir l'objet
+          // disparaître, sinon il resterait ramassable chez eux.
+          if (d.netId) this._announceDropTaken(d.netId);
         } else {
           d.count -= added;
           if (added === 0 && this.pickupFullCooldown <= 0) {
@@ -3627,7 +3845,10 @@ export class Game {
     // fait des va-et-vient réguliers) ; dès qu'on arrête, elle revient
     // doucement au repos au lieu de se figer en plein mouvement.
     const mining = this.mining.progress > 0 && this.inReach;
-    if (mining) {
+    // Un coup porté (mob ou joueur) déclenche un balancement lui aussi :
+    // sans ça, frapper un joueur ne montrait AUCUNE animation.
+    const swinging = mining || this.pvpSwingT > 0;
+    if (swinging) {
       this.swingPhase += SWING_SPEED * dt;
     } else {
       const rest = Math.round(this.swingPhase / Math.PI) * Math.PI;

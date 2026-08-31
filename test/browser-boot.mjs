@@ -20,6 +20,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { createCanvas } from '@napi-rs/canvas';
+import { TILE } from '../js/config.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -254,6 +255,9 @@ for (const id of ['hud', 'hud-right', 'depth-chip',
   'depth-label', 'gear-chip', 'gear-depth', 'interact-prompt', 'interact-key', 'interact-label',
   'dialog', 'dialog-speaker', 'dialog-text', 'dialog-skip', 'merchant-chat', 'mc-log',
   'mc-input', 'mc-form', 'mc-offer', 'mc-offer-buy', 'mc-offer-talk', 'mc-offer-price',
+  // Barres de vie et de faim (au-dessus de la barre rapide).
+  'health-hud', 'health-fill', 'health-text',
+  'hunger-hud', 'hunger-fill', 'hunger-text',
   // Étape 6 : chat (global + talkie-walkie) et téléphone / réseau social.
   'global-chat', 'gchat-log', 'gchat-input', 'gchat-form', 'gchat-channel', 'gchat-channel-label',
   'phone', 'phone-home', 'phone-auth', 'phone-feed', 'phone-auth-handle', 'phone-auth-pass',
@@ -316,6 +320,232 @@ purse.reset(); // = un joueur qui arrive : la bourse et l'inventaire repartent d
 assert(game.inventory.count('coin') === 0, 'l\'arrivant n\'a pas une pièce en poche avant le versement');
 assert(purse.grantStartingFunds() === 150, 'l\'arrivée suivante est payée sans la moindre cinématique');
 assert(game.inventory.count('coin') === 150, 'les écus vont dans l\'inventaire, pas dans un compteur');
+
+console.log('\n▶ Barre de vie');
+{
+  // La barre existe, est visible une fois le jeu lancé, et pleine au départ.
+  const healthHud = $('health-hud');
+  assert(!!healthHud && !healthHud.classList.contains('hidden'), 'la barre de vie est visible au-dessus de la barre rapide');
+  assert($('health-fill').style.width === '100%', `pleine au départ (${$('health-fill').style.width})`);
+  assert($('health-text').textContent === '20/20', `avec le compte affiché (« ${$('health-text').textContent} »)`);
+
+  // Un coup (PvP côté serveur, voir applyPlayerAttack) : la barre suit,
+  // et sous 25 % elle passe en mode « blessé » (pulsation).
+  game.player.hp = 4;
+  game.player.lastHurtAt = game.time;
+  await frames(4);
+  assert($('health-fill').style.width === '20%', `la barre suit les dégâts (${$('health-fill').style.width})`);
+  assert($('health-text').textContent === '4/20', `et le compte aussi (« ${$('health-text').textContent} »)`);
+  assert(healthHud.classList.contains('is-low'), 'sous 25 % de vie, la classe is-low pulse');
+
+  // La régénération (après 6 s sans dégât, +1,2 PV/s) fait remonter la
+  // barre TOUTE SEULE : le HUD est mis à jour à chaque frame.
+  game.player.lastHurtAt = game.time - 7;
+  const before = parseFloat($('health-fill').style.width);
+  await frames(40);
+  const after = parseFloat($('health-fill').style.width);
+  assert(after > before, `la régénération la fait remonter (${before} % → ${after} %)`);
+  // Remise à neuf pour la suite du scénario (descente, achats…).
+  game.player.hp = game.player.maxHp;
+  game.player.lastHurtAt = -99;
+  await frames(3);
+  assert($('health-fill').style.width === '100%', 'et revenue pleine une fois soignée');
+}
+
+console.log('\n▶ Jauge de faim');
+{
+  const hungerHud = $('hunger-hud');
+  assert(!!hungerHud && !hungerHud.classList.contains('hidden'), 'la jauge de faim est visible au-dessus de la barre de vie');
+  assert($('hunger-fill').style.width === '100%', `pleine au départ (${$('hunger-fill').style.width})`);
+  assert($('hunger-text').textContent === '20/20', `avec le compte affiché (« ${$('hunger-text').textContent} »)`);
+
+  // La régénération des PV exige un ventre assez plein : à 10/20 (65 %),
+  // même loin de tout coup, les PV ne remontent plus.
+  game.player.hunger = 10;
+  game.player.hp = 15;
+  game.player.lastHurtAt = game.time - 7;
+  await frames(50);
+  assert(game.player.hp === 15, `ventre trop vide : plus aucune régénération (${game.player.hp}/20)`);
+  assert(!hungerHud.classList.contains('is-low'), 'à 10/20, la jauge ne pulse pas encore (50 %)');
+
+  // Repu : la régénération repart toute seule.
+  game.player.hunger = 18;
+  await frames(50);
+  assert(game.player.hp > 15, `repu, la régénération reprend (${game.player.hp.toFixed(1)}/20)`);
+
+  // Manger : le pain (+6) remplit la jauge et part de l'inventaire.
+  // add() range d'abord dans la barre rapide — on sélectionne la case
+  // qui contient VRAIMENT le pain (la case 0 porte les écus ici).
+  game.inventory.add('bread', 2);
+  const breadSlot = game.inventory.slots.findIndex((s) => s && s.id === 'bread');
+  assert(breadSlot >= game.inventory.hotbarStart,
+    `le pain est bien dans la barre rapide (case ${breadSlot})`);
+  game.inventory.selected = breadSlot - game.inventory.hotbarStart;
+  const breadBefore = game.inventory.count('bread');
+  game.player.hunger = 8;
+  game.eatSelectedFood();
+  assert(game.inventory.count('bread') === breadBefore - 1, `le pain est consommé (${game.inventory.count('bread')} restant)`);
+  assert(game.player.hunger === 14, `la faim remonte de la valeur « food » du pain (8 → ${game.player.hunger})`);
+  await frames(2); // le HUD se met à jour à la frame suivante
+  assert($('hunger-text').textContent === '14/20', `et la jauge l'affiche (« ${$('hunger-text').textContent} »)`);
+
+  // Repu à bloc : refus de manger, rien n'est gaspillé.
+  game.player.hunger = game.player.maxHunger;
+  game.eatSelectedFood();
+  assert(game.inventory.count('bread') === breadBefore - 1, 'repu, on ne mange pas : le pain reste dans l\'inventaire');
+
+  // Famine : ventre vide, les PV fondent tout seuls (jusqu'au plancher).
+  game.player.hunger = 0;
+  game.player.hp = 10;
+  game.player.lastHurtAt = -99;
+  const starved = await until(() => game.player.hp < 10, 6000);
+  assert(starved, 'ventre vide : la famine ronge les PV toute seule');
+  assert(game.player.hp >= 1, `mais on ne meurt pas de faim (plancher à 1, ici ${game.player.hp})`);
+  assert(hungerHud.classList.contains('is-low'), 'jauge vide : pulsation d\'alerte');
+
+  // Remise à neuf pour la suite du scénario.
+  game.player.hunger = game.player.maxHunger;
+  game.player.hp = game.player.maxHp;
+  game.player.starveT = 0;
+  game.player.lastHurtAt = -99;
+  await frames(3);
+}
+
+console.log('\n▶ PvP : étal protégé, coup visible, butin au sol');
+{
+  // Une tuile libre à côté du joueur pour poser l'étal de test.
+  const ptx = Math.floor(game.player.x / TILE);
+  const pty = Math.floor(game.player.y / TILE);
+  let stx = null; let sty = null;
+  outer:
+  for (let r = 2; r <= 4; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const tx = ptx + dx; const ty = pty + dy;
+        if (!game.world.inBounds(tx, ty)) continue;
+        if (game.world.isSolidTile(tx, ty)) continue;
+        if (game.world.blockAt(tx, ty)) continue;
+        if (tx === ptx && ty === pty) continue;
+        stx = tx; sty = ty; break outer;
+      }
+    }
+  }
+  if (stx === null) { // diagnostic temporaire
+    let oob = 0, solid = 0, block = 0;
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+      const tx = ptx + dx, ty = pty + dy;
+      if (!game.world.inBounds(tx, ty)) { oob++; continue; }
+      if (game.world.isSolidTile(tx, ty)) { solid++; continue; }
+      if (game.world.blockAt(tx, ty)) { block++; continue; }
+    }
+    console.log(`   [debug] joueur=(${game.player.x.toFixed(0)},${game.player.y.toFixed(0)}) tuile=(${ptx},${pty}) oob=${oob} solid=${solid} block=${block} inBounds(${ptx},${pty})=${game.world.inBounds(ptx, pty)} solid?=${game.world.isSolidTile(ptx, pty)} blockAt=${JSON.stringify(game.world.blockAt(ptx, pty))} performanceMode=${game.performanceMode}`);
+  }
+  assert(stx !== null, `une tuile libre existe près du joueur (${stx},${sty})`);
+  const sIdx = game.world.idx(stx, sty);
+  game.world.blocks[sIdx] = 'seller1';
+  game.reindexPlacedChunk(stx, sty);
+
+  // 1) UN AUTRE joueur a posé l'étal : la pioche n'amorce même pas.
+  game.sellerData.set(sIdx, { tier: 1, owner: 999, item: 'wood', stock: 3, price: 5, till: 0 });
+  game.targetTx = stx; game.targetTy = sty; game.inReach = true;
+  for (let i = 0; i < 600; i++) game.mineTarget(1 / 60);
+  assert(game.world.blocks[sIdx] === 'seller1',
+    'un passant NE PEUT PAS casser l\'étal d\'un autre');
+  assert(game.mining.progress === 0, 'et le minage n\'a même pas commencé');
+
+  // 2) Le propriétaire (hors ligne : id local -1) casse son propre étal.
+  game.sellerData.set(sIdx, { tier: 1, owner: -1, item: 'wood', stock: 2, price: 5, till: 7 });
+  for (let i = 0; i < 1200 && game.world.blocks[sIdx] === 'seller1'; i++) game.mineTarget(1 / 60);
+  assert(game.world.blocks[sIdx] !== 'seller1', 'le propriétaire casse son étal');
+  assert(game.sellerData.get(sIdx) === undefined, 'l\'état de l\'étal est purgé');
+
+  // 3) Le coup porté à un joueur : swing + étincelles + envoi réseau.
+  const rival = {
+    id: 42, name: 'Rival', x: game.player.x + 40, y: game.player.y,
+    facing: 'left', moving: false, walkPhase: 0, hp: 20, maxHp: 20,
+    zone: game.world.id, appearance: {},
+  };
+  game.otherPlayers.push(rival);
+  game.input.mouse.x = (rival.x - game.camera.x) * game.camera.zoom;
+  game.input.mouse.y = ((rival.y - 8) - game.camera.y) * game.camera.zoom;
+  game.pvpCooldown = 0;
+  let sent = null;
+  const prevAttack = game.uiCallbacks.onPlayerAttack;
+  game.uiCallbacks.onPlayerAttack = (id, dmg) => { sent = { id, dmg }; };
+  const partsBefore = game.particles.length;
+  const prevPerf = game.performanceMode;
+  const prevGfx = game.settings.graphics;
+  game.performanceMode = false; // jsdom passe pour un appareil modeste : on force les particules
+  game.settings.graphics = 'high';
+  const aimed = game.tryAttackPlayer();
+  assert(aimed === true && sent && sent.id === 42,
+    `le clic sur un joueur déclenche le coup (dégâts ${sent && sent.dmg})`);
+  assert(game.pvpSwingT > 0, 'l\'arme balance (enfin une animation)');
+  assert(game.particles.length > partsBefore, 'des étincelles giclent sur la victime');
+  game.performanceMode = prevPerf;
+  game.settings.graphics = prevGfx;
+
+  // 4) La victime SAIT qu'elle encaisse : PV en baisse + voile rouge.
+  const hpBefore = game.player.hp;
+  game.applyPlayerAttack(42, 3);
+  assert(game.player.hp === hpBefore - 3, `les dégâts sont appliqués (${hpBefore} → ${game.player.hp})`);
+  assert($('hurt-flash').classList.contains('flash'), 'la victime voit le voile rouge');
+
+  // 5) Mort en PvP : TOUT l'inventaire tombe au sol, partagé au réseau,
+  //    puis le vainqueur (ici : nous, en marchant dessus) le ramasse.
+  const snapshot = game.inventory.slots.map((s) => (s ? { ...s } : null));
+  game.inventory.add('wood', 5);
+  const dropsSent = [];
+  const takenSent = [];
+  const prevDropsSend = game.uiCallbacks.onDropsSend;
+  const prevTakenSend = game.uiCallbacks.onDropTakenSend;
+  game.uiCallbacks.onDropsSend = (batch) => dropsSent.push(...batch);
+  game.uiCallbacks.onDropTakenSend = (netId) => takenSent.push(netId);
+  game.player.hp = 2;
+  game.applyPlayerAttack(42, 5); // coup fatal
+  assert(game.inventory.count('wood') === 0, 'mort : l\'inventaire est vidé');
+  const woodDrop = game.droppedItems.find((d) => d.id === 'wood' && d.count === 5);
+  assert(!!woodDrop && !!woodDrop.netId, 'le stuff est au sol avec un identifiant réseau');
+  await until(() => dropsSent.some((d) => d.netId === woodDrop.netId), 2000);
+  assert(dropsSent.some((d) => d.netId === woodDrop.netId),
+    'le butin est annoncé aux autres joueurs de la zone');
+  assert(game.player.hp === game.player.maxHp, 'respawn : PV rendus');
+
+  // Le « vainqueur » marche sur le butin : ramassage + annonce de retrait.
+  game.player.x = woodDrop.x;
+  game.player.y = woodDrop.y;
+  woodDrop.born = game.time - 10;
+  await until(() => game.inventory.count('wood') >= 5, 2000);
+  assert(game.inventory.count('wood') === 5, 'le vainqueur ramasse le stuff du vaincu');
+  await until(() => takenSent.includes(woodDrop.netId), 2000);
+  assert(takenSent.includes(woodDrop.netId), 'et le drop disparaît chez les autres (dropTaken)');
+
+  // 6) Un drop venu du réseau apparaît et se retire chez nous aussi.
+  game.applyRemoteDrops(game.world.id,
+    [{ netId: 'test-drop-1', item: 'stone', count: 2, x: game.player.x + 4, y: game.player.y, vx: 0, vy: 0 }]);
+  assert(game.droppedItems.some((d) => d.netId === 'test-drop-1'),
+    'un drop annoncé par un autre apparaît chez nous');
+  game.removeRemoteDrop(game.world.id, 'test-drop-1');
+  assert(!game.droppedItems.some((d) => d.netId === 'test-drop-1'),
+    'et disparaît quand quelqu\'un d\'autre le ramasse');
+  game.applyRemoteDrops(game.world.id,
+    [{ netId: 'test-drop-2', item: 'objet-inconnu-du-jeu', count: 1, x: game.player.x, y: game.player.y, vx: 0, vy: 0 }]);
+  assert(!game.droppedItems.some((d) => d.netId === 'test-drop-2'),
+    'un drop d\'objet inconnu du jeu n\'est jamais ajouté (filtre côté jeu)');
+
+  // Remise à neuf : inventaire, PNJ factice, écoutables, sol nettoyé.
+  game.droppedItems.length = 0;
+  game.inventory.drainAll();
+  for (const s of snapshot) if (s) game.inventory.add(s.id, s.count);
+  game.otherPlayers = game.otherPlayers.filter((p) => p.id !== 42);
+  game.uiCallbacks.onPlayerAttack = prevAttack;
+  game.uiCallbacks.onDropsSend = prevDropsSend;
+  game.uiCallbacks.onDropTakenSend = prevTakenSend;
+  game.player.hp = game.player.maxHp;
+  game.player.hunger = game.player.maxHunger;
+  game.player.lastHurtAt = -99;
+  await frames(2);
+}
 
 console.log('\n▶ L\'entrée de la grotte');
 // On se place sur le parvis, juste devant l'arche.
@@ -688,7 +918,9 @@ console.log('\n▶ Multijoueur : animaux partagés (étape 5)');
   game.inventory.setSlot(foodSlot, { id: 'bread', count: 1 });
   game.inventory.select(7);
   game.wellFedT = 0;
+  game.player.hunger = 10; // avoir faim : repu, le jeu refuse de gaspiller
   game.eatSelectedFood();
+  assert(game.player.hunger === 16, `manger remplit la faim (10 → ${game.player.hunger})`);
   assert(game.wellFedT > 0, 'manger rend bien nourri');
   assert(game.inventory.count('bread') === 0, 'le pain est consommé');
   assert(game.wellFedBoost() === 1.1, 'et le bonus de minage s\'applique');

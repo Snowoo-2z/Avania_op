@@ -242,7 +242,59 @@ const social = createSocial({
 // ------------------------------------------------------------
 //  Fichiers statiques (+ les deux API ci-dessus)
 // ------------------------------------------------------------
+
+// Adresse réelle du client, même derrière un reverse proxy (Render).
+// On retient le DERNIER maillon de X-Forwarded-For, pas le premier :
+// un client peut écrire n'importe quoi dans le premier (et contourner
+// ainsi un limiteur par IP) ; le dernier maillon est celui qu'ajoute
+// le proxy de confiance. Sans proxy, pas d'en-tête du tout → socket.
+function clientKey(req) {
+  const forwarded = req.headers?.['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    const hops = forwarded.split(',').map((h) => h.trim()).filter(Boolean);
+    if (hops.length) return hops[hops.length - 1];
+  }
+  return req.socket?.remoteAddress || 'inconnue';
+}
+
+// Limiteur de débit par IP pour /api/merchant. La file globale sérialise
+// déjà les appels, mais SANS ce quota par client, un seul script pouvait
+// consommer toute la clé Mistral (proxy LLM gratuit pour tout le monde).
+const MERCHANT_RATE_WINDOW_MS = 60_000;
+const MERCHANT_RATE_MAX = Number(process.env.AVANIA_MERCHANT_RATE || 30);
+const merchantHits = new Map(); // ip -> { count, resetAt }
+function merchantAllowed(ip) {
+  const now = Date.now();
+  if (merchantHits.size > 512) {
+    for (const [k, e] of merchantHits) if (e.resetAt <= now) merchantHits.delete(k);
+  }
+  const entry = merchantHits.get(ip);
+  if (!entry || entry.resetAt <= now) {
+    merchantHits.set(ip, { count: 1, resetAt: now + MERCHANT_RATE_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= MERCHANT_RATE_MAX) return false;
+  entry.count += 1;
+  return true;
+}
+
 const server = http.createServer(async (req, res) => {
+  try {
+    await handleRequest(req, res);
+  } catch (err) {
+    // Aucune exception ne doit tuer le process : une requête qui plante
+    // vaut une réponse 500, pas un serveur tombé.
+    console.error('AVANIA: requête échouée —', err?.message || err);
+    if (!res.headersSent) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end('{"ok":false,"reason":"internal"}');
+    } else {
+      res.destroy();
+    }
+  }
+});
+
+async function handleRequest(req, res) {
   let urlPath;
   let query;
   try {
@@ -260,6 +312,10 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 405, { ok: false, reason: 'method-not-allowed' });
       return;
     }
+    if (!merchantAllowed(clientKey(req))) {
+      sendJson(res, 429, { ok: false, reason: 'rate-limited' });
+      return;
+    }
     await handleMerchant(req, res);
     return;
   }
@@ -272,8 +328,11 @@ const server = http.createServer(async (req, res) => {
   if (urlPath === '/') urlPath = '/index.html';
 
   const filePath = path.normalize(path.join(ROOT, urlPath));
-  // sécurité : on reste dans le répertoire racine
-  if (!filePath.startsWith(ROOT)) {
+  // sécurité : on reste dans le répertoire racine. Le séparateur final
+  // est ESSENTIEL : sans lui, un dossier VOISIN dont le nom commence
+  // comme ROOT (« /var/app-autre » pour « /var/app ») passerait le
+  // filtre et ses fichiers seraient servis.
+  if (!filePath.startsWith(ROOT + path.sep)) {
     res.writeHead(403); res.end('Forbidden'); return;
   }
 
@@ -293,7 +352,7 @@ const server = http.createServer(async (req, res) => {
     });
     res.end(data);
   });
-});
+}
 
 // ------------------------------------------------------------
 //  Multijoueur (présence temps réel) : WebSocket sur /ws, greffé sur
