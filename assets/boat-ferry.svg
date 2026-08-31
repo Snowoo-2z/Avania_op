@@ -1,260 +1,321 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128"
      role="img" aria-labelledby="boatTitle boatDesc">
-  <title id="boatTitle">Ferry carré — vue de dessus</title>
-  <desc id="boatDesc">Bateau de transport de passagers, coque carrée en bois, cabine rouge au centre,
-    bancs latéraux avec passagers, rampe d'embarquement à la proue et moteur à la poupe.</desc>
+  <title id="boatTitle">Ferry moderne — vue de dessus</title>
+  <desc id="boatDesc">Navette de transport de passagers à coque carrée : superstructure blanche,
+    bande vitrée teintée continue, pont antidérapant, rampe d'embarquement à la proue,
+    pont arrière ouvert avec banquettes, double propulsion à la poupe. Aucun personnage.</desc>
 
   <!-- ============================================================
-       AVANIA — Ferry carré (vue de dessus, style voxel)
-       Sprite « bateau de transport de passagers ».
-       - Proue en haut (rampe d'embarquement), poupe en bas (moteur).
-       - Fond transparent : se pose directement sur une tuile d'eau.
-       - Le groupe #wake (sillage) est décoratif : supprimable en jeu.
+       AVANIA — Ferry moderne (vue de dessus)
+       Sprite de transport de passagers, style « navette contemporaine » :
+       coque acier peinte, pavois blanc, vitrage teinté continu,
+       équipements de pont (radar, groupes froid, radeaux, aussières).
+       - Proue en haut (rampe), poupe en bas (double hélice).
+       - Fond transparent : se pose sur une tuile d'eau.
+       - Groupes supprimables : #wake (sillage) et #grain (grain photo).
        ============================================================ -->
 
   <defs>
-    <!-- Bois du pourtour (plus clair en haut à gauche : lumière du jeu) -->
-    <linearGradient id="gunwale" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0"    stop-color="#8f6236"/>
-      <stop offset="0.55" stop-color="#7a5230"/>
-      <stop offset="1"    stop-color="#5b3c22"/>
+    <!-- Pavois : acier peint, lumière haut/gauche -->
+    <linearGradient id="bulwark" x1="0" y1="0" x2="0.7" y2="1">
+      <stop offset="0" stop-color="#eceff0"/>
+      <stop offset="1" stop-color="#c2c7c3"/>
+    </linearGradient>
+    <!-- Toit de la superstructure -->
+    <linearGradient id="roof" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#f6f8f5"/>
+      <stop offset="1" stop-color="#d0d4d0"/>
+    </linearGradient>
+    <!-- Vitrage teinté -->
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0"   stop-color="#3d505b"/>
+      <stop offset="0.5" stop-color="#22303a"/>
+      <stop offset="1"   stop-color="#151e25"/>
+    </linearGradient>
+    <!-- Tôle / rampe -->
+    <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#cbcfd1"/>
+      <stop offset="1" stop-color="#98a0a4"/>
+    </linearGradient>
+    <!-- Ombre portée sur la coque côté poupe -->
+    <linearGradient id="hullShade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a444d"/>
+      <stop offset="1" stop-color="#232b32"/>
+    </linearGradient>
+    <!-- Voile d'ambiance sur le pont : clair à l'avant, plus dense à l'arrière -->
+    <linearGradient id="deckShade" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0"    stop-color="#ffffff" stop-opacity="0.14"/>
+      <stop offset="0.5"  stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="1"    stop-color="#1d262c" stop-opacity="0.16"/>
     </linearGradient>
 
-    <!-- Voile d'ombre sur le pont : lumière haut/gauche, ombre bas/droite -->
-    <linearGradient id="deckShade" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0"    stop-color="#ffffff" stop-opacity="0.16"/>
-      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0"/>
-      <stop offset="1"    stop-color="#3a2412" stop-opacity="0.22"/>
-    </linearGradient>
-
-    <!-- Lattes de pont, dans le sens proue → poupe -->
-    <pattern id="planks" width="8" height="8" patternUnits="userSpaceOnUse">
-      <rect width="8" height="8" fill="#c08a4e"/>
-      <rect width="1"   height="8" fill="#8a5f33" opacity="0.5"/>
-      <rect x="1.2" width="1.1" height="8" fill="#ffffff" opacity="0.10"/>
+    <!-- Pont antidérapant : peinture grenue -->
+    <pattern id="nonskid" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="4" fill="#a9ada8"/>
+      <rect x="0.4" y="0.4" width="1" height="1" fill="#8d928d" opacity="0.55"/>
+      <rect x="2.4" y="1.9" width="1" height="1" fill="#8d928d" opacity="0.35"/>
+      <rect x="1.9" y="2.6" width="0.9" height="0.9" fill="#ffffff" opacity="0.18"/>
     </pattern>
 
-    <!-- Métal de la rampe / du moteur -->
-    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#c8cdd3"/>
-      <stop offset="1" stop-color="#86878c"/>
-    </linearGradient>
-
-    <!-- Ombre portée du bateau sur l'eau -->
-    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="4" stdDeviation="3.5" flood-color="#123049" flood-opacity="0.40"/>
+    <!-- Grain photo très léger, pour casser le côté « vectoriel plat » -->
+    <filter id="grainF" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
     </filter>
 
-    <!-- Contour de la coque (réutilisé 3 fois) -->
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="4" stdDeviation="3.5" flood-color="#102434" flood-opacity="0.38"/>
+    </filter>
+    <filter id="blurWake" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="1.6"/>
+    </filter>
+
+    <!-- Contour de la coque (réutilisé) -->
     <path id="hullOuter" d="M26 12 L102 12 L112 22 L112 106 L102 116 L26 116 L16 106 L16 22 Z"/>
     <!-- Pont intérieur (même forme, rentrée de 9 px) -->
     <path id="deckInner" d="M30 21 L98 21 L103 26 L103 102 L98 107 L30 107 L25 102 L25 26 Z"/>
 
     <clipPath id="deckClip"><use href="#deckInner"/></clipPath>
+    <clipPath id="hullClip"><use href="#hullOuter"/></clipPath>
   </defs>
 
-  <!-- Sillage (décoratif) -->
-  <g id="wake" fill="none" stroke="#ffffff" stroke-linecap="round">
-    <path d="M48 118 Q38 123 30 128" stroke-width="2.4" opacity="0.40"/>
-    <path d="M80 118 Q90 123 98 128" stroke-width="2.4" opacity="0.40"/>
-    <path d="M40 11 Q34 7 30 4"      stroke-width="1.8" opacity="0.28"/>
-    <path d="M88 11 Q94 7 98 4"      stroke-width="1.8" opacity="0.28"/>
-    <circle cx="64" cy="126" r="2.6" fill="#ffffff" stroke="none" opacity="0.26"/>
-    <circle cx="56" cy="127" r="1.8" fill="#ffffff" stroke="none" opacity="0.18"/>
-    <circle cx="72" cy="127" r="1.8" fill="#ffffff" stroke="none" opacity="0.18"/>
+  <!-- Sillage : jets d'hélice + vague d'étrave (décoratif, supprimable) -->
+  <g id="wake" filter="url(#blurWake)">
+    <g fill="none" stroke="#ffffff" stroke-linecap="round">
+      <path d="M40 120 Q30 124 22 128" stroke-width="2.2" opacity="0.34"/>
+      <path d="M88 120 Q98 124 106 128" stroke-width="2.2" opacity="0.34"/>
+      <path d="M38 13 Q32 8 27 4"     stroke-width="1.6" opacity="0.20"/>
+      <path d="M90 13 Q96 8 101 4"    stroke-width="1.6" opacity="0.20"/>
+    </g>
+    <circle cx="48" cy="123" r="5" fill="#ffffff" opacity="0.20"/>
+    <circle cx="80" cy="123" r="5" fill="#ffffff" opacity="0.20"/>
   </g>
 
   <!-- ==================== BATEAU ==================== -->
   <g id="boat" filter="url(#soft)">
 
-    <!-- Coque : flanc visible (épaisseur) puis face supérieure -->
-    <use href="#hullOuter" y="4" fill="#3d2814"/>
-    <use href="#hullOuter" fill="url(#gunwale)"/>
+    <!-- Flanc visible sous la coque (poupe) -->
+    <use href="#hullOuter" y="4" fill="url(#hullShade)"/>
+    <!-- Face Supérieure du pavois -->
+    <use href="#hullOuter" fill="url(#bulwark)"/>
+    <!-- Boudoir / défense caoutchouc sur tout le pourtour -->
+    <use href="#hullOuter" fill="none" stroke="#1d2328" stroke-width="4"/>
+    <!-- Filet bleu marine juste derrière la défense -->
+    <use href="#hullOuter" fill="none" stroke="#2f4356" stroke-width="1.4" opacity="0.5"
+         transform="translate(64 64) scale(0.9167 0.923) translate(-64 -64)"/>
 
-    <!-- Liseré crème + rivets sur le pourtour (même rentrée de 4,5 px partout) -->
-    <use href="#hullOuter" fill="none" stroke="#f2ede0" stroke-width="2.2" opacity="0.85"
-         transform="translate(64 64) scale(0.906 0.9135) translate(-64 -64)"/>
-    <use href="#hullOuter" fill="none" stroke="#3d2814" stroke-width="1.5" opacity="0.30"
-         stroke-dasharray="1.6 6.5"
-         transform="translate(64 64) scale(0.865 0.875) translate(-64 -64)"/>
+    <!-- Dalots (évacuations d'eau de pont) dans le pavois -->
+    <g fill="#5c6266" opacity="0.75">
+      <rect x="20"  y="38" width="4" height="2" rx="0.8"/>
+      <rect x="20"  y="54" width="4" height="2" rx="0.8"/>
+      <rect x="20"  y="70" width="4" height="2" rx="0.8"/>
+      <rect x="104" y="38" width="4" height="2" rx="0.8"/>
+      <rect x="104" y="54" width="4" height="2" rx="0.8"/>
+      <rect x="104" y="70" width="4" height="2" rx="0.8"/>
+    </g>
 
-    <!-- Pont -->
+    <!-- ================= Pont ================= -->
     <g clip-path="url(#deckClip)">
-      <rect x="20" y="16" width="88" height="96" fill="url(#planks)"/>
-      <!-- quelques lattes plus patinées -->
-      <rect x="41"  y="16" width="8" height="96" fill="#000000" opacity="0.06"/>
-      <rect x="65"  y="16" width="8" height="96" fill="#ffffff" opacity="0.05"/>
-      <rect x="81"  y="16" width="8" height="96" fill="#000000" opacity="0.05"/>
-      <rect x="20" y="16" width="88" height="96" fill="url(#deckShade)"/>
+      <rect x="18" y="14" width="92" height="100" fill="url(#nonskid)"/>
+      <!-- zones de circulation plus marquées (usure de la peinture) -->
+      <rect x="18" y="14" width="92" height="100" fill="url(#deckShade)"/>
+      <!-- occlusion ambiante le long du pavois -->
+      <use href="#deckInner" fill="none" stroke="#1d262c" stroke-width="6" opacity="0.22"/>
     </g>
-    <!-- Lèvre sombre entre le pont et le pourtour -->
-    <use href="#deckInner" fill="none" stroke="#5b3c22" stroke-width="3.2"/>
+    <use href="#deckInner" fill="none" stroke="#8f948f" stroke-width="2"/>
 
-    <!-- Rampe d'embarquement (proue) -->
+    <!-- ================= Rampe d'embarquement (proue) ================= -->
     <g id="ramp">
-      <rect x="48" y="6" width="32" height="28" rx="2" fill="url(#metal)" stroke="#5a5f66" stroke-width="1.4"/>
-      <g stroke="#5a5f66" stroke-width="1" opacity="0.55">
-        <path d="M50 10 H78 M50 14 H78 M50 18 H78 M50 22 H78 M50 26 H78 M50 30 H78"/>
+      <rect x="48" y="6" width="32" height="24" rx="1.5" fill="url(#steel)" stroke="#7d8388" stroke-width="1.2"/>
+      <!-- crans antidérapants -->
+      <g stroke="#6d7478" stroke-width="0.8" opacity="0.45">
+        <path d="M49 14 H79 M49 17 H79 M49 20 H79 M49 23 H79 M49 26 H79"/>
       </g>
-      <rect x="48" y="6"  width="2.4" height="28" fill="#6e6f73"/>
-      <rect x="77.6" y="6" width="2.4" height="28" fill="#6e6f73"/>
-      <rect x="50" y="27" width="28" height="3" fill="#f2c14e" opacity="0.9"/>
+      <!-- chevrons de sécurité (jaune désaturé) -->
+      <g opacity="0.5">
+        <path d="M48 12 L56 6 L64 12 L72 6 L80 12" fill="none" stroke="#bda93f" stroke-width="2"/>
+      </g>
+      <!-- charnière + vérins -->
+      <path d="M48 28.5 H80" stroke="#5c6266" stroke-width="1.2"/>
+      <circle cx="52" cy="28.5" r="1.4" fill="#6d7478"/>
+      <circle cx="76" cy="28.5" r="1.4" fill="#6d7478"/>
+      <rect x="43"   y="9" width="3.4" height="15" rx="1.7" fill="#9aa09c"/>
+      <rect x="81.6" y="9" width="3.4" height="15" rx="1.7" fill="#9aa09c"/>
     </g>
 
-    <!-- Bancs passagers + passagers -->
-    <!-- Bâbord (gauche) : 3 places occupées -->
-    <g id="bench-port">
-      <rect x="27" y="40" width="5"  height="46" fill="#8a5f33"/>
-      <rect x="32" y="40" width="10" height="46" fill="#d6a158" stroke="#a5763f" stroke-width="1"/>
-      <path d="M32 55 H42 M32 70 H42" stroke="#a5763f" stroke-width="1"/>
-      <!-- passager : épaules (haut) + tête (peau) + cheveux vus de dessus -->
+    <!-- ================= Pont avant : guindeau, treuil, bollards ================= -->
+    <g id="foredeck">
+      <!-- guindeau (bâbord) -->
+      <rect x="27" y="23" width="12" height="7" rx="1" fill="#9aa09c" stroke="#7d8388" stroke-width="0.8"/>
+      <circle cx="30.5" cy="26.5" r="1.6" fill="#4a5158"/>
+      <circle cx="36"   cy="26.5" r="1.6" fill="#4a5158"/>
+      <path d="M39 26 L44 22.5" stroke="#7d8388" stroke-width="1" stroke-dasharray="1 1"/>
+      <!-- treuil d'amarrage (tribord) -->
+      <rect x="89" y="23" width="12" height="7" rx="1" fill="#9aa09c" stroke="#7d8388" stroke-width="0.8"/>
+      <rect x="91" y="24.6" width="8" height="3.8" rx="1.9" fill="#b6bbbe"/>
+    </g>
+
+    <!-- ================= Ponts latéraux : radeaux, couronnes ================= -->
+    <g id="side-decks">
+      <!-- radeaux de sauvetage en container -->
       <g>
-        <circle cx="37" cy="47" r="5" fill="#4a90d9"/>
-        <circle cx="37" cy="47" r="3.3" fill="#f1c27d"/>
-        <path d="M37 43.7 A3.3 3.3 0 0 0 37 50.3 Z" fill="#4a2c1a"/>
+        <rect x="28.5" y="44" width="7" height="20" rx="3.5" fill="#eceff0" stroke="#b9bdb9" stroke-width="0.9"/>
+        <rect x="28.5" y="51" width="7" height="2"   fill="#4a5158" opacity="0.75"/>
+        <rect x="92.5" y="44" width="7" height="20" rx="3.5" fill="#eceff0" stroke="#b9bdb9" stroke-width="0.9"/>
+        <rect x="92.5" y="51" width="7" height="2"   fill="#4a5158" opacity="0.75"/>
       </g>
+      <!-- couronnes de sauvetage -->
       <g>
-        <circle cx="37" cy="62" r="5" fill="#e8963c"/>
-        <circle cx="37" cy="62" r="3.3" fill="#d9a066"/>
-        <path d="M37 58.7 A3.3 3.3 0 0 0 37 65.3 Z" fill="#d9a441"/>
-      </g>
-      <g>
-        <circle cx="37" cy="78" r="5" fill="#8e6bc0"/>
-        <circle cx="37" cy="78" r="3.3" fill="#8c5a2e"/>
-        <path d="M37 74.7 A3.3 3.3 0 0 0 37 81.3 Z" fill="#1c1a18"/>
+        <circle cx="20" cy="88" r="4.6" fill="#f0f2f0" stroke="#b9bdb9" stroke-width="0.9"/>
+        <circle cx="20" cy="88" r="3.6" fill="none" stroke="#9aa09c" stroke-width="1.8"
+                stroke-dasharray="3.4 2.2" opacity="0.6"/>
+        <circle cx="108" cy="88" r="4.6" fill="#f0f2f0" stroke="#b9bdb9" stroke-width="0.9"/>
+        <circle cx="108" cy="88" r="3.6" fill="none" stroke="#9aa09c" stroke-width="1.8"
+                stroke-dasharray="3.4 2.2" opacity="0.6"/>
       </g>
     </g>
 
-    <!-- Tribord (droite) : 2 places occupées, 1 libre -->
-    <g id="bench-starboard">
-      <rect x="96" y="40" width="5"  height="46" fill="#8a5f33"/>
-      <rect x="86" y="40" width="10" height="46" fill="#d6a158" stroke="#a5763f" stroke-width="1"/>
-      <path d="M86 55 H96 M86 70 H96" stroke="#a5763f" stroke-width="1"/>
-      <g>
-        <circle cx="91" cy="47" r="5" fill="#5cb85c"/>
-        <circle cx="91" cy="47" r="3.3" fill="#f7d7b5"/>
-        <path d="M91 43.7 A3.3 3.3 0 0 1 91 50.3 Z" fill="#7a4b28"/>
+    <!-- ================= Superstructure (salle des passagers) ================= -->
+    <g id="superstructure">
+      <!-- mur visible côté poupe -->
+      <rect x="39" y="33" width="50" height="54" rx="3" fill="#c3c7c3"/>
+      <!-- bande vitrée continue (façade arrière) -->
+      <rect x="41" y="79" width="46" height="6" fill="url(#glass)"/>
+      <g stroke="#c3c7c3" stroke-width="0.9" opacity="0.85">
+        <path d="M45.5 79 V85 M50 79 V85 M54.5 79 V85 M59 79 V85 M63.5 79 V85
+                 M68 79 V85 M72.5 79 V85 M77 79 V85 M81.5 79 V85"/>
       </g>
-      <g>
-        <circle cx="91" cy="78" r="5" fill="#e07a9a"/>
-        <circle cx="91" cy="78" r="3.3" fill="#b97a45"/>
-        <path d="M91 74.7 A3.3 3.3 0 0 1 91 81.3 Z" fill="#1c1a18"/>
-      </g>
-    </g>
+      <rect x="47" y="79" width="2" height="6" fill="#ffffff" opacity="0.18"/>
+      <rect x="66" y="79" width="2" height="6" fill="#ffffff" opacity="0.12"/>
+      <!-- tranches de vitrage sur les côtés -->
+      <rect x="87" y="34" width="2" height="44" fill="url(#glass)" opacity="0.85"/>
+      <rect x="39" y="34" width="2" height="44" fill="url(#glass)" opacity="0.45"/>
 
-    <!-- Cabine / timonerie -->
-    <g id="cabin">
-      <!-- volume : mur visible côté poupe -->
-      <rect x="44" y="40" width="40" height="36" rx="3" fill="#e8e2d2"/>
-      <rect x="44" y="72" width="40" height="4" fill="#000000" opacity="0.16"/>
       <!-- toit -->
-      <rect x="44" y="38" width="40" height="28" rx="3" fill="#d9534f"/>
-      <rect x="45.4" y="39.4" width="37.2" height="25.2" rx="2.4" fill="none" stroke="#f2ede0" stroke-width="1.2" opacity="0.75"/>
-      <g stroke="#000000" stroke-width="1" opacity="0.13">
-        <path d="M55 40 V64 M65 40 V64 M75 40 V64"/>
+      <rect x="38" y="30" width="52" height="48" rx="3" fill="url(#roof)"/>
+      <rect x="38.6" y="30.6" width="50.8" height="46.8" rx="2.6" fill="none"
+            stroke="#b9bdb9" stroke-width="1.1"/>
+      <!-- ombre de rive : le toit déborde légèrement -->
+      <rect x="38" y="74.5" width="52" height="3.5" fill="#1d262c" opacity="0.10"/>
+
+      <!-- groupes de ventilation -->
+      <g>
+        <rect x="42" y="34" width="12" height="9" rx="1.5" fill="#e7eae7" stroke="#b5b9b5" stroke-width="0.8"/>
+        <circle cx="48" cy="38.5" r="2.8" fill="#cfd3cf"/>
+        <circle cx="48" cy="38.5" r="1"   fill="#6d747b"/>
+        <path d="M48 36.2 V40.8 M45.7 38.5 H50.3" stroke="#6d747b" stroke-width="0.5" opacity="0.7"/>
+        <rect x="56" y="34" width="12" height="9" rx="1.5" fill="#e7eae7" stroke="#b5b9b5" stroke-width="0.8"/>
+        <circle cx="62" cy="38.5" r="2.8" fill="#cfd3cf"/>
+        <circle cx="62" cy="38.5" r="1"   fill="#6d747b"/>
+        <path d="M62 36.2 V40.8 M59.7 38.5 H64.3" stroke="#6d747b" stroke-width="0.5" opacity="0.7"/>
       </g>
-      <!-- puits de jour -->
-      <rect x="58" y="43" width="12" height="9" rx="1.6" fill="#6fb8e8"/>
-      <path d="M59 51 L63 44 L66 51" fill="#ffffff" opacity="0.35"/>
-      <!-- cheminée + fumée -->
-      <circle cx="77" cy="48" r="4.6" fill="#4a4f55"/>
-      <circle cx="77" cy="48" r="2.3" fill="#2b2f34"/>
-      <circle cx="82" cy="41" r="3"   fill="#ffffff" opacity="0.22"/>
-      <circle cx="87" cy="35" r="4"   fill="#ffffff" opacity="0.16"/>
-      <!-- feux de navigation -->
-      <circle cx="48" cy="41" r="1.7" fill="#7ccf6a"/>
-      <circle cx="80" cy="41" r="1.7" fill="#f2c14e"/>
-      <!-- façade arrière : fenêtres + porte -->
-      <rect x="47" y="66" width="9" height="6" rx="1" fill="#6fb8e8" stroke="#b8b0a0" stroke-width="0.8"/>
-      <rect x="72" y="66" width="9" height="6" rx="1" fill="#6fb8e8" stroke="#b8b0a0" stroke-width="0.8"/>
-      <path d="M48.5 71 L52 66.5" stroke="#ffffff" stroke-width="1" opacity="0.55"/>
-      <path d="M73.5 71 L77 66.5" stroke="#ffffff" stroke-width="1" opacity="0.55"/>
-      <rect x="60" y="65" width="8" height="8" rx="1" fill="#8a5f33"/>
-      <circle cx="67" cy="69" r="0.9" fill="#f2c14e"/>
+      <!-- puits de lumière -->
+      <rect x="70" y="34" width="15" height="8" rx="1" fill="url(#glass)" stroke="#b5b9b5" stroke-width="0.8"/>
+      <path d="M71 41 L77 35 L80 41" fill="#ffffff" opacity="0.20"/>
+
+      <!-- mât radar : pied + scanner -->
+      <g>
+        <rect x="58" y="45.4" width="12" height="3" rx="1.2" fill="#f1f3f0" stroke="#9aa09c" stroke-width="0.8"/>
+        <circle cx="64" cy="48.4" r="1.8" fill="#b6bbbe"/>
+      </g>
+      <!-- caissons d'aération + dôme GPS -->
+      <rect x="42" y="56" width="7" height="5" rx="1" fill="#cfd3cf" stroke="#b5b9b5" stroke-width="0.7"/>
+      <rect x="52" y="56" width="7" height="5" rx="1" fill="#cfd3cf" stroke="#b5b9b5" stroke-width="0.7"/>
+      <circle cx="56" cy="70" r="1.7" fill="#f1f3f0" stroke="#b5b9b5" stroke-width="0.7"/>
+      <!-- panneau d'accès toit -->
+      <rect x="71" y="62" width="10" height="8" rx="1" fill="#dee1dd" stroke="#b5b9b5" stroke-width="0.8"/>
+      <rect x="74" y="65" width="4" height="1.6" rx="0.8" fill="#8d9398"/>
+      <!-- antennes fouet -->
+      <g stroke="#8d9398" stroke-width="0.9" stroke-linecap="round">
+        <path d="M86 32 L93 26"/>
+        <path d="M39 32 L32 26"/>
+        <path d="M87 70 L94 74"/>
+      </g>
+      <g fill="#4a5158">
+        <circle cx="93" cy="26" r="0.9"/><circle cx="32" cy="26" r="0.9"/><circle cx="94" cy="74" r="0.9"/>
+      </g>
     </g>
 
-    <!-- Pont arrière : moteur, caisse, bidon, aussière -->
-    <g id="stern-deck">
-      <rect x="52" y="82" width="24" height="18" rx="2.5" fill="#5a5f66"/>
-      <rect x="52" y="82" width="24" height="3"  rx="1.5" fill="#8a8b90"/>
-      <g fill="#3d4249">
-        <rect x="56" y="88" width="16" height="1.8"/>
-        <rect x="56" y="92" width="16" height="1.8"/>
-        <rect x="56" y="96" width="16" height="1.8"/>
-      </g>
-      <rect x="56" y="79" width="16" height="3" rx="1.5" fill="#8a8b90"/>
-      <!-- tunnel d'arbre d'hélice + tableau arrière -->
-      <rect x="60.5" y="98" width="7"  height="14" rx="2"   fill="#6e6f73"/>
-      <rect x="55"   y="105" width="18" height="7" rx="1.5" fill="#4a4f55"/>
-      <!-- caisse de vivres -->
+    <!-- ================= Pont arrière ================= -->
+    <g id="aftdeck">
+      <!-- banquettes (vides) -->
       <g>
-        <rect x="86" y="88" width="12" height="12" rx="1" fill="#c9955a" stroke="#8a5f33" stroke-width="1.2"/>
-        <path d="M87 89 L97 99 M97 89 L87 99" stroke="#8a5f33" stroke-width="1"/>
+        <rect x="27"  y="87" width="3.5" height="14" fill="#cfd3cf"/>
+        <rect x="30.5" y="87" width="8"  height="14" rx="1" fill="#e3e6e2" stroke="#b5b9b5" stroke-width="0.8"/>
+        <path d="M30.5 91.7 H38.5 M30.5 96.4 H38.5" stroke="#b5b9b5" stroke-width="0.7"/>
+        <rect x="97.5" y="87" width="3.5" height="14" fill="#cfd3cf"/>
+        <rect x="89.5" y="87" width="8"  height="14" rx="1" fill="#e3e6e2" stroke="#b5b9b5" stroke-width="0.8"/>
+        <path d="M89.5 91.7 H97.5 M89.5 96.4 H97.5" stroke="#b5b9b5" stroke-width="0.7"/>
       </g>
-      <!-- bidon de carburant -->
+      <!-- panneau de cale machine -->
       <g>
-        <rect x="27" y="88" width="8" height="10" rx="1.5" fill="#c94f4f"/>
-        <rect x="29.5" y="86" width="3" height="2.5" rx="0.8" fill="#3d4249"/>
-        <rect x="27" y="91" width="8" height="1.6" fill="#000000" opacity="0.18"/>
+        <rect x="52" y="90" width="24" height="13" rx="1.5" fill="#9ea39e" stroke="#7d8388" stroke-width="0.9"/>
+        <rect x="54" y="92" width="20" height="9" rx="1" fill="#adb2ad"/>
+        <g fill="#6d747b">
+          <circle cx="56.5" cy="94.5" r="0.8"/><circle cx="71.5" cy="94.5" r="0.8"/>
+          <circle cx="56.5" cy="98.5" r="0.8"/><circle cx="71.5" cy="98.5" r="0.8"/>
+        </g>
+        <rect x="61" y="95.5" width="6" height="1.8" rx="0.9" fill="#6d747b"/>
       </g>
-      <!-- aussière enroulée -->
-      <circle cx="38" cy="102" r="3.8" fill="none" stroke="#d8c9a0" stroke-width="2"/>
-      <circle cx="38" cy="102" r="1.4" fill="none" stroke="#d8c9a0" stroke-width="1.2"/>
+      <!-- échappements -->
+      <g>
+        <circle cx="44" cy="97" r="3.2" fill="#6d747b"/>
+        <circle cx="44" cy="97" r="1.8" fill="#14181c"/>
+        <circle cx="84" cy="97" r="3.2" fill="#6d747b"/>
+        <circle cx="84" cy="97" r="1.8" fill="#14181c"/>
+      </g>
     </g>
 
-    <!-- Bollards d'amarrage + aussières -->
+    <!-- ================= Propulsion (poupe) ================= -->
+    <g id="propulsion">
+      <rect x="47" y="100" width="2" height="18" fill="#4a5158"/>
+      <rect x="79" y="100" width="2" height="18" fill="#4a5158"/>
+      <g transform="translate(48 121)">
+        <ellipse rx="2.2" ry="5.5" fill="#2f363c" transform="rotate(0)"/>
+        <ellipse rx="2.2" ry="5.5" fill="#2f363c" transform="rotate(60)"/>
+        <ellipse rx="2.2" ry="5.5" fill="#2f363c" transform="rotate(120)"/>
+        <circle r="2.2" fill="#8d9398"/><circle r="1" fill="#3a4147"/>
+      </g>
+      <g transform="translate(80 121)">
+        <ellipse rx="2.2" ry="5.5" fill="#2f363c" transform="rotate(0)"/>
+        <ellipse rx="2.2" ry="5.5" fill="#2f363c" transform="rotate(60)"/>
+        <ellipse rx="2.2" ry="5.5" fill="#2f363c" transform="rotate(120)"/>
+        <circle r="2.2" fill="#8d9398"/><circle r="1" fill="#3a4147"/>
+      </g>
+    </g>
+
+    <!-- ================= Amarrage : bollards + aussières ================= -->
     <g id="mooring">
-      <path d="M31 27 Q26 22 21 19" stroke="#d8c9a0" stroke-width="1.4" fill="none"/>
-      <path d="M97 27 Q102 22 107 19" stroke="#d8c9a0" stroke-width="1.4" fill="none"/>
-      <path d="M31 101 Q27 105 24 109" stroke="#d8c9a0" stroke-width="1.4" fill="none"/>
-      <path d="M97 101 Q101 105 104 109" stroke="#d8c9a0" stroke-width="1.4" fill="none"/>
-      <g fill="#4a4f55">
-        <circle cx="31" cy="27"  r="2.8"/><circle cx="97" cy="27"  r="2.8"/>
-        <circle cx="31" cy="101" r="2.8"/><circle cx="97" cy="101" r="2.8"/>
-      </g>
-      <g fill="#8a8b90">
-        <circle cx="31" cy="27"  r="1.3"/><circle cx="97" cy="27"  r="1.3"/>
-        <circle cx="31" cy="101" r="1.3"/><circle cx="97" cy="101" r="1.3"/>
-      </g>
-    </g>
-
-    <!-- Bouées couronne sur le pavois -->
-    <g id="lifebuoys">
+      <path d="M43 25 Q34 18 26 14.5" stroke="#c7c1b2" stroke-width="1.2" fill="none"/>
+      <path d="M85 25 Q94 18 102 14.5" stroke="#c7c1b2" stroke-width="1.2" fill="none"/>
+      <path d="M33 104 Q28 108 24 112" stroke="#c7c1b2" stroke-width="1.2" fill="none"/>
+      <path d="M95 104 Q100 108 104 112" stroke="#c7c1b2" stroke-width="1.2" fill="none"/>
       <g>
-        <circle cx="20.5" cy="64" r="6.4" fill="#f4f4f0"/>
-        <circle cx="20.5" cy="64" r="5.4" fill="none" stroke="#c94f4f" stroke-width="3"
-                stroke-dasharray="5.3 3.15"/>
-      </g>
-      <g>
-        <circle cx="107.5" cy="64" r="6.4" fill="#f4f4f0"/>
-        <circle cx="107.5" cy="64" r="5.4" fill="none" stroke="#c94f4f" stroke-width="3"
-                stroke-dasharray="5.3 3.15"/>
+        <g transform="translate(43 25)">
+          <circle r="2.6" fill="#a7adb0"/><rect x="-3.4" y="-0.9" width="6.8" height="1.8" fill="#b6bbbe"/>
+          <circle r="1.2" fill="#d8dcdf"/>
+        </g>
+        <g transform="translate(85 25)">
+          <circle r="2.6" fill="#a7adb0"/><rect x="-3.4" y="-0.9" width="6.8" height="1.8" fill="#b6bbbe"/>
+          <circle r="1.2" fill="#d8dcdf"/>
+        </g>
+        <g transform="translate(33 104)">
+          <circle r="2.6" fill="#a7adb0"/><rect x="-3.4" y="-0.9" width="6.8" height="1.8" fill="#b6bbbe"/>
+          <circle r="1.2" fill="#d8dcdf"/>
+        </g>
+        <g transform="translate(95 104)">
+          <circle r="2.6" fill="#a7adb0"/><rect x="-3.4" y="-0.9" width="6.8" height="1.8" fill="#b6bbbe"/>
+          <circle r="1.2" fill="#d8dcdf"/>
+        </g>
       </g>
     </g>
 
-    <!-- Ancre (proue bâbord) -->
-    <g id="anchor" stroke="#4a4f55" stroke-width="1.4" fill="none" stroke-linecap="round">
-      <path d="M34 27 V36"/>
-      <path d="M30 29.5 H38"/>
-      <circle cx="34" cy="25.4" r="1.8"/>
-      <path d="M29.5 33.5 Q34 38 38.5 33.5"/>
+    <!-- Grain photo (facultatif) : clippé à la coque pour garder le fond transparent -->
+    <g id="grain" clip-path="url(#hullClip)" opacity="0.06">
+      <rect x="0" y="0" width="128" height="128" filter="url(#grainF)"/>
     </g>
 
-    <!-- Hélice : dépasse sous le tableau arrière (dessinée après la coque
-         pour rester visible, le haut des pales se fond dans le flanc sombre) -->
-    <g id="propeller">
-      <rect x="62.6" y="110" width="2.8" height="12" fill="#4a4f55"/>
-      <g transform="translate(64 122)">
-        <ellipse rx="2.4" ry="6" fill="#3d4249" transform="rotate(0)"/>
-        <ellipse rx="2.4" ry="6" fill="#3d4249" transform="rotate(60)"/>
-        <ellipse rx="2.4" ry="6" fill="#3d4249" transform="rotate(120)"/>
-        <circle r="2.4" fill="#8a8b90"/>
-        <circle r="1.1" fill="#4a4f55"/>
-      </g>
-      <circle cx="64" cy="122" r="7" fill="none" stroke="#ffffff" stroke-width="1.4" opacity="0.32"/>
-    </g>
-
-    <!-- Contour final de la coque -->
-    <use href="#hullOuter" fill="none" stroke="#33200f" stroke-width="1.6" opacity="0.85"/>
+    <!-- Contour final -->
+    <use href="#hullOuter" fill="none" stroke="#2b3339" stroke-width="1.4" opacity="0.8"/>
   </g>
 </svg>
