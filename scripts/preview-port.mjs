@@ -24,6 +24,7 @@ globalThis.window = globalThis;
 import { World } from '../js/world.js';
 import {
   buildTileset, getTileCanvas, getWaterFrame, getDoorCanvas, getFurnaceCanvas,
+  drawDoorLintel,
   getChestCanvas, drawBlockConnected, drawCaveObject, drawTreeObject,
   drawRockObject, drawIronOreObject, isExtrudedBlock, loadBoatSprite,
   CHEST_TOP_PAD,
@@ -90,6 +91,8 @@ for (let layer of [1, 2]) {
       } else if (b === 'furnace') {
         ctx.drawImage(getFurnaceCanvas(false), tx * TILE, ty * TILE + oy);
       } else if (def.kind === 'door') {
+        // Comme dans le jeu : le mur continue au-dessus de l'ouverture.
+        drawDoorLintel(ctx, tx, ty, world);
         ctx.drawImage(getDoorCanvas(false), tx * TILE, ty * TILE - BLOCK_EXTRUDE);
       } else if (def.kind === 'block') {
         if (isExtrudedBlock(b)) drawBlockConnected(ctx, b, tx, ty, world, layer);

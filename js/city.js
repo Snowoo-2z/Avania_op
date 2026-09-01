@@ -66,6 +66,15 @@ export function buildFortuneCity(world) {
   return FORTUNE_PORT;
 }
 
+// Une porte se place TOUJOURS sur le mur sud : dans cette vue de dessus,
+// c'est la seule face qu'on voit vraiment (l'est et l'ouest ne montrent
+// qu'un biseau de 6 px). Une porte percée sur le côté passait inaperçue.
+function placeDoor(world, r) {
+  const tx = Math.floor((r.x0 + r.x1) / 2);
+  world.blocks[world.idx(tx, r.y1)] = 'door';
+  return tx;
+}
+
 // Parcourt un rectangle inclusif en ignorant ce qui sort de la carte.
 function eachTile(world, r, fn) {
   for (let ty = r.y0; ty <= r.y1; ty++) {
@@ -136,8 +145,8 @@ function buildOffice(world) {
     if (edge) world.blocks[i] = 'wallModern';
   });
 
-  // Porte, au centre du mur ouest, face au bassin.
-  world.blocks[world.idx(s.x0, 61)] = 'door';
+  // Porte, au centre du mur SUD : c'est la face qu'on voit.
+  placeDoor(world, s);
 
   // Intérieur : un coffre, un four, deux torches.
   world.blocks[world.idx(29, 59)] = 'chest';
@@ -156,7 +165,7 @@ function buildTower(world) {
     world.floor[i] = 'dirt';
     if (edge) world.blocks[i] = 'wallGlass';
   });
-  world.blocks[world.idx(30, t.y1)] = 'door';
+  placeDoor(world, t);
   world.blocks[world.idx(30, 51)] = 'torch';
 }
 

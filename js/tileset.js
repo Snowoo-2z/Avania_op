@@ -1158,6 +1158,11 @@ function rockFaceTexture(ctx, rng) {
 //     de hasard, donc deux clients voient exactement la même ville.
 // ------------------------------------------------------------
 
+// Un bord est « libre » sauf si le raccord dit explicitement le
+// contraire (les tuiles d'inventaire, dessinées isolément, n'ont pas
+// de voisin : tous leurs bords sont libres).
+function free(v) { return v !== false; }
+
 // Mélange déterministe : mêmes coordonnées → mêmes détails.
 function hash2(a, b) {
   let h = Math.imul(a + 1013, 0x27d4eb2d) ^ Math.imul(b + 3571, 0x165667b1);
@@ -1201,12 +1206,25 @@ function roofTerrace(ctx, info, o) {
   }
 
   // Acrotère : arête claire au nord/ouest, ombre portée à l'intérieur.
-  ctx.fillStyle = withAlpha('#ffffff', 0.5);
-  ctx.fillRect(info.x, info.y, info.w, 2);
-  ctx.fillRect(info.x, info.y, 2, info.h);
-  ctx.fillStyle = 'rgba(0,0,0,0.22)';
-  ctx.fillRect(info.x + 2, info.y + info.h - 2, info.w - 2, 2);
-  ctx.fillRect(info.x + info.w - 2, info.y + 2, 2, info.h - 2);
+  // Uniquement sur les bords LIBRES : sans ça, chaque tuile d'une
+  // grande toiture tirait son propre rebord et la dalle semblait
+  // quadrillée.
+  if (free(info.northFree)) {
+    ctx.fillStyle = withAlpha('#ffffff', 0.5);
+    ctx.fillRect(info.x, info.y, info.w, 2);
+  }
+  if (free(info.leftFree)) {
+    ctx.fillStyle = withAlpha('#ffffff', 0.5);
+    ctx.fillRect(info.x, info.y, 2, info.h);
+  }
+  if (free(info.southFree)) {
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.fillRect(info.x + 2, info.y + info.h - 2, info.w - 2, 2);
+  }
+  if (free(info.rightFree)) {
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.fillRect(info.x + info.w - 2, info.y + 2, 2, info.h - 2);
+  }
 
   if (info.h < 16 || info.w < 18) return;
 
@@ -1332,6 +1350,23 @@ function drawElevation(ctx, info, o) {
     ctx.fillStyle = withAlpha('#ffffff', 0.16);
     ctx.fillRect(info.x, baseTop, info.w, 1);
   }
+
+  // Pilastres d'angle : là où le mur s'arrête (bord libre), la façade
+  // se termine par un chaînage vertical au lieu de couper une fenêtre.
+  // Au milieu d'un long mur, rien n'est tiré : les bandes filent.
+  const pilW = 3;
+  if (free(info.leftFree)) {
+    ctx.fillStyle = o.pilaster;
+    ctx.fillRect(info.x, yTop, pilW, yBot - yTop);
+    ctx.fillStyle = 'rgba(0,0,0,0.24)';
+    ctx.fillRect(info.x + pilW, yTop, 1, yBot - yTop);
+  }
+  if (free(info.rightFree)) {
+    ctx.fillStyle = o.pilaster;
+    ctx.fillRect(info.x + info.w - pilW, yTop, pilW, yBot - yTop);
+    ctx.fillStyle = 'rgba(0,0,0,0.24)';
+    ctx.fillRect(info.x + info.w - pilW - 1, yTop, 1, yBot - yTop);
+  }
 }
 
 // Mur moderne (immeuble de rapport) : béton clair, bandes vitrées bleues.
@@ -1351,6 +1386,7 @@ function modernWallTexture(ctx, face, info) {
     mullion: 'rgba(240,247,251,0.55)',
     lit: 'rgba(255,206,120,0.50)',
     plinth: '#a3aeb5',
+    pilaster: '#dbe2e7',
   });
   if (face === 'right') {
     ctx.fillStyle = 'rgba(0,0,0,0.20)';
@@ -1375,6 +1411,7 @@ function glassTowerTexture(ctx, face, info) {
     mullion: 'rgba(233,244,252,0.72)',
     lit: 'rgba(255,214,140,0.55)',
     plinth: '#39454f',
+    pilaster: '#b7c6d2',
   });
   if (face === 'right') {
     ctx.fillStyle = 'rgba(0,0,0,0.24)';
@@ -2548,6 +2585,10 @@ function drawBlockTileConnected(ctx, x, y, color, texture, faces, opts = {}) {
     ctx.clip();
     texture(ctx, face, {
       x: px, y: py, w: pw, h: ph, top, side, dark: sideDark, tx: blockTx, ty: blockTy,
+      // Bords réellement visibles : une toiture de six tuiles ne doit
+      // pas tirer le rebord de son acrotère sur chaque tuile.
+      leftFree: !leftSame, rightFree: !rightSame,
+      northFree: !northSame, southFree: !southSame,
     });
     ctx.restore();
   };
@@ -2627,6 +2668,34 @@ function drawBlockTileConnected(ctx, x, y, color, texture, faces, opts = {}) {
   ctx.stroke();
 
   ctx.restore();
+}
+
+// De combien un bloc monte au-dessus de sa tuile (0 pour un cube).
+export function blockRise(id) {
+  const cfg = BLOCK_TEXTURES[id];
+  return (cfg && cfg.opts.rise) || 0;
+}
+
+// Le mur dont une porte fait partie : ses voisins est/ouest (une porte
+// est toujours flanquée de deux trumeaux), à défaut nord/sud.
+function doorWallNeighbour(world, tx, ty) {
+  let best = null;
+  let bestRise = 0;
+  for (const [nx, ny] of [[tx - 1, ty], [tx + 1, ty], [tx, ty + 1], [tx, ty - 1]]) {
+    const id = world.blockAt(nx, ny);
+    if (!id || !BLOCK_TEXTURES[id]) continue;
+    const rise = BLOCK_TEXTURES[id].opts.rise || 0;
+    if (rise > bestRise) { bestRise = rise; best = id; }
+  }
+  return best;
+}
+
+// Linteau : une porte percée dans un mur de deux étages laissait un
+// trou au-dessus d'elle (on voyait l'intérieur). Le mur continue
+// jusqu'en haut, la porte reste en bas, à hauteur d'homme.
+export function drawDoorLintel(ctx, tx, ty, world) {
+  const wallId = doorWallNeighbour(world, tx, ty);
+  if (wallId) drawBlockConnected(ctx, wallId, tx, ty, world, 1);
 }
 
 export function drawBlockConnected(ctx, id, tx, ty, world, layer = 1) {

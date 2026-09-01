@@ -20,6 +20,7 @@ import {
   drawTreeObject, drawRockObject, drawIronOreObject, drawCaveObject,
   getObjectSprite, getObjectSpriteInfo, treeVariantAt, treeDropCount,
   treeBreakTime, TREE_VARIANTS, WATER_FRAMES, isExtrudedBlock, drawBlockConnected,
+  drawDoorLintel,
 } from './tileset.js';
 import { drawCharacter } from './character.js';
 import { drawNpc } from './npc/index.js';
@@ -3851,6 +3852,10 @@ export class Game {
           const rightIsDoor = this.world.blockAt(tx + 1, ty) === 'door';
           const isRightDoor = leftIsDoor && !rightIsDoor;
 
+          // Le mur continue au-dessus de l'ouverture (linteau) : sans ça,
+          // une porte dans un immeuble haut laissait un trou. Dessiné
+          // hors du miroir, lui seul doit se retourner.
+          drawDoorLintel(ctx, tx, ty, this.world);
           ctx.save();
           if (isRightDoor) {
             // Effet double porte : on retourne la porte droite horizontalement
