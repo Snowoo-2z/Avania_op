@@ -25,6 +25,16 @@ export const BLOCK_DEFS = {
   quay:      { id: 'quay',      label: 'Quai',    kind: 'floor',  solid: false, breakable: false, drop: null,   color: '#a9ada8' },
   dock:      { id: 'dock',      label: 'Ponton',  kind: 'floor',  solid: false, breakable: false, drop: null,   color: '#a8794a' },
 
+  // --- Voirie de Fortune City (générée avec la ville, non posable) ---
+  // `roadV` / `roadH` portent la ligne discontinue : elle est tracée sur
+  // le bord de la tuile, si bien que deux tuiles accolées forment une
+  // ligne au MILIEU de la chaussée.
+  road:      { id: 'road',      label: 'Route',            kind: 'floor', solid: false, breakable: false, drop: null, color: '#4a4d52' },
+  roadV:     { id: 'roadV',     label: 'Route (nord-sud)', kind: 'floor', solid: false, breakable: false, drop: null, color: '#4a4d52' },
+  roadH:     { id: 'roadH',     label: 'Route (est-ouest)',kind: 'floor', solid: false, breakable: false, drop: null, color: '#4a4d52' },
+  roadCross: { id: 'roadCross', label: 'Passage piéton',   kind: 'floor', solid: false, breakable: false, drop: null, color: '#4a4d52' },
+  pavement:  { id: 'pavement',  label: 'Trottoir',         kind: 'floor', solid: false, breakable: false, drop: null, color: '#b6b9bd' },
+
   // --- sols de la grotte (dimension souterraine) ---
   // caveFloor : le sol praticable. caveWall : la roche massive qui
   // enserre les galeries — c'est un SOL solide (comme l'eau), pas un

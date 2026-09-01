@@ -22,6 +22,8 @@ globalThis.document = {
 globalThis.window = globalThis;
 
 import { World } from '../js/world.js';
+import { spawnCityCars } from '../js/city.js';
+import { drawCar } from '../js/cars.js';
 import {
   buildTileset, getTileCanvas, getWaterFrame, getDoorCanvas, getFurnaceCanvas,
   drawDoorLintel,
@@ -135,6 +137,11 @@ if (ferrymanWaitsHere(world.id)) {
       ctx.drawImage(tag.canvas, sx - tag.w / 2, sy - 34 - tag.h, tag.w, tag.h);
     },
   });
+}
+
+// Les voitures : comme le joueur, elles ne sont pas dans la carte.
+for (const car of spawnCityCars(world)) {
+  drawables.push({ sortY: car.y, run() { drawCar(ctx, car); } });
 }
 
 drawables.sort((a, b) => a.sortY - b.sortY);

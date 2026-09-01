@@ -914,8 +914,8 @@ async function boot() {
       promptEl.classList.remove('hidden');
     }
     const zoom = game.camera.zoom;
-    const wx = target.npc ? target.npc.x : (game.targetTx + 0.5) * TILE;
-    const wy = target.npc ? target.npc.y - 30 : game.targetTy * TILE;
+    const wx = target.npc ? target.npc.x : (target.car ? target.car.x : (game.targetTx + 0.5) * TILE);
+    const wy = target.npc ? target.npc.y - 30 : (target.car ? target.car.y - 30 : game.targetTy * TILE);
     const sx = Math.round((wx - game.camera.x) * zoom);
     const sy = Math.round((wy - game.camera.y) * zoom);
     // On ne touche au DOM que si la position a vraiment bougé.

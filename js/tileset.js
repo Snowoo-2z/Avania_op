@@ -1139,6 +1139,78 @@ function rockFaceTexture(ctx, rng) {
 }
 
 // ------------------------------------------------------------
+//  Voirie (Fortune City)
+//
+//  Le sol est figé dans un cache de chunk : le grain est donc tiré une
+//  fois au démarrage (avec le `rng` du tileset), jamais à l'affichage.
+//  Deux tuiles de route accolées ne forment qu'une seule chaussée, la
+//  ligne discontinue tombant pile au milieu.
+// ------------------------------------------------------------
+
+// Enrobé : grain fin et une réparation plus sombre.
+function roadSurface(ctx, rng) {
+  ctx.fillStyle = BLOCK_DEFS.road.color;
+  ctx.fillRect(0, 0, S, S);
+  for (let i = 0; i < 110; i++) {
+    const x = Math.floor(rng() * S);
+    const y = Math.floor(rng() * S);
+    ctx.fillStyle = rng() < 0.45 ? 'rgba(255,255,255,0.055)' : 'rgba(0,0,0,0.11)';
+    ctx.fillRect(x, y, 1, 1);
+  }
+  // Une plaque de bitume refait : un rectangle plus sombre et son joint.
+  const px = 3 + Math.floor(rng() * 18);
+  const py = 4 + Math.floor(rng() * 18);
+  ctx.fillStyle = 'rgba(0,0,0,0.13)';
+  ctx.fillRect(px, py, 9, 6);
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillRect(px, py, 9, 1);
+}
+
+function drawRoadTile(ctx, rng) {
+  roadSurface(ctx, rng);
+}
+
+// Ligne discontinue sur le bord OUEST : la chaussée est à l'ouest.
+function drawRoadTileV(ctx, rng) {
+  roadSurface(ctx, rng);
+  ctx.fillStyle = 'rgba(226,222,205,0.85)';
+  for (let y = 3; y < S; y += 15) ctx.fillRect(0, y, 2, 9);
+}
+
+// Ligne discontinue sur le bord NORD : la chaussée est au nord.
+function drawRoadTileH(ctx, rng) {
+  roadSurface(ctx, rng);
+  ctx.fillStyle = 'rgba(226,222,205,0.85)';
+  for (let x = 3; x < S; x += 15) ctx.fillRect(x, 0, 9, 2);
+}
+
+// Passage piéton : bandes perpendiculaires à la chaussée.
+function drawRoadCrossTile(ctx, rng) {
+  roadSurface(ctx, rng);
+  ctx.fillStyle = 'rgba(236,233,222,0.82)';
+  for (let x = 3; x < S - 3; x += 7) ctx.fillRect(x, 3, 4, S - 6);
+}
+
+// Trottoir : dalles de 16, joints fins, bordure côté chaussée absente
+// (la bordure est dessinée par la route elle-même).
+function drawPavementTile(ctx, rng) {
+  ctx.fillStyle = BLOCK_DEFS.pavement.color;
+  ctx.fillRect(0, 0, S, S);
+  for (let i = 0; i < 60; i++) {
+    const x = Math.floor(rng() * S);
+    const y = Math.floor(rng() * S);
+    ctx.fillStyle = rng() < 0.5 ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.07)';
+    ctx.fillRect(x, y, 1, 1);
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.13)';
+  ctx.fillRect(0, 15, S, 1);
+  ctx.fillRect(15, 0, 1, S);
+  ctx.fillStyle = 'rgba(255,255,255,0.16)';
+  ctx.fillRect(0, 16, S, 1);
+  ctx.fillRect(16, 0, 1, S);
+}
+
+// ------------------------------------------------------------
 //  Immeubles modernes (Fortune City)
 //
 //  Un immeuble n'est pas un cube texturé de plus : ses murs MONTEnt
@@ -1431,6 +1503,11 @@ const DRAWERS = {
   sand:      (c, r) => drawSand(c, r),
   quay:      (c, r) => drawQuayTile(c, r),
   dock:      (c, r) => drawDockTile(c, r),
+  road:      (c, r) => drawRoadTile(c, r),
+  roadV:     (c, r) => drawRoadTileV(c, r),
+  roadH:     (c, r) => drawRoadTileH(c, r),
+  roadCross: (c, r) => drawRoadCrossTile(c, r),
+  pavement:  (c, r) => drawPavementTile(c, r),
   wood:      (c) => drawBlockTile(c, BLOCK_DEFS.wood.color, woodGrain),
   stone:     (c) => drawBlockTile(c, BLOCK_DEFS.stone.color, stoneTexture),
   plank:     (c) => drawBlockTile(c, BLOCK_DEFS.plank.color, plankTexture),

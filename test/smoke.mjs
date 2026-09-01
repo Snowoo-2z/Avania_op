@@ -15,6 +15,8 @@ import {
   ferrymanWaitsHere, ferrySpot,
 } from '../js/ferryman.js';
 import { ISLANDS } from '../js/islands.js';
+import { FORTUNE_PORT, spawnCityCars } from '../js/city.js';
+import { Car, CAR_MODELS } from '../js/cars.js';
 import { Crossing, CROSSING_DURATION } from '../js/crossing.js';
 
 let failures = 0;
@@ -116,10 +118,10 @@ assert(wFortune.floor[wFortune.idx(19, 48)] === 'dock', 'la jetée rejoint le qu
 assert(wFortune.blockAt(18, 64) === 'ferry', 'le ferry y est amarré, à flot');
 assert(wFortune.floor[wFortune.idx(18, 64)] === 'water', 'dans le bassin, pas sur le quai');
 assert(wFortune.blockAt(3, 48) === 'lighthouse', 'un phare marque l’entrée du port');
-assert(wFortune.blockAt(29, 57) === 'wallModern', 'la capitainerie est debout, en façade moderne');
-assert(wFortune.blockAt(29, 50) === 'wallGlass', 'et la tour de contrôle en façade vitrée');
-assert(wFortune.blockAt(30, 52) === 'door', 'avec sa porte au sud');
-assert(wFortune.blockAt(30, 66) === 'door', 'la capitainerie ouvre aussi au sud');
+assert(wFortune.blockAt(30, 57) === 'wallModern', 'la capitainerie est debout, en façade moderne');
+assert(wFortune.blockAt(30, 50) === 'wallGlass', 'et la tour de contrôle en façade vitrée');
+assert(wFortune.blockAt(31, 52) === 'door', 'avec sa porte au sud');
+assert(wFortune.blockAt(31, 66) === 'door', 'la capitainerie ouvre aussi au sud');
 const fortuneSpot = ferrySpot('fortune');
 assert(wFortune.floor[wFortune.idx(fortuneSpot.stand.tx, fortuneSpot.stand.ty)] === 'quay',
   'Gab attend sur le quai');
@@ -169,6 +171,53 @@ assert(quick.update(0.016) === false, 'l’arrivée est alors immédiate');
 assert(quickArrived === 1, 'et on débarque quand même');
 assert(CROSSING_DURATION >= 2 && CROSSING_DURATION <= 6,
   `une durée raisonnable (${CROSSING_DURATION} s)`);
+
+console.log('▶ Les routes et les voitures');
+const fort = (tx, ty) => wFortune.floor[wFortune.idx(tx, ty)];
+assert(fort(26, 60) === 'road' && fort(27, 60) === 'roadV',
+  "l\'avenue du port est bitumée, avec sa ligne au milieu");
+assert(fort(40, 68) === 'road' && fort(40, 69) === 'roadH',
+  "l\'avenue de la ville file vers l\'est");
+assert(fort(26, 68) === 'road' && fort(27, 69) === 'road',
+  'le carrefour reste nu : pas de ligne au milieu');
+assert(fort(30, 68) === 'roadCross', 'un passage piéton traverse l\'avenue');
+assert(fort(28, 60) === 'pavement', 'un trottoir borde l\'avenue');
+assert(fort(30, 72) === 'road', 'le parking de la capitainerie est bitumé');
+assert(fort(21, 60) === 'quay', 'le quai, lui, n\'a pas été bitumé');
+
+const cityCars = spawnCityCars(wFortune);
+assert(cityCars.length === FORTUNE_PORT.cars.length, 'les voitures sont stationnées');
+assert(cityCars.every((c) => CAR_MODELS[c.model.id]), 'avec un modèle connu');
+assert(cityCars.every((c) => !wFortune.isSolidTile(
+  Math.floor(c.x / 32), Math.floor(c.y / 32))), 'et jamais garées dans un mur');
+assert(spawnCityCars(wCove).length === 0, 'une île sans ville n\'a pas de voiture');
+
+// Le comportement, sur une route dégagée.
+const roadCar = new Car({ x: 27 * 32 + 16, y: 30 * 32 + 16, angle: 0, model: 'sedan' });
+const roadStart = roadCar.x;
+for (let i = 0; i < 30; i++) roadCar.update(1 / 60, wFortune, { throttle: 1 });
+assert(roadCar.speed > 40, 'on accélère');
+assert(roadCar.x > roadStart, 'et la voiture avance');
+for (let i = 0; i < 30; i++) roadCar.update(1 / 60, wFortune, { brake: 1 });
+assert(roadCar.speed < 40, 'on freine');
+// À l'arrêt, braquer ne fait rien : pas de pivot sur place.
+const still = new Car({ x: 27 * 32 + 16, y: 30 * 32 + 16, angle: 0, model: 'van' });
+for (let i = 0; i < 24; i++) still.update(1 / 60, wFortune, { steer: 1 });
+assert(still.angle === 0, 'arrêtée, la voiture ne pivote pas sur place');
+for (let i = 0; i < 24; i++) still.update(1 / 60, wFortune, { throttle: 1 });
+for (let i = 0; i < 24; i++) still.update(1 / 60, wFortune, { throttle: 1, steer: 1 });
+assert(still.angle !== 0, 'en roulant, elle braque');
+// Un mur l'arrête : la capitainerie est juste à l'est de l'avenue.
+const wallCar = new Car({ x: 29 * 32 + 16, y: 60 * 32 + 16, angle: 0, model: 'sport' });
+const startX = wallCar.x;
+for (let i = 0; i < 40; i++) wallCar.update(1 / 60, wFortune, { throttle: 1 });
+assert(wallCar.x < 30 * 32 + 16, 'elle ne traverse pas la capitainerie');
+assert(wallCar.x >= startX, 'et elle ne recule pas à travers le mur');
+// L'eau non plus : le bassin est juste à l'ouest.
+const seaCar = new Car({ x: 21 * 32 + 16, y: 64 * 32 + 16, angle: Math.PI, model: 'sedan' });
+for (let i = 0; i < 60; i++) seaCar.update(1 / 60, wFortune, { throttle: 1 });
+assert(wFortune.floor[wFortune.idx(Math.floor(seaCar.x / 32), Math.floor(seaCar.y / 32))] !== 'water',
+  'elle ne va pas flotter sur le bassin');
 
 console.log('▶ Casser / Poser des blocs');
 // trouve un arbre

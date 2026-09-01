@@ -20,6 +20,8 @@
 // ============================================================
 
 import { CONTAINER_KINDS } from './blocks.js';
+import { TILE } from './config.js';
+import { Car } from './cars.js';
 
 // --- Emprise du quartier du port (tuiles, bornes incluses) -------
 export const FORTUNE_PORT = {
@@ -31,11 +33,40 @@ export const FORTUNE_PORT = {
   moleN: { x0: 2, y0: 47, x1: 19, y1: 49 },
   moleS: { x0: 2, y0: 79, x1: 19, y1: 81 },
   // La cour de stockage, derrière le quai.
-  yard: { x0: 23, y0: 50, x1: 26, y1: 78 },
+  yard: { x0: 23, y0: 50, x1: 25, y1: 78 },
   // La capitainerie : le bureau du port.
-  office: { x0: 28, y0: 57, x1: 33, y1: 66 },
+  office: { x0: 29, y0: 57, x1: 34, y1: 66 },
   // La tour de contrôle : 3 × 3 de façade vitrée, porte au sud.
-  tower: { x0: 29, y0: 50, x1: 31, y1: 52 },
+  tower: { x0: 30, y0: 50, x1: 32, y1: 52 },
+
+  // --- Voirie -----------------------------------------------------
+  // Deux avenues se croisent devant la capitainerie : l'avenue du port
+  // (nord-sud, le long du bassin) et l'avenue de la ville (est-ouest,
+  // vers les quartiers à venir). Les prochaines rues s'y brancheront.
+  roads: {
+    port: { x0: 26, y0: 44, x1: 27, y1: 84 },   // avenue du port
+    city: { x0: 26, y0: 68, x1: 56, y1: 69 },   // avenue de la ville
+    cross: { x0: 30, y0: 68, x1: 31, y1: 69 },  // passage piéton
+  },
+  // Trottoirs : entre l'avenue et les bâtiments, et de chaque côté de
+  // l'avenue de la ville.
+  walks: [
+    { x0: 28, y0: 44, x1: 28, y1: 67 },
+    { x0: 35, y0: 50, x1: 35, y1: 75 },
+    { x0: 28, y0: 67, x1: 56, y1: 67 },
+    { x0: 28, y0: 70, x1: 56, y1: 70 },
+  ],
+  // Le parking de la capitainerie, juste au sud de l'avenue.
+  parking: { x0: 29, y0: 71, x1: 34, y1: 73 },
+  // Voitures stationnées. L'angle est en radians : 0 = cap à l'est,
+  // -π/2 = cap au nord (garées en épi, face au trottoir).
+  cars: [
+    { tx: 30, ty: 72, angle: -Math.PI / 2, model: 'sedan' },
+    { tx: 32, ty: 72, angle: -Math.PI / 2, model: 'van' },
+    { tx: 34, ty: 72, angle: -Math.PI / 2, model: 'sport' },
+    { tx: 21, ty: 60, angle: -Math.PI / 2, model: 'sedan' },
+    { tx: 21, ty: 70, angle: Math.PI / 2, model: 'van' },
+  ],
   // Les plages, au nord et au sud du port.
   beachN: { x0: 2, y0: 18, x1: 5, y1: 46 },
   beachS: { x0: 2, y0: 82, x1: 5, y1: 112 },
@@ -62,6 +93,7 @@ export function buildFortuneCity(world) {
   buildYard(world);
   buildOffice(world);
   buildTower(world);
+  buildRoads(world);
   placeFurniture(world);
   return FORTUNE_PORT;
 }
@@ -73,6 +105,43 @@ function placeDoor(world, r) {
   const tx = Math.floor((r.x0 + r.x1) / 2);
   world.blocks[world.idx(tx, r.y1)] = 'door';
   return tx;
+}
+
+// 9) La voirie : deux avenues, leurs trottoirs, un passage piéton et le
+//    parking. La ligne discontinue est tracée sur le bord de la tuile,
+//    donc deux tuiles accolées la font tomber au milieu de la chaussée ;
+//    le carrefour, lui, reste nu (pas de ligne au milieu d'un croisement).
+function buildRoads(world) {
+  const r = FORTUNE_PORT.roads;
+  eachTile(world, r.port, (tx, ty, i) => {
+    if (ty >= r.city.y0 && ty <= r.city.y1) return;   // carrefour
+    world.floor[i] = tx === r.port.x1 ? 'roadV' : 'road';
+  });
+  eachTile(world, r.city, (tx, ty, i) => {
+    if (tx >= r.port.x0 && tx <= r.port.x1) return;   // carrefour
+    world.floor[i] = ty === r.city.y1 ? 'roadH' : 'road';
+  });
+  eachTile(world, {
+    x0: r.port.x0, y0: r.city.y0, x1: r.port.x1, y1: r.city.y1,
+  }, (tx, ty, i) => { world.floor[i] = 'road'; });
+  eachTile(world, r.cross, (tx, ty, i) => { world.floor[i] = 'roadCross'; });
+  for (const w of FORTUNE_PORT.walks) {
+    eachTile(world, w, (tx, ty, i) => { world.floor[i] = 'pavement'; });
+  }
+  eachTile(world, FORTUNE_PORT.parking, (tx, ty, i) => { world.floor[i] = 'road'; });
+}
+
+// Les voitures de la ville (js/cars.js) : stationnées là où le plan les
+// prévoit, au premier passage. Le joueur les déplace ensuite, et elles
+// restent où il les gare jusqu'à la fin de la partie.
+export function spawnCityCars(world) {
+  if (world.id !== 'fortune') return [];
+  return FORTUNE_PORT.cars.map((spec) => new Car({
+    x: spec.tx * TILE + TILE / 2,
+    y: spec.ty * TILE + TILE / 2,
+    angle: spec.angle || 0,
+    model: spec.model || 'sedan',
+  }));
 }
 
 // Parcourt un rectangle inclusif en ignorant ce qui sort de la carte.
@@ -149,10 +218,10 @@ function buildOffice(world) {
   placeDoor(world, s);
 
   // Intérieur : un coffre, un four, deux torches.
-  world.blocks[world.idx(29, 59)] = 'chest';
-  world.blocks[world.idx(32, 64)] = 'furnace';
-  world.blocks[world.idx(29, 64)] = 'torch';
-  world.blocks[world.idx(32, 59)] = 'torch';
+  world.blocks[world.idx(30, 59)] = 'chest';
+  world.blocks[world.idx(33, 64)] = 'furnace';
+  world.blocks[world.idx(30, 64)] = 'torch';
+  world.blocks[world.idx(33, 59)] = 'torch';
 }
 
 // 7) La tour de contrôle : un bloc de façade vitrée, plus haut que la
@@ -166,7 +235,7 @@ function buildTower(world) {
     if (edge) world.blocks[i] = 'wallGlass';
   });
   placeDoor(world, t);
-  world.blocks[world.idx(30, 51)] = 'torch';
+  world.blocks[world.idx(31, 51)] = 'torch';
 }
 
 // 8) Le mobilier : ferry, phare, grues, conteneurs, bollards, panneaux.

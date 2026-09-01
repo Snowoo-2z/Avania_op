@@ -34,7 +34,8 @@ import {
 } from './mobs/index.js';
 import { CAVE, canDescendTo } from './cave.js';
 import { PORT_SIGNS } from './harbor.js';
-import { FORTUNE_SIGNS } from './city.js';
+import { FORTUNE_SIGNS, spawnCityCars } from './city.js';
+import { drawCar } from './cars.js';
 import { islandDef, HOME_ISLAND } from './islands.js';
 import { Crossing } from './crossing.js';
 // Chat de proximité (étape 6) : le nettoyage du texte d'une bulle utilise
@@ -114,6 +115,7 @@ const DRAW_MOB = 2;    // animal
 const DRAW_PLAYER = 3; // joueur
 const DRAW_PLACED_BLOCK = 4; // bloc posé (mur, porte, four)
 const DRAW_NPC = 5;    // personnage non-joueur (représentant, marchands)
+const DRAW_CAR = 6;    // voiture
 // Vitesse du balancement de l'outil pendant le minage (rad/s) : un va-et-
 // vient complet ≈ 0,66 s, comme le geste de la main dans Minecraft.
 const SWING_SPEED = 9.5;
@@ -287,6 +289,10 @@ export class Game {
     // La cinématique de traversée (voir js/crossing.js). Inerte hors
     // des traversées : elle ne coûte rien le reste du temps.
     this.crossing = new Crossing();
+    // Voitures : une liste par île (seule Fortune City en a pour
+    // l'instant), et celle que le joueur conduit, s'il conduit.
+    this.cars = new Map();
+    this.driving = null;
     this.player = new Player(this.world.spawn.x, this.world.spawn.y, appearance);
     this.input = new Input();
     this.inventory = new Inventory();
@@ -727,14 +733,22 @@ export class Game {
     // Pendant une cinématique (l'arrivée du représentant), le joueur ne
     // contrôle plus rien : on ignore simplement ses entrées.
     const dir = this.cutscene ? this._zeroDir : this.input.getDirection();
-    this.player.update(dir, dt, this.world, this.wellFedBoost());
     // Parallaxe : on lisse un léger décalage vers la direction de
     // déplacement, puis on suit ce point (pas exactement le joueur) pour
     // dégager la vue dans le sens du mouvement.
     const LEAD = 46;
     const lk = 1 - Math.pow(0.002, dt);
-    this.camLeadX = lerp(this.camLeadX, dir.x * LEAD, lk);
-    this.camLeadY = lerp(this.camLeadY, dir.y * LEAD, lk);
+    if (this.driving) {
+      // Au volant : c'est la voiture qui avance, le joueur suit dedans.
+      this.updateDriving(dt);
+      const lead = LEAD + Math.abs(this.driving.speed) * 0.22;
+      this.camLeadX = lerp(this.camLeadX, Math.cos(this.driving.angle) * lead, lk);
+      this.camLeadY = lerp(this.camLeadY, Math.sin(this.driving.angle) * lead, lk);
+    } else {
+      this.player.update(dir, dt, this.world, this.wellFedBoost());
+      this.camLeadX = lerp(this.camLeadX, dir.x * LEAD, lk);
+      this.camLeadY = lerp(this.camLeadY, dir.y * LEAD, lk);
+    }
     this.camera.follow(this.player.x + this.camLeadX, this.player.y + this.camLeadY, dt);
     // Pré-construit par petits lots les chunks qui vont entrer dans la vue :
     // c'est le correctif des saccades au déplacement (plus de rasterisation
@@ -1178,6 +1192,13 @@ export class Game {
   updateInteractTarget() {
     this.interactTarget = null;
     if (this.cutscene) return;
+    // Au volant, une seule chose à faire : descendre.
+    if (this.driving) {
+      this.interactTarget = {
+        car: this.driving, label: 'Descendre de voiture', action: 'exitCar',
+      };
+      return;
+    }
 
     // 1) Un PNJ tout près passe en premier : c'est l'interaction la
     //    plus probable quand on est debout devant quelqu'un.
@@ -1202,7 +1223,16 @@ export class Game {
       return;
     }
 
-    // 2) Sinon, un point de passage à portée de main.
+    // 2) Sinon, une voiture à portée de main : on y monte.
+    if (!this.driving) {
+      const car = this.nearestCar();
+      if (car) {
+        this.interactTarget = { car, label: `Conduire la ${car.model.label}`, action: 'car' };
+        return;
+      }
+    }
+
+    // 3) Sinon, un point de passage à portée de main.
     const tx = this.targetTx;
     const ty = this.targetTy;
     if (!this.inReach || !this.world.inBounds(tx, ty)) return;
@@ -1220,10 +1250,108 @@ export class Game {
     }
   }
 
+  // ------------------------------------------------------------
+  //  Voitures
+  //
+  //  Une voiture n'est pas un bloc : c'est une entité qu'on laisse où
+  //  on l'a garée (jusqu'à la fin de la partie). Pour l'instant elles
+  //  vivent dans la session du joueur : deux joueurs ne se voient pas
+  //  conduire — le réseau ne les transporte pas encore.
+  // ------------------------------------------------------------
+
+  // Les voitures d'une île, créées à la première demande.
+  carsFor(world) {
+    let list = this.cars.get(world.id);
+    if (list === undefined) {
+      list = spawnCityCars(world);
+      this.cars.set(world.id, list);
+    }
+    return list;
+  }
+
+  // La voiture la plus proche du joueur, à portée de main.
+  nearestCar(maxDist = 52) {
+    let best = null;
+    let bestDist = maxDist * maxDist;
+    for (const car of this.carsFor(this.world)) {
+      const dx = car.x - this.player.x;
+      const dy = car.y - this.player.y;
+      const d = dx * dx + dy * dy;
+      if (d < bestDist) { bestDist = d; best = car; }
+    }
+    return best;
+  }
+
+  enterCar(car) {
+    if (!car || this.driving === car) return;
+    this.driving = car;
+    car.speed = 0;
+    this.player.x = car.x;
+    this.player.y = car.y;
+    this.resetMining();
+    this.actionCooldown = 0.3;
+    this.notify(`Vous conduisez la ${car.model.label} — Z avance, S freine, Q et D braquent.`);
+  }
+
+  exitCar() {
+    const car = this.driving;
+    if (!car) return;
+    // On descend À CÔTÉ, jamais dans un mur ni à l'eau.
+    const spot = this.freeSpotNear(car.x, car.y);
+    this.player.x = spot.x;
+    this.player.y = spot.y;
+    car.speed = 0;
+    this.driving = null;
+    this.actionCooldown = 0.35;
+  }
+
+  // Une case libre autour d'un point (quatre côtés, puis le point lui-même).
+  freeSpotNear(x, y) {
+    for (const [ox, oy] of [[30, 0], [-30, 0], [0, 30], [0, -30]]) {
+      const nx = x + ox;
+      const ny = y + oy;
+      const tx = Math.floor(nx / TILE);
+      const ty = Math.floor(ny / TILE);
+      if (!this.world.inBounds(tx, ty)) continue;
+      if (this.world.isSolidTile(tx, ty)) continue;
+      if (this.world.floor[this.world.idx(tx, ty)] === 'water') continue;
+      return { x: nx, y: ny };
+    }
+    return { x, y };
+  }
+
+  // Conduite : les touches de déplacement servent de pédales et de volant.
+  updateDriving(dt) {
+    const car = this.driving;
+    car.update(dt, this.world, {
+      throttle: this.input.down('moveUp') ? 1 : 0,
+      brake: this.input.down('moveDown') ? 1 : 0,
+      steer: (this.input.down('moveRight') ? 1 : 0) - (this.input.down('moveLeft') ? 1 : 0),
+    });
+    // Le joueur est assis dedans : sa position suit, pour la caméra, le
+    // chat de proximité et tout ce qui se mesure au joueur.
+    this.player.x = car.x;
+    this.player.y = car.y;
+    this.player.moving = Math.abs(car.speed) > 8;
+    this.player.facing = Math.abs(Math.cos(car.angle)) > Math.abs(Math.sin(car.angle))
+      ? (Math.cos(car.angle) > 0 ? 'right' : 'left')
+      : (Math.sin(car.angle) > 0 ? 'down' : 'up');
+  }
+
   handleInteract() {
     const target = this.interactTarget;
     if (!target || this.actionCooldown > 0) return;
     this.actionCooldown = 0.3;
+
+    // Voiture : on monte, ou on descend si on est déjà au volant.
+    if (target.action === 'car' && target.car) {
+      this.enterCar(target.car);
+      return;
+    }
+    if (target.action === 'exitCar') {
+      this.exitCar();
+      return;
+    }
 
     if (target.action === 'talk' && target.npc) {
       if (target.npc.cooldownUntil && this.time < target.npc.cooldownUntil) {
@@ -1352,6 +1480,9 @@ export class Game {
   // il ne débarque qu'à la fin. Le paiement est fait par l'appelant (le
   // comptoir du passeur) : le moteur ne connaît pas la bourse.
   startCrossing(islandId, landing, names = {}) {
+    // On laisse la voiture au garage (ou sur le quai) : la traversée se
+    // fait à pied, avec Gab.
+    this.driving = null;
     const world = this.getIsland(islandId);
     if (!world) return false;
     const tx = landing && Number.isFinite(landing.tx) ? landing.tx : Math.floor(world.spawn.x / TILE);
@@ -1995,6 +2126,8 @@ export class Game {
   // ------------------------------------------------------------
   handleClicks(dt) {
     if (this.cutscene) { this.resetMining(); return; }
+    // Au volant, on garde les mains sur le volant : ni pioche ni pose.
+    if (this.driving) { this.resetMining(); return; }
     // Minage / attaque : on maintient l'action « miner » (clic gauche par
     // défaut, mais rebindable). Frappe d'abord les animaux sous le curseur
     // (comme dans Minecraft), sinon mine la tuile.
@@ -3803,6 +3936,13 @@ export class Game {
       drawables.push(mob);
     }
 
+    // Voitures : triées avec tout le reste, donc une voiture passe
+    // derrière un mur ou un immeuble comme il faut.
+    for (const car of this.carsFor(this.world)) {
+      if (car === this.driving) continue;   // celle-là est dessinée avec le joueur
+      drawables.push({ dy: DRAW_CAR, car, sortY: car.y, layer: 1 });
+    }
+
     const player = this.player;
     player.sortY = player.y;
     drawables.push(player);
@@ -3838,8 +3978,12 @@ export class Game {
         drawMob(ctx, d);
       } else if (dy === DRAW_NPC) {
         drawNpc(ctx, d);
+      } else if (dy === DRAW_CAR) {
+        drawCar(ctx, d.car);
       } else if (dy === DRAW_PLAYER) {
-        this.drawPlayer(ctx, d, d === player);
+        // Au volant, on ne dessine pas le joueur : il est dans la voiture.
+        if (d === player && this.driving) drawCar(ctx, this.driving);
+        else this.drawPlayer(ctx, d, d === player);
       } else if (dy === DRAW_PLACED_BLOCK) {
         const block = d.block;
         const tx = d.tx;

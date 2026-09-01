@@ -207,6 +207,20 @@ function pressOnce(k) {
   window.dispatchEvent(up);
 }
 
+// Maintenir une touche : `press()` la relève aussitôt, or accélérer
+// suppose de rester appuyé. On n'envoie ici que le keydown, et on
+// relève à la main.
+function hold(k) {
+  const ev = new window.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true });
+  window.document.dispatchEvent(ev);
+  window.dispatchEvent(ev);
+}
+function release(k) {
+  const ev = new window.KeyboardEvent('keyup', { key: k, bubbles: true, cancelable: true });
+  window.document.dispatchEvent(ev);
+  window.dispatchEvent(ev);
+}
+
 function click(el) {
   if (typeof el.onclick === 'function') el.onclick(new window.MouseEvent('click', { bubbles: true }));
   el.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -1034,6 +1048,74 @@ assert($('phone').classList.contains('hidden'), 'Échap raccroche le téléphone
 assert(game.paused === false, 'et rend la main au jeu');
 await renderOnce('après le téléphone');
 
+
+console.log('\n▶ Conduire : les voitures de Fortune City');
+{
+  // On repart pour l'île : Gab attend toujours sur le quai d'Avania.
+  game.startCrossing('fortune', null, { from: 'Avania', to: 'Fortune City' });
+  assert(await until(() => !game.crossing.running, 900), 'on traverse');
+  await frames(3);
+  assert(game.world.id === 'fortune', `on est sur Fortune City (${game.world.id})`);
+
+  const cars = game.carsFor(game.world);
+  assert(cars.length >= 3, `des voitures sont garées (${cars.length})`);
+  const car = cars[0];
+
+  // --- 1) Monter : on marche jusqu'à la voiture et on appuie sur F. ---
+  game.player.x = car.x;
+  game.player.y = car.y + 34;
+  await frames(4);
+  assert(game.interactTarget && game.interactTarget.action === 'car',
+    'la voiture est proposée à portée de main');
+  press('f');
+  await frames(4);
+  assert(game.driving === car, 'on est au volant');
+
+  // --- 2) Rouler : Z maintenu, la voiture avance. ---
+  const x0 = car.x;
+  const y0 = car.y;
+  hold('z');
+  await frames(45);
+  release('z');
+  assert(Math.hypot(car.x - x0, car.y - y0) > 40,
+    `la voiture a roulé (${Math.round(Math.hypot(car.x - x0, car.y - y0))} px)`);
+  assert(!game.world.isSolidAt(car.x, car.y), 'et ne s\'est pas encastrée dans un mur');
+  await renderOnce('au volant');
+
+  // --- 3) Le joueur est dedans : sa position suit la voiture. ---
+  assert(Math.abs(game.player.x - car.x) < 1 && Math.abs(game.player.y - car.y) < 1,
+    'le joueur est assis dans la voiture');
+
+  // --- 4) Descendre : F, et on pose le joueur sur une case libre. ---
+  press('f');
+  await frames(4);
+  assert(game.driving === null, 'on est descendu');
+  assert(!game.world.isSolidAt(game.player.x, game.player.y),
+    'sur une case libre, pas dans un mur');
+  assert(Math.hypot(game.player.x - car.x, game.player.y - car.y) > 8,
+    'et à côté de la voiture, pas dedans');
+  await renderOnce('après être descendu');
+
+  // --- 5) Une voiture ne va pas sur l'eau : le bassin est à l'ouest. ---
+  car.x = 21 * 32 + 16;
+  car.y = 64 * 32 + 16;
+  car.angle = Math.PI;
+  car.speed = 0;
+  game.enterCar(car);
+  hold('z');
+  await frames(90);
+  release('z');
+  assert(game.world.floor[game.world.idx(Math.floor(car.x / 32), Math.floor(car.y / 32))] !== 'water',
+    'elle refuse de flotter sur le bassin');
+  game.exitCar();
+  await frames(2);
+
+  // --- 6) On rentre à Avania : la suite des tests commence sur le port. ---
+  game.startCrossing('surface', null, { from: 'Fortune City', to: 'Avania' });
+  assert(await until(() => !game.crossing.running, 900), 'le retour traverse aussi');
+  await frames(3);
+  assert(game.world.id === 'surface', `et on est bien rentré (${game.world.id})`);
+}
 
 console.log('\n▶ Le passeur : Gab et la traversée vers Fortune City');
 {
