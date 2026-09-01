@@ -34,6 +34,8 @@ export const FORTUNE_PORT = {
   yard: { x0: 23, y0: 50, x1: 26, y1: 78 },
   // La capitainerie : le bureau du port.
   office: { x0: 28, y0: 57, x1: 33, y1: 66 },
+  // La tour de contrôle : 3 × 3 de façade vitrée, porte au sud.
+  tower: { x0: 29, y0: 50, x1: 31, y1: 52 },
   // Les plages, au nord et au sud du port.
   beachN: { x0: 2, y0: 18, x1: 5, y1: 46 },
   beachS: { x0: 2, y0: 82, x1: 5, y1: 112 },
@@ -59,6 +61,7 @@ export function buildFortuneCity(world) {
   buildMoles(world);
   buildYard(world);
   buildOffice(world);
+  buildTower(world);
   placeFurniture(world);
   return FORTUNE_PORT;
 }
@@ -122,24 +125,19 @@ function buildYard(world) {
   eachTile(world, FORTUNE_PORT.yard, (tx, ty, i) => { world.floor[i] = 'dirt'; });
 }
 
-// 6) La capitainerie : murs de briques, porte côté port, vitrages,
-//    et de quoi tenir le bureau (coffre, four, torches).
+// 6) La capitainerie : murs modernes (les fenêtres sont DANS la façade,
+//    voir js/tileset.js), porte côté port, et de quoi tenir le bureau
+//    (coffre, four, torches).
 function buildOffice(world) {
   const s = FORTUNE_PORT.office;
   eachTile(world, s, (tx, ty, i) => {
     const edge = tx === s.x0 || tx === s.x1 || ty === s.y0 || ty === s.y1;
     world.floor[i] = 'dirt';
-    if (edge) world.blocks[i] = 'brick';
+    if (edge) world.blocks[i] = 'wallModern';
   });
 
-  // Porte (au centre du mur ouest, face au bassin) et fenêtres.
+  // Porte, au centre du mur ouest, face au bassin.
   world.blocks[world.idx(s.x0, 61)] = 'door';
-  const windows = [
-    [s.x1, 59], [s.x1, 63],   // est
-    [30, s.y0], [31, s.y0],   // nord
-    [30, s.y1], [31, s.y1],   // sud
-  ];
-  for (const [tx, ty] of windows) world.blocks[world.idx(tx, ty)] = 'glass';
 
   // Intérieur : un coffre, un four, deux torches.
   world.blocks[world.idx(29, 59)] = 'chest';
@@ -148,7 +146,21 @@ function buildOffice(world) {
   world.blocks[world.idx(32, 59)] = 'torch';
 }
 
-// 7) Le mobilier : ferry, phare, grues, conteneurs, bollards, panneaux.
+// 7) La tour de contrôle : un bloc de façade vitrée, plus haut que la
+//    capitainerie (26 px de `rise` contre 14), avec l'escalier derrière
+//    la porte et une lampe à l'intérieur.
+function buildTower(world) {
+  const t = FORTUNE_PORT.tower;
+  eachTile(world, t, (tx, ty, i) => {
+    const edge = tx === t.x0 || tx === t.x1 || ty === t.y0 || ty === t.y1;
+    world.floor[i] = 'dirt';
+    if (edge) world.blocks[i] = 'wallGlass';
+  });
+  world.blocks[world.idx(30, t.y1)] = 'door';
+  world.blocks[world.idx(30, 51)] = 'torch';
+}
+
+// 8) Le mobilier : ferry, phare, grues, conteneurs, bollards, panneaux.
 function placeFurniture(world) {
   // Le ferry amarré le long du quai, proue au nord.
   world.setBlock(FORTUNE_PORT.ferry.tx, FORTUNE_PORT.ferry.ty, 'ferry');

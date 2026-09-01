@@ -453,8 +453,11 @@ console.log('\n▶ PvP : étal protégé, coup visible, butin au sol');
     'un passant NE PEUT PAS casser l\'étal d\'un autre');
   assert(game.mining.progress === 0, 'et le minage n\'a même pas commencé');
 
-  // 2) Le propriétaire (hors ligne : id local -1) casse son propre étal.
-  game.sellerData.set(sIdx, { tier: 1, owner: -1, item: 'wood', stock: 2, price: 5, till: 7 });
+  // 2) Le propriétaire casse son propre étal. L'identité du joueur local
+  //    n'est plus codée en dur (-1) : elle vient du client multijoueur
+  //    (js/main.js → `getOwnerId`), alors on la demande au jeu.
+  const localOwner = game.uiCallbacks.getOwnerId ? game.uiCallbacks.getOwnerId() : -1;
+  game.sellerData.set(sIdx, { tier: 1, owner: localOwner, item: 'wood', stock: 2, price: 5, till: 7 });
   for (let i = 0; i < 1200 && game.world.blocks[sIdx] === 'seller1'; i++) game.mineTarget(1 / 60);
   assert(game.world.blocks[sIdx] !== 'seller1', 'le propriétaire casse son étal');
   assert(game.sellerData.get(sIdx) === undefined, 'l\'état de l\'étal est purgé');

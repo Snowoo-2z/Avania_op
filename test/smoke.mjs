@@ -116,7 +116,9 @@ assert(wFortune.floor[wFortune.idx(19, 48)] === 'dock', 'la jetée rejoint le qu
 assert(wFortune.blockAt(18, 64) === 'ferry', 'le ferry y est amarré, à flot');
 assert(wFortune.floor[wFortune.idx(18, 64)] === 'water', 'dans le bassin, pas sur le quai');
 assert(wFortune.blockAt(3, 48) === 'lighthouse', 'un phare marque l’entrée du port');
-assert(wFortune.blockAt(29, 57) === 'brick', 'la capitainerie est debout');
+assert(wFortune.blockAt(29, 57) === 'wallModern', 'la capitainerie est debout, en façade moderne');
+assert(wFortune.blockAt(29, 50) === 'wallGlass', 'et la tour de contrôle en façade vitrée');
+assert(wFortune.blockAt(30, 52) === 'door', 'avec sa porte au sud');
 const fortuneSpot = ferrySpot('fortune');
 assert(wFortune.floor[wFortune.idx(fortuneSpot.stand.tx, fortuneSpot.stand.ty)] === 'quay',
   'Gab attend sur le quai');

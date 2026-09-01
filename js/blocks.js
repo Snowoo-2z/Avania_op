@@ -54,6 +54,12 @@ export const BLOCK_DEFS = {
   brick:  { id: 'brick',  label: 'Brique',  kind: 'block', solid: true, breakable: true, drop: 'brick',  color: '#b4553f', requiredTool: 'pickaxe', breakTime: 1.05 },
   glass:  { id: 'glass',  label: 'Verre',   kind: 'block', solid: true, breakable: true, drop: 'glass',  color: '#bfe3ea', requiredTool: 'pickaxe', breakTime: 0.6 },
 
+  // --- Architecture moderne (Fortune City) -------------------------
+  // Ces murs se dessinent PLUS HAUT que leur tuile : de vraies façades
+  // d'immeuble, pas des cubes (option `rise` dans js/tileset.js).
+  wallModern: { id: 'wallModern', label: 'Mur moderne', kind: 'block', solid: true, breakable: true, drop: 'wallModern', color: '#d8dee3', requiredTool: 'pickaxe', breakTime: 1.2 },
+  wallGlass:  { id: 'wallGlass',  label: 'Tour vitrée', kind: 'block', solid: true, breakable: true, drop: 'wallGlass',  color: '#5f90b4', requiredTool: 'pickaxe', breakTime: 1.0 },
+
   // --- blocs de terrain (récoltés à la pelle, reposés) ---
   sandBlock: { id: 'sandBlock', label: 'Sable', kind: 'block', solid: true, breakable: true, drop: 'sand', color: '#e2c88a', requiredTool: 'shovel', breakTime: 0.5 },
   dirtBlock: { id: 'dirtBlock', label: 'Terre', kind: 'block', solid: true, breakable: true, drop: 'dirt', color: '#8a6a46', requiredTool: 'shovel', breakTime: 0.45 },
@@ -278,6 +284,8 @@ export const ITEM_DEFS = {
   plank: { id: 'plank', label: 'Planches',  color: '#c89a5e', icon: '▤',  type: 'material', maxStack: 64, place: 'plank' },
   brick: { id: 'brick', label: 'Briques',   color: '#b4553f', icon: '▦',  type: 'material', maxStack: 64, place: 'brick' },
   glass: { id: 'glass', label: 'Verre',     color: '#bfe3ea', icon: '◇',  type: 'material', maxStack: 64, place: 'glass' },
+  wallModern: { id: 'wallModern', label: 'Mur moderne', color: '#d8dee3', icon: '▧', type: 'material', maxStack: 64, place: 'wallModern' },
+  wallGlass: { id: 'wallGlass', label: 'Tour vitrée', color: '#5f90b4', icon: '▨', type: 'material', maxStack: 64, place: 'wallGlass' },
   stick: { id: 'stick', label: 'Bâtons',   color: '#c89a5e', icon: '╱',  type: 'material', maxStack: 64 },
 
   // La monnaie de l'île (js/economy.js). Les écus vivent DANS
@@ -484,6 +492,14 @@ export const RECIPES = [
   {
     id: 'glass', label: 'Verre', out: 'glass', outN: 1,
     inputs: { sand: 2 }, pattern: [['sand', 'sand']], category: 'construction',
+  },
+  {
+    id: 'wallModern', label: 'Mur moderne', out: 'wallModern', outN: 4,
+    inputs: { stone: 2, glass: 1 }, pattern: [['stone', 'glass'], ['stone', null]], category: 'construction',
+  },
+  {
+    id: 'wallGlass', label: 'Tour vitrée', out: 'wallGlass', outN: 4,
+    inputs: { glass: 3, ironIngot: 1 }, pattern: [['glass', 'glass'], ['ironIngot', null]], category: 'construction',
   },
   {
     id: 'stick', label: 'Bâtons', out: 'stick', outN: 4,
