@@ -129,6 +129,12 @@ export class Settings {
     this.vignette = saved.vignette ?? true;
     this.particles = saved.particles ?? true;
     this.aimAssist = saved.aimAssist ?? true;
+    // Conduite : 100 = volant d'origine. En dessous les roues braquent
+    // moins (la voiture tire droit, facile à tenir) ; au-dessus elle est
+    // vive mais demande du doigté.
+    this.driveSens = Number.isFinite(saved.driveSens)
+      ? Math.max(40, Math.min(180, saved.driveSens))
+      : 100;
     // Communication (multijoueur) : côté de l'écran où vit la fenêtre du
     // chat global ('left' | 'right'), et affichage ou non des bulles du
     // talkie-walkie au-dessus des joueurs.
@@ -165,6 +171,7 @@ export class Settings {
       vignette: this.vignette,
       particles: this.particles,
       aimAssist: this.aimAssist,
+      driveSens: this.driveSens,
       chatSide: this.chatSide,
       bubbles: this.bubbles,
       graphics: this.graphics,
@@ -256,6 +263,18 @@ export class Settings {
     }
 
     // Zoom
+    const sensRange = document.getElementById('drive-sens-range');
+    const sensVal = document.getElementById('drive-sens-value');
+    if (sensRange) {
+      sensRange.value = this.driveSens;
+      sensVal.textContent = `${this.driveSens} %`;
+      sensRange.addEventListener('input', () => {
+        this.driveSens = Number(sensRange.value);
+        sensVal.textContent = `${this.driveSens} %`;
+        this._save();
+      });
+    }
+
     const zoomRange = document.getElementById('zoom-range');
     const zoomVal = document.getElementById('zoom-value');
     if (zoomRange) {

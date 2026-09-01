@@ -207,6 +207,41 @@ assert(still.angle === 0, 'arrêtée, la voiture ne pivote pas sur place');
 for (let i = 0; i < 24; i++) still.update(1 / 60, wFortune, { throttle: 1 });
 for (let i = 0; i < 24; i++) still.update(1 / 60, wFortune, { throttle: 1, steer: 1 });
 assert(still.angle !== 0, 'en roulant, elle braque');
+// Le volant est progressif : on ne braque pas d'un coup, et il revient
+// au centre tout seul quand on le lâche.
+const volant = new Car({ x: 40 * 32, y: 30 * 32, angle: 0 });
+volant.speed = 120; volant.vx = 120;
+volant.update(1 / 60, wFortune, { steer: 1 });
+assert(volant.wheel > 0 && volant.wheel < 0.1, 'le volant tourne progressivement');
+for (let i = 0; i < 30; i++) volant.update(1 / 60, wFortune, { steer: 1, throttle: 1 });
+const braque = volant.wheel;
+assert(braque > 0.1, 'et finit par braquer franchement');
+for (let i = 0; i < 90; i++) volant.update(1 / 60, wFortune, {});
+assert(Math.abs(volant.wheel) < Math.abs(braque) * 0.2, 'puis revient au centre tout seul');
+
+// À pleine allure, la direction se durcit : pas de tête-à-queue.
+const spin = new Car({ x: 40 * 32, y: 30 * 32, angle: 0, model: 'sport' });
+for (let i = 0; i < 240; i++) spin.update(1 / 60, wFortune, { throttle: 1 });
+assert(spin.speed > 250, `la sportive atteint son allure (${Math.round(spin.speed)} px/s)`);
+const avant = spin.angle;
+for (let i = 0; i < 60; i++) spin.update(1 / 60, wFortune, { throttle: 1, steer: 1 });
+const tourne = Math.abs(spin.angle - avant);
+assert(tourne > 0.25, `elle tourne quand même (${tourne.toFixed(2)} rad en 1 s)`);
+assert(tourne < 1.8, `sans partir en tête-à-queue (${tourne.toFixed(2)} rad en 1 s)`);
+
+// La sensibilité des paramètres : douce, elle tire droit ; vive, elle mord.
+const tourneAvec = (sens) => {
+  const c = new Car({ x: 40 * 32, y: 30 * 32, angle: 0 });
+  for (let i = 0; i < 60; i++) c.update(1 / 60, wFortune, { throttle: 1 });
+  const a = c.angle;
+  for (let i = 0; i < 60; i++) c.update(1 / 60, wFortune, { throttle: 1, steer: 1, sensitivity: sens });
+  return Math.abs(c.angle - a);
+};
+const doux = tourneAvec(0.4);
+const vif = tourneAvec(1.8);
+assert(doux < vif * 0.6,
+  `une direction douce tourne bien moins qu'une vive (${doux.toFixed(2)} vs ${vif.toFixed(2)} rad)`);
+
 // Un mur l'arrête : la capitainerie est juste à l'est de l'avenue.
 const wallCar = new Car({ x: 29 * 32 + 16, y: 60 * 32 + 16, angle: 0, model: 'sport' });
 const startX = wallCar.x;

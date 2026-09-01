@@ -18,13 +18,27 @@
 import { TILE } from './config.js';
 import { makeCanvas } from './utils.js';
 
-// --- Physique (arcade, valeurs choisies au volant) -----------------
-const ACCEL_BRAKE = 520;  // décélération quand on freine (px/s²)
-const DRAG = 1.7;         // frein moteur : on revient au point mort seul
-const MAX_REVERSE = 95;   // marche arrière (px/s)
-const TURN = 3.0;         // vitesse de braquage (rad/s)
-const GRIP = 70;          // vitesse à partir de laquelle on braque à plein
-const BUMP = -0.22;       // rebond contre un obstacle (fraction de vitesse)
+// --- Physique ------------------------------------------------------
+// On n'est plus dans l'arcade « je tourne mon sprite » : la voiture a un
+// VOLANT (qui met un temps à braquer et revient au centre), un CAP qui
+// tourne selon un vrai rayon de braquage, et des PNEUS (la vitesse suit
+// le cap avec de l'adhérence, donc elle dérive un peu dans les virages
+// serrés au lieu de pivoter comme un char).
+const ACCEL_BRAKE = 520;   // décélération quand on freine (px/s²)
+const DRAG = 1.4;          // frein moteur : on revient au point mort seul.
+                           // Réglé pour que l'accélération d'un modèle le
+                           // porte juste à sa vitesse de pointe : la
+                           // voiture cesse de « tirer » d'elle-même en
+                           // approchant du rupteur, comme un vrai moteur.
+const MAX_REVERSE = 95;    // marche arrière (px/s)
+const WHEEL_SPEED = 5.2;   // volant : vitesse de braquage (rad/s)
+const WHEEL_RETURN = 4.2;  // volant : rappel au centre quand on lâche
+const MAX_LOCK = 0.42;     // braquage maximum des roues (rad, ~24°)
+const SPEED_SOFTEN = 110;  // direction assistée : à cette allure, les
+                           // roues ne braquent plus qu'à moitié
+const GRIP = 9;            // adhérence des pneus (1/s) : à quel point la
+                           // vitesse rattrape le cap
+const BUMP = -0.22;        // rebond contre un obstacle (fraction de vitesse)
 
 // --- Modèles -------------------------------------------------------
 // `len` / `wid` en pixels : une tuile fait 32 px, donc une berline
@@ -32,17 +46,17 @@ const BUMP = -0.22;       // rebond contre un obstacle (fraction de vitesse)
 export const CAR_MODELS = {
   sedan: {
     id: 'sedan', label: 'berline',
-    len: 46, wid: 26, maxSpeed: 230, accel: 330,
+    len: 46, wid: 26, maxSpeed: 230, accel: 330, handling: 1,
     body: '#e9eaec', roof: '#d5d9dd', glass: '#2b4256', trim: '#3b4046',
   },
   van: {
     id: 'van', label: 'fourgon',
-    len: 54, wid: 28, maxSpeed: 185, accel: 250,
+    len: 54, wid: 28, maxSpeed: 185, accel: 250, handling: 0.84,
     body: '#4a7bad', roof: '#e7ebee', glass: '#2b4256', trim: '#33465c',
   },
   sport: {
     id: 'sport', label: 'sportive',
-    len: 48, wid: 26, maxSpeed: 310, accel: 430,
+    len: 48, wid: 26, maxSpeed: 310, accel: 430, handling: 1.16,
     body: '#c7433a', roof: '#23262b', glass: '#22405c', trim: '#2b2f34',
   },
 };
@@ -57,17 +71,43 @@ export class Car {
     this.y = y;
     this.angle = angle;   // radians, 0 = est
     this.speed = 0;       // px/s, négatif en marche arrière
+    this.wheel = 0;       // angle des roues avant (rad, 0 = tout droit)
+    this.vx = 0;          // vitesse vectorielle : elle glisse un peu dans
+    this.vy = 0;          // les virages, c'est ce qui fait les pneus
     // Profondeur de dessin (trié avec les joueurs, les PNJ et les blocs).
     this.sortY = y;
   }
 
-  // Avance la voiture d'une image. `controls` = { throttle, brake, steer }.
+  // Avance la voiture d'une image.
+  // `controls` = { throttle, brake, steer, sensitivity } — la sensibilité
+  // vient des paramètres du joueur (100 = réglage d'origine).
   update(dt, world, controls = {}) {
     const m = this.model;
     const throttle = controls.throttle || 0;
     const brake = controls.brake || 0;
     const steer = controls.steer || 0;
+    const sens = controls.sensitivity || 1;
 
+    // 1. Le VOLANT. On ne braque pas d'un coup : la roue met un temps à
+    //    tourner et revient au centre toute seule quand on la lâche.
+    //    C'est ce qui rend la voiture douce au lieu de zigzaguer.
+    if (steer) {
+      this.wheel += steer * WHEEL_SPEED * dt;
+    } else {
+      const back = WHEEL_RETURN * (1 + Math.abs(this.speed) / 260);
+      if (Math.abs(this.wheel) <= back * dt) this.wheel = 0;
+      else this.wheel -= Math.sign(this.wheel) * back * dt;
+    }
+    // Direction assistée : plus on roule vite, moins les roues braquent
+    // (comme une vraie direction) — sinon le moindre coup de volant à
+    // pleine vitesse part en tête-à-queue.
+    const lock = MAX_LOCK / (1 + Math.abs(this.speed) / SPEED_SOFTEN) * sens;
+    if (this.wheel > lock) this.wheel = lock;
+    if (this.wheel < -lock) this.wheel = -lock;
+
+    // 2. Les PÉDALES : accélération, frein (puis marche arrière), et le
+    //    frein moteur qui ramène au point mort.
+    this.braking = brake;
     if (throttle) this.speed += m.accel * dt;
     if (brake) this.speed -= ACCEL_BRAKE * dt;
     // Frein moteur. La borne évite qu'une image très longue (à-coup,
@@ -77,23 +117,33 @@ export class Car {
     if (this.speed < -MAX_REVERSE) this.speed = -MAX_REVERSE;
     if (!throttle && !brake && Math.abs(this.speed) < 3) this.speed = 0;
 
-    // On ne braque qu'en roulant : arrêté, le volant ne fait rien. Et on
-    // braque à plein seulement au-dessus d'une certaine allure, sinon la
-    // voiture pivote sur place comme un char.
-    if (steer && Math.abs(this.speed) > 8) {
-      const sens = this.speed >= 0 ? 1 : -1;
-      const grip = Math.min(1, Math.abs(this.speed) / GRIP);
-      this.angle += steer * TURN * dt * sens * (0.45 + 0.55 * grip);
-    }
+    // 3. Le CAP : un vrai rayon de braquage (modèle bicyclette). À l'arrêt
+    //    la voiture ne pivote pas sur place, et plus elle roule vite,
+    //    plus elle tourne large.
+    const wheelbase = m.len * 0.62;
+    const yaw = (this.speed / wheelbase) * Math.tan(this.wheel) * (m.handling || 1);
+    this.angle += yaw * dt;
 
-    const nx = this.x + Math.cos(this.angle) * this.speed * dt;
-    const ny = this.y + Math.sin(this.angle) * this.speed * dt;
+    // 4. Les PNEUS : la vitesse rejoint le cap avec de l'adhérence. Dans
+    //    un virage appuyé la voiture dérive un peu — c'est cette glisse,
+    //    et non un pivot sec, qui donne la sensation de conduire.
+    const k = Math.min(1, GRIP * dt);
+    this.vx += (Math.cos(this.angle) * this.speed - this.vx) * k;
+    this.vy += (Math.sin(this.angle) * this.speed - this.vy) * k;
+
+    // 5. Le DÉPLACEMENT, arrêté net par un mur, un arbre ou l'eau.
+    const nx = this.x + this.vx * dt;
+    const ny = this.y + this.vy * dt;
     let bumped = false;
     if (!this.blocked(world, nx, this.y)) this.x = nx;
     else bumped = true;
     if (!this.blocked(world, this.x, ny)) this.y = ny;
     else bumped = true;
-    if (bumped) this.speed *= BUMP;
+    if (bumped) {
+      this.speed *= BUMP;
+      this.vx *= BUMP;
+      this.vy *= BUMP;
+    }
 
     this.sortY = this.y;
   }
@@ -230,11 +280,44 @@ export function carSprite(model) {
 // Dessine une voiture dans le repère MONDE (la caméra est déjà appliquée).
 export function drawCar(ctx, car) {
   const sprite = carSprite(car.model);
+  const m = car.model;
+  const halfL = m.len / 2;
+  const halfW = m.wid / 2;
   ctx.save();
   ctx.translate(car.x, car.y);
   ctx.rotate(car.angle);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(sprite, -sprite.width / 2, -sprite.height / 2);
+
+  // Les roues avant sont dessinées PAR-DESSUS la carrosserie, braquées du
+  // même angle que le volant et débordant un peu sous l'aile : on VOIT la
+  // direction où l'on va, même de loin.
+  const axle = halfL * 0.6;
+  const wheelL = m.len * 0.26;
+  const wheelW = m.wid * 0.3;
+  for (const sy of [-1, 1]) {
+    ctx.save();
+    ctx.translate(axle, sy * (halfW - wheelW * 0.22));
+    ctx.rotate(car.wheel || 0);
+    ctx.fillStyle = '#14171b';
+    ctx.fillRect(-wheelL / 2, -wheelW / 2, wheelL, wheelW);
+    ctx.fillStyle = 'rgba(150, 158, 168, 0.55)';   // un jante claire, pour lire l'angle
+    ctx.fillRect(-wheelL * 0.18, -wheelW * 0.5, wheelL * 0.36, wheelW);
+    ctx.restore();
+  }
+
+  // Feux de stop : ils s'allument dès qu'on ralentit (frein ou marche
+  // arrière), comme derrière soi sur la route.
+  const braking = (car.braking || 0) > 0.01 || (car.speed || 0) < -1;
+  if (braking) {
+    ctx.fillStyle = 'rgba(226, 58, 46, 0.92)';
+    for (const sy of [-1, 1]) {
+      const y = sy < 0 ? -halfW : halfW - wheelW * 0.9;
+      ctx.fillRect(-halfL, y, wheelL * 0.5, wheelW * 0.9);
+    }
+    ctx.fillStyle = 'rgba(226, 58, 46, 0.16)';
+    ctx.fillRect(-halfL - 7, -halfW, 7, m.wid);
+  }
   ctx.restore();
 }
 

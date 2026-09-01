@@ -1110,7 +1110,46 @@ console.log('\n▶ Conduire : les voitures de Fortune City');
   game.exitCar();
   await frames(2);
 
-  // --- 6) On rentre à Avania : la suite des tests commence sur le port. ---
+  // --- 6) La sensibilité se sent au volant, pas seulement dans le menu. ---
+  const virage = async (pct) => {
+    $('drive-sens-range').value = String(pct);
+    $('drive-sens-range').dispatchEvent(new window.Event('input', { bubbles: true }));
+    // On se place sur une zone dégagée, à l'est du port.
+    car.x = 40 * 32; car.y = 30 * 32; car.angle = 0;
+    car.speed = 0; car.vx = 0; car.vy = 0; car.wheel = 0;
+    game.player.x = car.x; game.player.y = car.y + 34;
+    await frames(30);                // le temps que tombe le délai d'action
+    press('f');
+    await frames(4);
+    hold('z');
+    await frames(60);                 // on prend de l'allure
+    const cap0 = car.angle;
+    hold('d');
+    await frames(60);                 // un coup de volant à droite
+    const braque = Math.abs(car.angle - cap0);
+    release('d'); release('z');
+    press('f');
+    await frames(4);
+    return braque;
+  };
+  const souple = await virage(40);
+  const nerveux = await virage(180);
+  assert(souple > 0.05, `à 40 % la voiture tourne quand même (${souple.toFixed(2)} rad)`);
+  assert(nerveux > souple * 1.4,
+    `à 180 % le volant mord bien plus (${souple.toFixed(2)} vs ${nerveux.toFixed(2)} rad)`);
+
+  // --- 7) La sensibilité se règle dans les paramètres. ---
+  const sensRange = $('drive-sens-range');
+  assert(!!sensRange, 'un curseur de sensibilité existe dans les paramètres');
+  sensRange.value = '60';
+  sensRange.dispatchEvent(new window.Event('input', { bubbles: true }));
+  assert(game.settings.driveSens === 60,
+    `il branche la sensibilité sur le jeu (${game.settings.driveSens} %)`);
+  sensRange.value = '100';
+  sensRange.dispatchEvent(new window.Event('input', { bubbles: true }));
+  assert(game.settings.driveSens === 100, 'et on peut revenir au réglage d\'origine');
+
+  // --- 8) On rentre à Avania : la suite des tests commence sur le port. ---
   game.startCrossing('surface', null, { from: 'Fortune City', to: 'Avania' });
   assert(await until(() => !game.crossing.running, 900), 'le retour traverse aussi');
   await frames(3);

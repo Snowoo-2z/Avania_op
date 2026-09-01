@@ -1290,7 +1290,8 @@ export class Game {
     this.player.y = car.y;
     this.resetMining();
     this.actionCooldown = 0.3;
-    this.notify(`Vous conduisez la ${car.model.label} — Z avance, S freine, Q et D braquent.`);
+    this.notify(`Vous conduisez la ${car.model.label} — Z avance, S freine, Q et D braquent. ` +
+      'Sensibilité du volant dans les paramètres.');
   }
 
   exitCar() {
@@ -1321,12 +1322,19 @@ export class Game {
   }
 
   // Conduite : les touches de déplacement servent de pédales et de volant.
+  // La sensibilité vient des paramètres (100 = réglage d'origine) : en
+  // dessous, les roues braquent moins et la voiture tire tout droit ;
+  // au-dessus, elle devient vive mais demande du doigté.
   updateDriving(dt) {
     const car = this.driving;
+    const sens = this.settings && Number.isFinite(this.settings.driveSens)
+      ? this.settings.driveSens / 100
+      : 1;
     car.update(dt, this.world, {
       throttle: this.input.down('moveUp') ? 1 : 0,
       brake: this.input.down('moveDown') ? 1 : 0,
       steer: (this.input.down('moveRight') ? 1 : 0) - (this.input.down('moveLeft') ? 1 : 0),
+      sensitivity: sens,
     });
     // Le joueur est assis dedans : sa position suit, pour la caméra, le
     // chat de proximité et tout ce qui se mesure au joueur.
