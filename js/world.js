@@ -10,6 +10,7 @@ import { mulberry32 } from './utils.js';
 import { BLOCK_DEFS, ITEM_DEFS, DIGGABLE_FLOOR, SOLID_FLOOR, CROPS } from './blocks.js';
 import { generateCaveLevel, buildCaveEntrance, CAVE } from './cave.js';
 import { buildHarbor } from './harbor.js';
+import { buildAnchorage, ISLANDS } from './islands.js';
 
 const W = WORLD_W;
 const H = WORLD_H;
@@ -28,10 +29,15 @@ export class World {
     // rejointes par le passeur portent leur propre id (voir
     // js/islands.js) : 'surface' reste celle du départ.
     this.id = options.id || (this.kind === 'cave' ? `cave:${this.depth}` : 'surface');
+    // Caractéristiques de l'île : une île nommée (js/islands.js) porte
+    // ses propres réglages, qu'on peut forcer via `options`.
+    const def = ISLANDS[options.id] || null;
     // Île vierge : ni ouvrage (port, entrée de grotte) ni ressource.
     // Sert aux destinations de la traversée tant que la ville n'y est
-    // pas construite (voir js/islands.js).
-    this.bare = !!options.bare;
+    // pas construite.
+    this.bare = options.bare !== undefined ? !!options.bare : !!(def && def.bare);
+    // Mouillage d'une île vierge : une crique et le ferry à l'ancre.
+    this.anchorage = options.anchorage || (def ? def.anchorage : null);
 
     // Couche "sol" (toujours praticable sauf l'eau) : grass / water
     this.floor = new Array(W * H).fill('grass');
@@ -136,6 +142,11 @@ export class World {
     //    trouverait là, pour que l'accès reste toujours dégagé.
     //    Aucune grotte sur une île vierge.
     this.caveEntrance = this.bare ? null : buildCaveEntrance(this);
+
+    // 7) Une île vierge a seulement son mouillage : une crique dans la
+    //    côte et le ferry qui attend. Pas de quai, pas de port (voir
+    //    js/islands.js).
+    if (this.anchorage) buildAnchorage(this, this.anchorage);
   }
 
   setBlock(tx, ty, id) {

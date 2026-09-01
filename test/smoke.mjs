@@ -15,6 +15,7 @@ import {
   ferrymanWaitsHere, ferrySpot,
 } from '../js/ferryman.js';
 import { ISLANDS } from '../js/islands.js';
+import { Crossing, CROSSING_DURATION } from '../js/crossing.js';
 
 let failures = 0;
 function assert(cond, msg) {
@@ -107,11 +108,43 @@ assert(!wFortune.blocks.some((b) => b === 'tree' || b === 'rock' || b === 'ironO
   'aucune ressource naturelle : terrain nu');
 assert(!wFortune.floor.includes('quay') && !wFortune.floor.includes('dock'),
   'ni port ni ponton');
+// Mais le bateau, lui, est bien là : une crique dans la côte, rien d'autre.
+assert(wFortune.blockAt(3, 64) === 'ferry', 'le ferry est à l’ancre dans la crique');
+assert(wFortune.floor[wFortune.idx(3, 64)] === 'water', 'il est à flot');
+const fortuneSpot = ferrySpot('fortune');
+assert(wFortune.floor[wFortune.idx(fortuneSpot.stand.tx, fortuneSpot.stand.ty)] === 'sand',
+  'Gab attend sur la grève, pas sur un quai');
+assert(!wFortune.isSolidTile(fortuneSpot.landing.tx, fortuneSpot.landing.ty),
+  'et on débarque sur une case libre');
 assert(wFortune.caveEntrance === null, 'aucune entrée de grotte');
 assert(!wFortune.isSolidTile(64, 64), 'on y marche (herbe)');
 assert(wFortune.floor[wFortune.idx(0, 0)] === 'water', 'et elle a bien son rivage');
 // L'île de départ, elle, garde son port.
 assert(w1.floor[w1.idx(109, 64)] === 'quay', 'Avania garde son quai');
+
+console.log('▶ La traversée (cinématique)');
+const trip = new Crossing({ duration: 1 });
+let arrived = 0;
+trip.start('Avania', 'Fortune City', () => { arrived += 1; });
+assert(trip.running === true, 'elle démarre');
+assert(trip.progress() === 0, 'à zéro au départ');
+assert(trip.update(0.4) === true, 'elle occupe l’écran pendant la traversée');
+assert(arrived === 0, 'on ne débarque pas avant la fin');
+assert(trip.progress() > 0.3 && trip.progress() < 0.5,
+  `la progression avance (${trip.progress().toFixed(2)})`);
+assert(trip.update(0.7) === false, 'elle se termine d’elle-même');
+assert(arrived === 1, 'le débarquement n’a lieu qu’une fois');
+assert(trip.update(1) === false, 'et plus rien ensuite');
+
+// Le joueur n'est pas prisonnier de la cinématique.
+const quick = new Crossing({ duration: 5 });
+let quickArrived = 0;
+quick.start('Avania', 'Fortune City', () => { quickArrived += 1; });
+assert(quick.skip() === true, 'on peut abréger la traversée');
+assert(quick.update(0.016) === false, 'l’arrivée est alors immédiate');
+assert(quickArrived === 1, 'et on débarque quand même');
+assert(CROSSING_DURATION >= 2 && CROSSING_DURATION <= 6,
+  `une durée raisonnable (${CROSSING_DURATION} s)`);
 
 console.log('▶ Casser / Poser des blocs');
 // trouve un arbre

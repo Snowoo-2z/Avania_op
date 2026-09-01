@@ -24,6 +24,10 @@ export const ISLANDS = {
     seed: 20260822,
     name: 'Fortune City',
     bare: true,
+    // Juste de quoi VOIR le bateau : une crique d'échouage taillée dans
+    // la côte ouest, du sable autour, et le ferry à l'ancre. Aucun quai,
+    // aucun ponton : le port reste à Avania.
+    anchorage: { x0: 2, y0: 60, x1: 5, y1: 68, ferry: { tx: 3, ty: 64 } },
   },
 };
 
@@ -36,4 +40,37 @@ export function islandDef(id) {
 // Toutes les îles connues, île de départ comprise.
 export function islandList() {
   return [HOME_ISLAND, ...Object.keys(ISLANDS)];
+}
+
+// ------------------------------------------------------------
+//  Le mouillage d'une île vierge
+//
+//  De l'eau dans la côte, du sable autour, et le ferry qui attend.
+//  Ce n'est PAS un port : pas de quai, pas de jetée, pas de grue —
+//  juste l'endroit où le bateau tient, sur une île qui attend sa ville.
+// ------------------------------------------------------------
+export function buildAnchorage(world, spec) {
+  const { x0, y0, x1, y1, ferry } = spec;
+
+  // La crique (la bordure de carte, à l'ouest, reste de l'eau).
+  for (let ty = y0; ty <= y1; ty++) {
+    for (let tx = Math.max(2, x0); tx <= x1; tx++) {
+      if (world.inBounds(tx, ty)) world.floor[world.idx(tx, ty)] = 'water';
+    }
+  }
+
+  // Le sable : tout le tour de la crique, côté terre.
+  const ring = [];
+  for (let ty = y0 - 1; ty <= y1 + 1; ty++) ring.push([x1 + 1, ty]);
+  for (let tx = Math.max(2, x0 - 1); tx <= x1 + 1; tx++) {
+    ring.push([tx, y0 - 1], [tx, y1 + 1]);
+  }
+  for (const [tx, ty] of ring) {
+    if (!world.inBounds(tx, ty)) continue;
+    const i = world.idx(tx, ty);
+    if (world.floor[i] !== 'water') world.floor[i] = 'sand';
+  }
+
+  // Et le ferry, à l'ancre.
+  if (ferry) world.setBlock(ferry.tx, ferry.ty, 'ferry');
 }

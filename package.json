@@ -12,6 +12,7 @@
     "test:multiplayer:client": "node test/multiplayer-client.mjs",
     "bench": "node scripts/frame-bench.mjs",
     "preview:port": "node scripts/preview-port.mjs",
+    "preview:island": "node scripts/preview-port.mjs fortune",
     "test:chat": "node test/chat-social.mjs"
   },
   "license": "MIT",

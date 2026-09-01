@@ -756,12 +756,14 @@ async function boot() {
     npc.state.crossings += 1;
     npc.state.earned += price;
     npc.state.discussing = null;
-    // On embarque : le comptoir se referme avant l'appareillage.
+    // On embarque : le comptoir se referme, puis la cinématique de
+    // traversée commence (le débarquement a lieu à la fin, voir
+    // js/crossing.js).
     if (merchantChat.isOpen) merchantChat.close();
     const landing = ferrySpot(dest).landing;
-    if (game.crossToIsland(dest, landing)) {
-      game.notify(`Traversée vers ${islandName(dest)} — ${price} écus. Aller simple.`);
-    }
+    const names = { from: islandName(game.world.id), to: islandName(dest) };
+    if (!game.startCrossing(dest, landing, names)) game.crossToIsland(dest, landing);
+    game.notify(`Cap sur ${islandName(dest)} — ${price} écus. Aller simple.`);
     return true;
   }
   merchantChat.nowFn = () => game.time;
@@ -857,6 +859,13 @@ async function boot() {
   game.uiCallbacks.onTalk = (npc) => (
     npc.kind === FERRYMAN.kind ? openFerryChat(npc) : openMerchantChat(npc)
   );
+  // La traversée occupe tout l'écran : plus rien ne doit rester ouvert
+  // par-dessus, et le jeu reprend son cours une fois débarqué.
+  game.uiCallbacks.onCrossingStart = () => {
+    if (merchantChat.isOpen) merchantChat.close();
+    syncPause();
+  };
+  game.uiCallbacks.onCrossingEnd = () => syncPause();
   game.uiCallbacks.onGearChange = (gear) => walletHUD.setGear(gear);
   game.uiCallbacks.onEnterCave = (world) => {
     syncNpcs(world);

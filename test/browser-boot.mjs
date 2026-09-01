@@ -1073,9 +1073,15 @@ console.log('\n▶ Le passeur : Gab et la traversée vers Fortune City');
   const before = balance();
   assert($('mc-offer-buy').disabled === false, `la bourse suit (${before} écus)`);
   click($('mc-offer-buy'));
-  await frames(6);
-  await new Promise((r) => setTimeout(r, 400));
   await frames(4);
+  // --- 4b) La traversée est une cinématique : la mer défile, et on ne
+  //         débarque qu'à la fin (pas de téléportation sèche). ---
+  assert(game.crossing.running === true, 'la traversée commence (cinématique)');
+  await renderOnce('pendant la traversée');
+  assert(game.world.id === 'surface',
+    'on est encore en mer : le débarquement n\'est pas instantané');
+  assert(await until(() => !game.crossing.running, 900), 'elle se termine d\'elle-même');
+  await frames(2);
   assert(game.world.id === 'fortune', `on débarque sur l\'autre île (${game.world.id})`);
   assert(balance() === before - 20, `la traversée est débitée (${before} → ${balance()})`);
   assert(gab.state.crossings === 1, 'Gab compte sa traversée');
@@ -1101,9 +1107,12 @@ console.log('\n▶ Le passeur : Gab et la traversée vers Fortune City');
   assert(priceOf() === 20, `le retour coûte aussi 20 écus (${priceOf()})`);
   const beforeBack = balance();
   click($('mc-offer-buy'));
-  await frames(6);
-  await new Promise((r) => setTimeout(r, 400));
-  await frames(4);
+  await frames(3);
+  assert(game.crossing.running === true, 'le retour embarque aussi');
+  // On n'est pas prisonnier de la cinématique : une touche et on accoste.
+  press('f');
+  await frames(3);
+  assert(game.crossing.running === false, 'une touche abrège la traversée');
   assert(game.world.id === 'surface', 'et on revient à Avania');
   assert(balance() === beforeBack - 20, 'le retour est débité comme l\'aller');
   pressOnce('Escape');

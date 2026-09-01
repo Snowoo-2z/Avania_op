@@ -1,8 +1,10 @@
 // ============================================================
-//  AVANIA — Aperçu du port (côte est), hors navigateur
-//  Rend la zone du port telle que la verra le joueur : sols,
-//  blocs, ouvrages (grues, conteneurs, phare) et le ferry.
-//  Sortie : preview/port.png (dossier ignoré par Git).
+//  AVANIA — Aperçu du port et des îles, hors navigateur
+//  Rend la zone telle que la verra le joueur : sols, blocs, ouvrages
+//  (grues, conteneurs, phare), le ferry et le passeur.
+//    npm run preview:port            → preview/port.png (Avania)
+//    npm run preview:island          → preview/fortune.png (Fortune City)
+//  Sorties dans preview/ (dossier ignoré par Git).
 // ============================================================
 
 import { createCanvas, Image } from '@napi-rs/canvas';
@@ -30,15 +32,29 @@ import { BLOCK_DEFS } from '../js/blocks.js';
 import { TILE, BLOCK_EXTRUDE } from '../js/config.js';
 import { drawSailor } from '../js/npc/sailor.js';
 import { getNpcNameTag } from '../js/npc/index.js';
-import { ferrySpot } from '../js/ferryman.js';
+import { ferrySpot, ferrymanWaitsHere } from '../js/ferryman.js';
+import { ISLANDS } from '../js/islands.js';
 
-// Fenêtre rendue (tuiles). Assez large pour le bassin et la cour, avec
-// de la marge en haut pour le phare (sprite de 100 px).
-const X0 = 88, Y0 = 40, X1 = 127, Y1 = 88;
+// Fenêtres rendues (tuiles), par vue.
+const VIEWS = {
+  // Le port d'Avania : bassin, cour, phare, ferry.
+  port: { x0: 88, y0: 40, x1: 127, y1: 88, file: 'preview/port.png' },
+  // L'île d'arrivée : la côte ouest, avec le mouillage et Gab.
+  fortune: { x0: 0, y0: 48, x1: 33, y1: 80, file: 'preview/fortune.png' },
+};
+const viewName = process.argv[2] || 'port';
+const view = VIEWS[viewName];
+if (!view) {
+  console.error(`Vue inconnue : « ${viewName} » (attendu : ${Object.keys(VIEWS).join(' | ')})`);
+  process.exit(1);
+}
+const { x0: X0, y0: Y0, x1: X1, y1: Y1 } = view;
 const W = X1 - X0 + 1;
 const H = Y1 - Y0 + 1;
 
-const world = new World();
+const world = viewName === 'fortune'
+  ? new World(ISLANDS.fortune.seed, { id: 'fortune' })
+  : new World();
 buildTileset();
 await loadBoatSprite('assets/boat-ferry.svg');
 
@@ -103,9 +119,9 @@ for (let ty = Y0 - 4; ty <= Y1; ty++) {
   }
 }
 // Le passeur : un PNJ, pas un bloc — il n'est donc pas dans la carte.
-// On le place où le jeu le met (voir js/ferryman.js).
-{
-  const spot = ferrySpot('surface');
+// On le place où le jeu le met, s'il tient cette rive (js/ferryman.js).
+if (ferrymanWaitsHere(world.id)) {
+  const spot = ferrySpot(world.id);
   const sx = spot.stand.tx * TILE + TILE / 2;
   const sy = spot.stand.ty * TILE + TILE;
   drawables.push({
@@ -122,5 +138,5 @@ drawables.sort((a, b) => a.sortY - b.sortY);
 for (const d of drawables) d.run();
 
 mkdirSync('preview', { recursive: true });
-writeFileSync('preview/port.png', canvas.toBuffer('image/png'));
-console.log(`✔ preview/port.png (${canvas.width}×${canvas.height}, tuiles ${X0},${Y0} → ${X1},${Y1})`);
+writeFileSync(view.file, canvas.toBuffer('image/png'));
+console.log(`✔ ${view.file} (${canvas.width}×${canvas.height}, tuiles ${X0},${Y0} → ${X1},${Y1})`);

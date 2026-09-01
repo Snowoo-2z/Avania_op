@@ -34,6 +34,7 @@ import {
 import { CAVE, canDescendTo } from './cave.js';
 import { PORT_SIGNS } from './harbor.js';
 import { islandDef, HOME_ISLAND } from './islands.js';
+import { Crossing } from './crossing.js';
 // Chat de proximité (étape 6) : le nettoyage du texte d'une bulle utilise
 // le même garde-fou que le réseau, pour qu'un message affiché au-dessus
 // d'un joueur ne puisse jamais contenir de caractère de contrôle.
@@ -281,6 +282,9 @@ export class Game {
     // demande puis conservées, comme les niveaux de la grotte — ce
     // qu'on y construit survit aux allers-retours.
     this.islands = new Map();
+    // La cinématique de traversée (voir js/crossing.js). Inerte hors
+    // des traversées : elle ne coûte rien le reste du temps.
+    this.crossing = new Crossing();
     this.player = new Player(this.world.spawn.x, this.world.spawn.y, appearance);
     this.input = new Input();
     this.inventory = new Inventory();
@@ -668,6 +672,15 @@ export class Game {
       }
     }
     if (this.paused) { this.input.endFrame(); return; }
+
+    // Traversée en cours : le joueur est SUR le bateau. Le monde, le
+    // personnage et la faim n'avancent pas pendant la cinématique.
+    if (this.crossing.running) {
+      if (this.input.pressed('interact') || this.input.isDown('Escape')) this.crossing.skip();
+      this.crossing.update(dt);
+      this.input.endFrame();
+      return;
+    }
 
     // Le zoom est un réglage utilisateur (panneau Paramètres).
     // On lerp le zoom pour une transition douce au lieu d'un snap brutal.
@@ -1326,15 +1339,33 @@ export class Game {
     let world = this.islands && this.islands.get(id);
     if (!world) {
       if (!this.islands) this.islands = new Map();
-      world = new World(def.seed, { id: def.id, bare: def.bare });
+      // Le reste (île vierge, mouillage) vient de la fiche de l'île.
+      world = new World(def.seed, { id: def.id });
       this.islands.set(id, world);
     }
     return world;
   }
 
-  // La traversée : on dépose le joueur sur la tuile de débarquement de
-  // l'autre rive. Le paiement est fait par l'appelant (le comptoir du
-  // passeur) : le moteur ne connaît pas la bourse.
+  // La traversée (cinématique) : le joueur embarque, la mer défile, et
+  // il ne débarque qu'à la fin. Le paiement est fait par l'appelant (le
+  // comptoir du passeur) : le moteur ne connaît pas la bourse.
+  startCrossing(islandId, landing, names = {}) {
+    const world = this.getIsland(islandId);
+    if (!world) return false;
+    const tx = landing && Number.isFinite(landing.tx) ? landing.tx : Math.floor(world.spawn.x / TILE);
+    const ty = landing && Number.isFinite(landing.ty) ? landing.ty : Math.floor(world.spawn.y / TILE);
+    // On lâche ce qui était en cours : on appareille.
+    this.resetMining();
+    if (this.uiCallbacks.onCrossingStart) this.uiCallbacks.onCrossingStart();
+    this.crossing.start(names.from || '', names.to || '', () => {
+      this.switchWorld(world, tx * TILE + TILE / 2, ty * TILE + TILE);
+      if (this.uiCallbacks.onCrossingEnd) this.uiCallbacks.onCrossingEnd();
+    });
+    return true;
+  }
+
+  // Débarquement immédiat (sans cinématique) : sert aux tests et aux
+  // téléportations de secours.
   crossToIsland(id, landing) {
     const world = this.getIsland(id);
     if (!world) return false;
@@ -2985,6 +3016,16 @@ export class Game {
     const zoom = cam.zoom;
     const W = this.viewW;
     const H = this.viewH;
+
+    // Cinématique de traversée : elle occupe tout l'écran, le monde
+    // n'est pas rendu du tout (le joueur est en mer, pas sur l'île).
+    if (this.crossing.running) {
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      this.crossing.draw(ctx, W, H);
+      ctx.restore();
+      return;
+    }
 
     ctx.save();
     ctx.imageSmoothingEnabled = false;
