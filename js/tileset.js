@@ -1143,13 +1143,27 @@ function rockFaceTexture(ctx, rng) {
 //
 //  Un immeuble n'est pas un cube texturé de plus : ses murs MONTEnt
 //  au-dessus de leur tuile (option `rise` de BLOCK_TEXTURES) et chaque
-//  face est dessinée pour ce qu'elle est — un mur-rideau vitré côté
-//  sud, un toit-terrasse avec ses équipements sur le dessus.
+//  face est dessinée pour ce qu'elle est — une élévation vitrée côté
+//  sud, un toit-terrasse équipé sur le dessus.
 //
-//  Les étages ont une période de 16 px, qui divise la tuile (32) : les
-//  bandes se raccordent donc exactement d'un bloc à l'autre, même le
-//  long d'un mur de dix blocs de haut où seul le premier montre son toit.
+//  Repères, utiles pour toucher à tout ça :
+//   · les étages ont une période de 16 px (la tuile en fait 32), donc
+//     ils se raccordent d'un bloc à l'autre sur toute la hauteur d'un
+//     mur, même quand un seul bloc montre son toit ;
+//   · le bloc qui montre son toit est le HAUT de l'élévation : son
+//     `info.y` vaut FRONT_Y (26), contre 0 pour un bloc en plein mur.
+//     C'est là que se dessine la corniche ;
+//   · les détails (vitres allumées, balcons, château d'eau ou panneaux
+//     solaires) sortent d'un mélange des coordonnées de la tuile : pas
+//     de hasard, donc deux clients voient exactement la même ville.
 // ------------------------------------------------------------
+
+// Mélange déterministe : mêmes coordonnées → mêmes détails.
+function hash2(a, b) {
+  let h = Math.imul(a + 1013, 0x27d4eb2d) ^ Math.imul(b + 3571, 0x165667b1);
+  h ^= h >>> 15;
+  return h >>> 0;
+}
 
 // Gravier du toit-terrasse : points fixes (sans hasard, sinon deux
 // rendus du même bloc ne seraient pas identiques).
@@ -1158,50 +1172,26 @@ const ROOF_GRIT = [
   [25, 14], [11, 17], [18, 16], [4, 15], [28, 18], [15, 20], [24, 21], [8, 7],
 ];
 
-// Un étage de mur-rideau : dalle de béton, bande vitrée, meneaux, ombre.
-// `y` est en coordonnées de sprite : la phase est commune à tous les
-// blocs du mur (voir plus haut).
-function curtainFloor(ctx, info, y, o) {
-  const yBot = info.y + info.h;
-  if (y >= yBot) return;
-
-  // Dalle d'étage, en tête de bande.
-  ctx.fillStyle = o.slab;
-  ctx.fillRect(info.x, y, info.w, Math.min(3, yBot - y));
-
-  // Bande vitrée.
-  const gy = y + 3;
-  const gh = Math.min(9, yBot - gy);
-  if (gh > 0) {
-    ctx.fillStyle = o.glass;
-    ctx.fillRect(info.x, gy, info.w, gh);
-    // Deux reflets en biais : tracés en escalier de 6 px, sans dégradé
-    // (ce bloc est redessiné à chaque image, autant rester léger).
-    ctx.fillStyle = o.shine;
-    for (const off of [2, 17]) {
-      ctx.beginPath();
-      ctx.moveTo(info.x + off, gy + gh);
-      ctx.lineTo(info.x + off + 6, gy + gh);
-      ctx.lineTo(info.x + off + 6 + gh, gy);
-      ctx.lineTo(info.x + off + gh, gy);
-      ctx.closePath();
-      ctx.fill();
-    }
-    // Meneaux verticaux : la trame du mur-rideau.
-    ctx.fillStyle = o.mullion;
-    for (let x = info.x + 7; x < info.x + info.w; x += 8) ctx.fillRect(x, gy, 1, gh);
-  }
-
-  // Joint creux sous la dalle : l'ombre portée de l'étage.
-  if (y + 12 < yBot) {
-    ctx.fillStyle = 'rgba(0,0,0,0.24)';
-    ctx.fillRect(info.x, y + 12, info.w, 2);
-  }
+// Un caisson posé sur le toit : capot clair, flanc à l'ombre, ombre portée.
+function roofBox(ctx, x, y, w, h, o) {
+  ctx.fillStyle = 'rgba(0,0,0,0.20)';
+  ctx.fillRect(x + 1, y + h, w, 2);
+  ctx.fillStyle = o.unit;
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = withAlpha('#ffffff', 0.32);
+  ctx.fillRect(x, y, w, 1);
+  ctx.fillRect(x, y, 1, h);
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.fillRect(x + w - 1, y + 1, 1, h - 1);
 }
 
-// Toit-terrasse : dalle de béton gravillonnée, acrotère, groupe de
-// climatisation et verrière.
+// Toit-terrasse : dalle gravillonnée, acrotère mouluré, et les
+// équipements — climatisation, plus un ouvrage tiré de la tuile.
 function roofTerrace(ctx, info, o) {
+  const tx = info.tx || 0;
+  const ty = info.ty || 0;
+  const r = hash2(tx, ty);
+
   ctx.fillStyle = o.deck;
   ctx.fillRect(info.x, info.y, info.w, info.h);
 
@@ -1210,38 +1200,137 @@ function roofTerrace(ctx, info, o) {
     if (gy < info.h - 1 && gx < info.w - 1) ctx.fillRect(info.x + gx, info.y + gy, 2, 1);
   }
 
-  // Acrotère : arête claire au nord/ouest, ombre au sud/est.
-  ctx.fillStyle = withAlpha('#ffffff', 0.45);
-  ctx.fillRect(info.x, info.y, info.w, 1);
-  ctx.fillRect(info.x, info.y, 1, info.h);
-  ctx.fillStyle = 'rgba(0,0,0,0.20)';
-  ctx.fillRect(info.x, info.y + info.h - 1, info.w, 1);
+  // Acrotère : arête claire au nord/ouest, ombre portée à l'intérieur.
+  ctx.fillStyle = withAlpha('#ffffff', 0.5);
+  ctx.fillRect(info.x, info.y, info.w, 2);
+  ctx.fillRect(info.x, info.y, 2, info.h);
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillRect(info.x + 2, info.y + info.h - 2, info.w - 2, 2);
+  ctx.fillRect(info.x + info.w - 2, info.y + 2, 2, info.h - 2);
 
-  // Groupe de climatisation : capot clair, grille sombre, ombre portée.
-  if (info.h >= 17 && info.w >= 20) {
-    const ux = info.x + 5, uy = info.y + 5, uw = 12, uh = 9;
-    ctx.fillStyle = 'rgba(0,0,0,0.22)';
-    ctx.fillRect(ux + 2, uy + uh, uw, 2);
-    ctx.fillStyle = o.unit;
-    ctx.fillRect(ux, uy, uw, uh);
+  if (info.h < 16 || info.w < 18) return;
+
+  // Groupe de climatisation : capot, grille et ombre.
+  roofBox(ctx, info.x + 4, info.y + 4, 11, 8, o);
+  ctx.fillStyle = o.vent;
+  ctx.fillRect(info.x + 6, info.y + 6, 7, 4);
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  for (let x = info.x + 7; x < info.x + 12; x += 2) ctx.fillRect(x, info.y + 6, 1, 4);
+
+  // Le second ouvrage change d'une tuile à l'autre : une toiture
+  // d'immeuble n'est jamais tout à fait la même.
+  const kind = r % 3;
+  if (kind === 0) {
+    // Château d'eau : fût sombre, couvercle clair.
+    const cx = info.x + 19, cy = info.y + 3;
+    ctx.fillStyle = 'rgba(0,0,0,0.20)';
+    ctx.fillRect(cx + 1, cy + 14, 7, 2);
+    ctx.fillStyle = o.tank;
+    ctx.fillRect(cx, cy, 7, 14);
     ctx.fillStyle = withAlpha('#ffffff', 0.30);
-    ctx.fillRect(ux, uy, uw, 1);
+    ctx.fillRect(cx, cy, 7, 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(cx + 5, cy + 2, 2, 12);
+  } else if (kind === 1) {
+    // Gaine de désenfumage.
+    roofBox(ctx, info.x + 19, info.y + 6, 7, 7, o);
     ctx.fillStyle = o.vent;
-    ctx.fillRect(ux + 2, uy + 2, uw - 4, uh - 4);
-    ctx.fillStyle = 'rgba(0,0,0,0.30)';
-    for (let x = ux + 4; x < ux + uw - 2; x += 3) ctx.fillRect(x, uy + 3, 1, uh - 6);
+    ctx.fillRect(info.x + 21, info.y + 8, 3, 3);
+  } else {
+    // Panneaux solaires : deux cadres bleutés, inclinés vers le sud.
+    for (let i = 0; i < 2; i++) {
+      const px = info.x + 18 + i * 5;
+      ctx.fillStyle = o.panel;
+      ctx.fillRect(px, info.y + 4, 4, 11);
+      ctx.fillStyle = withAlpha('#ffffff', 0.22);
+      ctx.fillRect(px, info.y + 4, 4, 1);
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      for (let y = info.y + 7; y < info.y + 14; y += 3) ctx.fillRect(px, y, 4, 1);
+    }
+  }
+}
+
+// Une élévation complète : corniche en tête, étages vitrés, soubassement.
+// `info.y` vaut FRONT_Y sur le bloc de tête (haut du mur) et 0 ailleurs :
+// c'est ce qui place la corniche au bon endroit.
+function drawElevation(ctx, info, o) {
+  const yTop = info.y;
+  const yBot = info.y + info.h;
+  const tx = info.tx || 0;
+  const ty = info.ty || 0;
+
+  for (let y = 0; y < yBot; y += 16) {
+    const floor = y / 16;
+    const h = hash2(tx * 31 + floor, ty * 17 + floor * 7);
+
+    // Dalle d'étage.
+    if (y + 3 <= yBot) {
+      ctx.fillStyle = o.slab;
+      ctx.fillRect(info.x, y, info.w, Math.min(3, yBot - y));
+    }
+
+    const gy = y + 3;
+    const gh = Math.min(9, yBot - gy);
+    if (gh > 0) {
+      ctx.fillStyle = o.glass;
+      ctx.fillRect(info.x, gy, info.w, gh);
+
+      // Une vitre allumée de temps en temps : la ville vit, même de jour.
+      if (h % 5 === 0) {
+        const pane = (h >>> 3) % 4;
+        ctx.fillStyle = o.lit;
+        ctx.fillRect(info.x + pane * 8 + 1, gy + 1, 6, Math.max(1, gh - 3));
+      }
+
+      // Deux reflets en biais : escalier de 6 px, sans dégradé (ce bloc
+      // est redessiné à chaque image, autant rester léger).
+      ctx.fillStyle = o.shine;
+      for (const off of [2, 17]) {
+        ctx.beginPath();
+        ctx.moveTo(info.x + off, gy + gh);
+        ctx.lineTo(info.x + off + 6, gy + gh);
+        ctx.lineTo(info.x + off + 6 + gh, gy);
+        ctx.lineTo(info.x + off + gh, gy);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Meneaux verticaux : la trame du mur-rideau.
+      ctx.fillStyle = o.mullion;
+      for (let x = info.x + 7; x < info.x + info.w; x += 8) ctx.fillRect(x, gy, 1, gh);
+
+      // Balcon, sur un étage sur trois : garde-corps et barreaux.
+      if (h % 3 === 0 && gh >= 5) {
+        ctx.fillStyle = withAlpha('#ffffff', 0.22);
+        ctx.fillRect(info.x, gy + gh - 2, info.w, 1);
+        for (let x = info.x + 2; x < info.x + info.w - 1; x += 4) ctx.fillRect(x, gy + gh - 4, 1, 3);
+      }
+    }
+
+    // Joint creux sous la dalle : l'ombre portée de l'étage.
+    if (y + 12 < yBot) {
+      ctx.fillStyle = 'rgba(0,0,0,0.24)';
+      ctx.fillRect(info.x, y + 12, info.w, 2);
+    }
   }
 
-  // Verrière, le long du bord est.
-  const sx = info.x + info.w - 6, sy = info.y + 3;
-  const sh = Math.min(14, info.h - 6);
-  if (sh > 4) {
-    ctx.fillStyle = o.skylight;
-    ctx.fillRect(sx, sy, 4, sh);
-    ctx.fillStyle = withAlpha('#ffffff', 0.35);
-    ctx.fillRect(sx, sy, 1, sh);
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    for (let y = sy + 3; y < sy + sh; y += 5) ctx.fillRect(sx, y, 4, 1);
+  // Corniche : bandeau saillant, arête claire et ombre dessous.
+  if (yTop >= 16) {
+    ctx.fillStyle = o.cornice;
+    ctx.fillRect(info.x, yTop, info.w, 5);
+    ctx.fillStyle = withAlpha('#ffffff', 0.42);
+    ctx.fillRect(info.x, yTop, info.w, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.fillRect(info.x, yTop + 5, info.w, 2);
+  }
+
+  // Soubassement : le pied du mur, plus sombre, ancre le bâtiment au sol.
+  const baseTop = Math.max(yTop, yBot - 7);
+  if (yBot - baseTop > 0) {
+    ctx.fillStyle = o.plinth;
+    ctx.fillRect(info.x, baseTop, info.w, yBot - baseTop);
+    ctx.fillStyle = withAlpha('#ffffff', 0.16);
+    ctx.fillRect(info.x, baseTop, info.w, 1);
   }
 }
 
@@ -1249,41 +1338,44 @@ function roofTerrace(ctx, info, o) {
 function modernWallTexture(ctx, face, info) {
   if (face === 'top') {
     roofTerrace(ctx, info, {
-      deck: '#c9d1d7', grit: '#8d979f', unit: '#aeb7be', vent: '#6f7a82', skylight: '#7fb0cf',
+      deck: '#c9d1d7', grit: '#8d979f', unit: '#aeb7be', vent: '#6f7a82',
+      tank: '#9aa3aa', panel: '#2f4f6d',
     });
     return;
   }
-  for (let y = 0; y < info.y + info.h; y += 16) {
-    curtainFloor(ctx, info, y, {
-      slab: '#e7ecef',
-      glass: '#2b4c68',
-      shine: 'rgba(198,232,250,0.20)',
-      mullion: 'rgba(240,247,251,0.55)',
-    });
-  }
-  // Le biseau est reste dans l'ombre.
+  drawElevation(ctx, info, {
+    cornice: '#eef2f4',
+    slab: '#e7ecef',
+    glass: '#2b4c68',
+    shine: 'rgba(198,232,250,0.20)',
+    mullion: 'rgba(240,247,251,0.55)',
+    lit: 'rgba(255,206,120,0.50)',
+    plinth: '#a3aeb5',
+  });
   if (face === 'right') {
     ctx.fillStyle = 'rgba(0,0,0,0.20)';
     ctx.fillRect(info.x, info.y, info.w, info.h);
   }
 }
 
-// Tour vitrée : mur-rideau intégral, reflets froids (style tour de verre).
+// Tour vitrée : mur-rideau intégral, reflets froids, trois blocs de haut.
 function glassTowerTexture(ctx, face, info) {
   if (face === 'top') {
     roofTerrace(ctx, info, {
-      deck: '#5b6874', grit: '#2f3943', unit: '#7a8894', vent: '#3b4650', skylight: '#8fc4e4',
+      deck: '#5b6874', grit: '#2f3943', unit: '#7a8894', vent: '#3b4650',
+      tank: '#6c7883', panel: '#1b3a52',
     });
     return;
   }
-  for (let y = 0; y < info.y + info.h; y += 16) {
-    curtainFloor(ctx, info, y, {
-      slab: '#cdd9e2',
-      glass: '#17364f',
-      shine: 'rgba(190,228,250,0.28)',
-      mullion: 'rgba(233,244,252,0.72)',
-    });
-  }
+  drawElevation(ctx, info, {
+    cornice: '#dbe6ee',
+    slab: '#cdd9e2',
+    glass: '#17364f',
+    shine: 'rgba(190,228,250,0.28)',
+    mullion: 'rgba(233,244,252,0.72)',
+    lit: 'rgba(255,214,140,0.55)',
+    plinth: '#39454f',
+  });
   if (face === 'right') {
     ctx.fillStyle = 'rgba(0,0,0,0.24)';
     ctx.fillRect(info.x, info.y, info.w, info.h);
@@ -1307,8 +1399,8 @@ const DRAWERS = {
   plank:     (c) => drawBlockTile(c, BLOCK_DEFS.plank.color, plankTexture),
   brick:     (c) => drawBlockTile(c, BLOCK_DEFS.brick.color, brickTexture),
   glass:     (c) => drawBlockTile(c, BLOCK_DEFS.glass.color, glassTexture, { alpha: 0.78, shine: 0.45 }),
-  wallModern: (c) => drawBlockTile(c, BLOCK_DEFS.wallModern.color, modernWallTexture, { rise: 14 }),
-  wallGlass:  (c) => drawBlockTile(c, BLOCK_DEFS.wallGlass.color, glassTowerTexture, { rise: 26 }),
+  wallModern: (c) => drawBlockTile(c, BLOCK_DEFS.wallModern.color, modernWallTexture, { rise: 30 }),
+  wallGlass:  (c) => drawBlockTile(c, BLOCK_DEFS.wallGlass.color, glassTowerTexture, { rise: 46 }),
   sandBlock: (c) => drawBlockTile(c, BLOCK_DEFS.sandBlock.color, sandBlockTexture),
   dirtBlock: (c) => drawBlockTile(c, BLOCK_DEFS.dirtBlock.color, dirtBlockTexture),
   ironBlock: (c) => drawBlockTile(c, BLOCK_DEFS.ironBlock.color, ironBlockTexture),
@@ -2323,8 +2415,8 @@ const BLOCK_TEXTURES = {
   brick:     { texture: brickTexture, opts: {} },
   // Immeubles de Fortune City : `rise` = de combien le sommet du bloc
   // monte au-dessus de sa tuile (voir drawBlockTileConnected).
-  wallModern: { texture: modernWallTexture, opts: { rise: 14 } },
-  wallGlass:  { texture: glassTowerTexture, opts: { rise: 26 } },
+  wallModern: { texture: modernWallTexture, opts: { rise: 30 } },
+  wallGlass:  { texture: glassTowerTexture, opts: { rise: 46 } },
   glass:     { texture: glassTexture, opts: { alpha: 0.78, shine: 0.45 } },
   sandBlock: { texture: sandBlockTexture, opts: {} },
   dirtBlock: { texture: dirtBlockTexture, opts: {} },
@@ -2404,6 +2496,12 @@ function drawBlockTileConnected(ctx, x, y, color, texture, faces, opts = {}) {
   const fy0 = showTop ? topBottom : 0;
   const fh = H - fy0;
 
+  // Coordonnées du bloc, transmises aux textures : les détails (vitres
+  // allumées, balcons, équipements de toit) se déduisent de la tuile,
+  // jamais d'un tirage — tout le monde voit la même ville.
+  const blockTx = Math.round(x / S);
+  const blockTy = Math.round((y + BLOCK_EXTRUDE + (opts.rise || 0)) / S);
+
   ctx.save();
   ctx.translate(x, y);
   if (opts.alpha != null) ctx.globalAlpha = opts.alpha;
@@ -2448,7 +2546,9 @@ function drawBlockTileConnected(ctx, x, y, color, texture, faces, opts = {}) {
     ctx.beginPath();
     ctx.rect(px, py, pw, ph);
     ctx.clip();
-    texture(ctx, face, { x: px, y: py, w: pw, h: ph, top, side, dark: sideDark });
+    texture(ctx, face, {
+      x: px, y: py, w: pw, h: ph, top, side, dark: sideDark, tx: blockTx, ty: blockTy,
+    });
     ctx.restore();
   };
   if (showTop) paintFace('top', x0, topY0, fw, topH);
