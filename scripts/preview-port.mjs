@@ -28,6 +28,9 @@ import {
 } from '../js/tileset.js';
 import { BLOCK_DEFS } from '../js/blocks.js';
 import { TILE, BLOCK_EXTRUDE } from '../js/config.js';
+import { drawSailor } from '../js/npc/sailor.js';
+import { getNpcNameTag } from '../js/npc/index.js';
+import { ferrySpot } from '../js/ferryman.js';
 
 // Fenêtre rendue (tuiles). Assez large pour le bassin et la cour, avec
 // de la marge en haut pour le phare (sprite de 100 px).
@@ -99,6 +102,22 @@ for (let ty = Y0 - 4; ty <= Y1; ty++) {
     });
   }
 }
+// Le passeur : un PNJ, pas un bloc — il n'est donc pas dans la carte.
+// On le place où le jeu le met (voir js/ferryman.js).
+{
+  const spot = ferrySpot('surface');
+  const sx = spot.stand.tx * TILE + TILE / 2;
+  const sy = spot.stand.ty * TILE + TILE;
+  drawables.push({
+    sortY: sy,
+    run() {
+      drawSailor(ctx, sx, sy, { facing: spot.facing, walkPhase: 0, scale: 1, shadow: true });
+      const tag = getNpcNameTag('Gab', 'Le Passeur');
+      ctx.drawImage(tag.canvas, sx - tag.w / 2, sy - 34 - tag.h, tag.w, tag.h);
+    },
+  });
+}
+
 drawables.sort((a, b) => a.sortY - b.sortY);
 for (const d of drawables) d.run();
 

@@ -33,6 +33,7 @@ import {
 } from './mobs/index.js';
 import { CAVE, canDescendTo } from './cave.js';
 import { PORT_SIGNS } from './harbor.js';
+import { islandDef, HOME_ISLAND } from './islands.js';
 // Chat de proximité (étape 6) : le nettoyage du texte d'une bulle utilise
 // le même garde-fou que le réseau, pour qu'un message affiché au-dessus
 // d'un joueur ne puisse jamais contenir de caractère de contrôle.
@@ -276,6 +277,10 @@ export class Game {
     // puis conservés (la grotte ne change pas entre deux descentes).
     this.surfaceWorld = this.world;
     this.caveLevels = new Map();
+    // Les autres îles (rejointes par le passeur) : générées à la
+    // demande puis conservées, comme les niveaux de la grotte — ce
+    // qu'on y construit survit aux allers-retours.
+    this.islands = new Map();
     this.player = new Player(this.world.spawn.x, this.world.spawn.y, appearance);
     this.input = new Input();
     this.inventory = new Inventory();
@@ -1255,8 +1260,8 @@ export class Game {
       this.signData = new Map();
       this.sellerData = new Map();
       this.droppedItems = [];
-      // Pas d'animaux sous terre.
-      this.mobs = world.kind === 'cave' ? [] : spawnMobs(world);
+      // Pas d'animaux sous terre, ni sur une île vierge.
+      this.mobs = (world.kind === 'cave' || world.bare) ? [] : spawnMobs(world);
       for (const mob of this.mobs) mob.dy = DRAW_MOB;
       this._nextMobId = Math.max(this._nextMobId || 0, this.mobs.length);
     }
@@ -1308,6 +1313,35 @@ export class Game {
       this.caveLevels.set(depth, world);
     }
     return world;
+  }
+
+  // Île d'arrivée du passeur (voir js/islands.js). Générée une seule
+  // fois puis conservée pour toute la partie.
+  getIsland(id) {
+    // L'île de départ n'est pas générée à la demande : elle existe
+    // depuis le lancement et garde tout ce qu'on y a construit.
+    if (id === HOME_ISLAND) return this.surfaceWorld;
+    const def = islandDef(id);
+    if (!def) return null;
+    let world = this.islands && this.islands.get(id);
+    if (!world) {
+      if (!this.islands) this.islands = new Map();
+      world = new World(def.seed, { id: def.id, bare: def.bare });
+      this.islands.set(id, world);
+    }
+    return world;
+  }
+
+  // La traversée : on dépose le joueur sur la tuile de débarquement de
+  // l'autre rive. Le paiement est fait par l'appelant (le comptoir du
+  // passeur) : le moteur ne connaît pas la bourse.
+  crossToIsland(id, landing) {
+    const world = this.getIsland(id);
+    if (!world) return false;
+    const tx = landing && Number.isFinite(landing.tx) ? landing.tx : Math.floor(world.spawn.x / TILE);
+    const ty = landing && Number.isFinite(landing.ty) ? landing.ty : Math.floor(world.spawn.y / TILE);
+    this.switchWorld(world, tx * TILE + TILE / 2, ty * TILE + TILE);
+    return true;
   }
 
   enterCave() {

@@ -20,12 +20,18 @@ export class World {
     this.rng = mulberry32(seed);
     this.w = W;
     this.h = H;
-    // 'surface' (l'île) ou 'cave' (un niveau souterrain).
+    // 'surface' (une île) ou 'cave' (un niveau souterrain).
     this.kind = options.kind || 'surface';
     this.depth = options.depth || 0;
     // Identifiant stable, utilisé par le jeu pour retrouver l'état
-    // (fours, coffres, objets au sol) d'une dimension.
-    this.id = this.kind === 'cave' ? `cave:${this.depth}` : 'surface';
+    // (fours, coffres, objets au sol) d'une dimension. Les îles
+    // rejointes par le passeur portent leur propre id (voir
+    // js/islands.js) : 'surface' reste celle du départ.
+    this.id = options.id || (this.kind === 'cave' ? `cave:${this.depth}` : 'surface');
+    // Île vierge : ni ouvrage (port, entrée de grotte) ni ressource.
+    // Sert aux destinations de la traversée tant que la ville n'y est
+    // pas construite (voir js/islands.js).
+    this.bare = !!options.bare;
 
     // Couche "sol" (toujours praticable sauf l'eau) : grass / water
     this.floor = new Array(W * H).fill('grass');
@@ -88,40 +94,48 @@ export class World {
       }
     }
 
-    // 3) ressources naturelles éparpillées (arbres + rochers + minerai de fer)
-    for (let ty = 3; ty < H - 3; ty++) {
-      for (let tx = 3; tx < W - 3; tx++) {
-        const r = this.rng();
-        if (r < 0.030) this.setBlock(tx, ty, 'tree');
-        else if (r < 0.050) this.setBlock(tx, ty, 'rock');
-        // Minerai de fer volontairement RARE (~0,22 % des cases) :
-        // chaque filon compte, le fer reste une ressource précieuse.
-        else if (r < 0.0522) this.setBlock(tx, ty, 'ironOre');
+    // 3) ressources naturelles éparpillées (arbres + rochers + minerai de fer).
+    //    Une île vierge n'en reçoit aucune : c'est un terrain nu.
+    if (!this.bare) {
+      for (let ty = 3; ty < H - 3; ty++) {
+        for (let tx = 3; tx < W - 3; tx++) {
+          const r = this.rng();
+          if (r < 0.030) this.setBlock(tx, ty, 'tree');
+          else if (r < 0.050) this.setBlock(tx, ty, 'rock');
+          // Minerai de fer volontairement RARE (~0,22 % des cases) :
+          // chaque filon compte, le fer reste une ressource précieuse.
+          else if (r < 0.0522) this.setBlock(tx, ty, 'ironOre');
+        }
       }
     }
 
     // 4) on garantit quelques ressources près du spawn pour démarrer
-    const cx = Math.floor(this.spawn.x / TILE);
-    const cy = Math.floor(this.spawn.y / TILE);
-    this.setBlock(cx + 3, cy + 2, 'tree');
-    this.setBlock(cx - 3, cy + 3, 'tree');
-    this.setBlock(cx + 4, cy - 2, 'rock');
-    this.setBlock(cx - 4, cy - 3, 'rock');
-    this.setBlock(cx - 2, cy + 4, 'rock');
-    this.setBlock(cx + 2, cy - 4, 'ironOre');
-    this.setBlock(cx - 3, cy - 4, 'ironOre');
+    //    (pas sur une île vierge).
+    if (!this.bare) {
+      const cx = Math.floor(this.spawn.x / TILE);
+      const cy = Math.floor(this.spawn.y / TILE);
+      this.setBlock(cx + 3, cy + 2, 'tree');
+      this.setBlock(cx - 3, cy + 3, 'tree');
+      this.setBlock(cx + 4, cy - 2, 'rock');
+      this.setBlock(cx - 4, cy - 3, 'rock');
+      this.setBlock(cx - 2, cy + 4, 'rock');
+      this.setBlock(cx + 2, cy - 4, 'ironOre');
+      this.setBlock(cx - 3, cy - 4, 'ironOre');
+    }
 
     // 5) Le port, sur la côte EST : une darse creusée dans la carte, deux
     //    jetées, un quai, une cour de stockage et le ferry amarré
-//    (voir js/harbor.js).
+    //    (voir js/harbor.js).
     //    C'est le seul ouvrage pré-construit de l'île : un point de
-    //    ralliement, et le départ des traversées.
-    buildHarbor(this);
+    //    ralliement, et le départ des traversées. Les îles vierges
+    //    attendent leur ville.
+    if (!this.bare) buildHarbor(this);
 
     // 6) La falaise et l'entrée de la grotte, à un endroit fixe de l'île.
     //    Placée en dernier : elle écrase toute ressource qui se
     //    trouverait là, pour que l'accès reste toujours dégagé.
-    this.caveEntrance = buildCaveEntrance(this);
+    //    Aucune grotte sur une île vierge.
+    this.caveEntrance = this.bare ? null : buildCaveEntrance(this);
   }
 
   setBlock(tx, ty, id) {

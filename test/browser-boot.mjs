@@ -1031,5 +1031,85 @@ assert($('phone').classList.contains('hidden'), 'Échap raccroche le téléphone
 assert(game.paused === false, 'et rend la main au jeu');
 await renderOnce('après le téléphone');
 
+
+console.log('\n▶ Le passeur : Gab et la traversée vers Fortune City');
+{
+  const balance = () => window.__wallet.money;
+  const priceOf = () => parseInt($('mc-offer-price').textContent.replace(/\D/g, ''), 10);
+  const waitOffer = () => until(() => !$('mc-offer').classList.contains('hidden'), 400);
+
+  // --- 1) Gab attend sur le quai du port (côte est). ---
+  assert(game.world.kind === 'surface', 'on part d\'Avania');
+  const gab = game.npcs.find((n) => n.kind === 'ferryman');
+  assert(!!gab, 'Gab attend sur le quai');
+  assert(gab.name === 'Gab' && gab.title === 'Le Passeur',
+    `c\'est bien le passeur (« ${gab.name}, ${gab.title} »)`);
+  assert(gab.state.destination === 'fortune', 'il mène à Fortune City');
+
+  // --- 2) On lui parle : le tarif est annoncé d'emblée. ---
+  game.player.x = gab.x;
+  game.player.y = gab.y + 40;
+  await frames(4);
+  game.uiCallbacks.onTalk(gab);
+  await frames(4);
+  assert(!$('merchant-chat').classList.contains('hidden'), 'le comptoir s\'ouvre');
+  assert($('mc-name').textContent === 'Gab', 'à son nom');
+  assert(await waitOffer(), 'il propose la traversée sans qu\'on la demande');
+  assert(priceOf() === 20, `au tarif fixe de 20 écus (${priceOf()})`);
+  assert(/Payer/.test($('mc-offer-buy').textContent),
+    `le bouton propose de payer (« ${$('mc-offer-buy').textContent} »)`);
+  // Pas d'aller-retour : l'offre le précise.
+  assert(/aller simple/i.test($('mc-offer-desc').textContent),
+    `et rappelle que c\'est un aller simple (« ${$('mc-offer-desc').textContent} »)`);
+
+  // --- 3) Le tarif n'est pas négociable. ---
+  $('mc-input').value = '10 écus, aller retour, et on est amis ?';
+  $('mc-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  await waitOffer();
+  await frames(2);
+  assert(priceOf() === 20, `après marchandage, le prix ne bouge pas (${priceOf()} écus)`);
+
+  // --- 4) On paie : on débarque de l'autre côté. ---
+  const before = balance();
+  assert($('mc-offer-buy').disabled === false, `la bourse suit (${before} écus)`);
+  click($('mc-offer-buy'));
+  await frames(6);
+  await new Promise((r) => setTimeout(r, 400));
+  await frames(4);
+  assert(game.world.id === 'fortune', `on débarque sur l\'autre île (${game.world.id})`);
+  assert(balance() === before - 20, `la traversée est débitée (${before} → ${balance()})`);
+  assert(gab.state.crossings === 1, 'Gab compte sa traversée');
+  assert($('merchant-chat').classList.contains('hidden'), 'le comptoir s\'est refermé');
+  assert(!game.world.isSolidAt(game.player.x, game.player.y), 'on débarque sur case libre');
+  await renderOnce('sur l\'autre rive');
+
+  // --- 5) Fortune City est vide pour l'instant (terrain nu). ---
+  assert(!game.world.blocks.some((b) => b === 'tree' || b === 'rock'),
+    'aucun arbre ni rocher : l\'île attend sa ville');
+  assert(!game.world.floor.includes('quay'), 'et elle n\'a pas encore de port');
+
+  // --- 6) Pas d'aller-retour : Gab attend sur la grève, le retour se paie. ---
+  const back = game.npcs.find((n) => n.kind === 'ferryman');
+  assert(!!back, 'Gab est aussi de l\'autre côté');
+  assert(back.state.destination === 'surface', 'et il ramène à Avania');
+  game.player.x = back.x;
+  game.player.y = back.y + 40;
+  await frames(4);
+  game.uiCallbacks.onTalk(back);
+  await frames(4);
+  assert(await waitOffer(), 'il propose le retour');
+  assert(priceOf() === 20, `le retour coûte aussi 20 écus (${priceOf()})`);
+  const beforeBack = balance();
+  click($('mc-offer-buy'));
+  await frames(6);
+  await new Promise((r) => setTimeout(r, 400));
+  await frames(4);
+  assert(game.world.id === 'surface', 'et on revient à Avania');
+  assert(balance() === beforeBack - 20, 'le retour est débité comme l\'aller');
+  pressOnce('Escape');
+  await frames(3);
+  assert($('merchant-chat').classList.contains('hidden'), 'Échap referme le comptoir');
+}
+
 console.log(failures === 0 ? '\n✅ Intégration navigateur OK' : `\n❌ ${failures} échec(s)`);
 process.exit(failures === 0 ? 0 : 1);

@@ -6,6 +6,7 @@
 
 import { drawGentleman } from './gentleman.js';
 import { drawMaskMerchant, drawArmorMerchant } from './merchant-look.js';
+import { drawSailor } from './sailor.js';
 import { getNpcNameTag, drawSpeechHint } from './base.js';
 
 export {
@@ -15,12 +16,14 @@ export {
   drawMaskMerchant, drawArmorMerchant,
   MASK_MERCHANT_APPEARANCE, ARMOR_MERCHANT_APPEARANCE,
 } from './merchant-look.js';
+export { drawSailor, GAB_APPEARANCE, GAB_NAME } from './sailor.js';
 export { getNpcNameTag, drawSpeechHint, getNpcShadow } from './base.js';
 
 const RENDERERS = {
   gentleman: drawGentleman,
   merchantMask: drawMaskMerchant,
   merchantArmor: drawArmorMerchant,
+  ferryman: drawSailor,
 };
 
 // Dessine un PNJ (corps + étiquette de nom + éventuel nuage « … »).

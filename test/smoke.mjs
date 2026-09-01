@@ -10,6 +10,11 @@ import { appearanceColors } from '../js/character.js';
 import { TILE, BLOCK_EXTRUDE } from '../js/config.js';
 import { BLOCK_DEFS, ITEM_DEFS, CONTAINER_KINDS } from '../js/blocks.js';
 import { treeVariantAt, treeDropCount, treeBreakTime, TREE_VARIANTS, resolveBlockFaces } from '../js/tileset.js';
+import {
+  FERRY_PRICE, FERRYMAN, createFerryState, crossingOffer, parseFerryReply,
+  ferrymanWaitsHere, ferrySpot,
+} from '../js/ferryman.js';
+import { ISLANDS } from '../js/islands.js';
 
 let failures = 0;
 function assert(cond, msg) {
@@ -64,6 +69,49 @@ assert(w1.blockAt(110, 51) === 'bollard', 'les bollards bordent le quai');
 assert(!w1.isSolidTile(110, 51), 'on marche sur un bollard');
 assert(w1.floor[w1.idx(105, 60)] === 'dirt', 'la cour de stockage est en terre');
 assert(CONTAINER_KINDS.includes(w1.blockAt(105, 52)), 'les conteneurs sont empilés dans la cour');
+
+console.log('▶ Le passeur (Gab)');
+// Tarif : fixe, aller simple. Rien à négocier.
+assert(FERRY_PRICE === 20, 'la traversée coûte 20 écus');
+const gab = createFerryState({ from: 'surface' });
+assert(gab.destination === 'fortune', 'depuis Avania, Gab mène à Fortune City');
+const gabOffer = crossingOffer('fortune');
+assert(gabOffer.price === 20 && gabOffer.payLabel === 'Payer',
+  'le tarif est affiché, sans négociation');
+assert(/aller simple/i.test(gabOffer.desc), 'et précisé aller simple');
+
+// Le modèle n'a pas la main sur la caisse : un prix annoncé est ramené
+// au tarif (c'est le jeu qui encaisse).
+const cheated = parseFerryReply('Allez, 5 écus et on part.\n/cross 5', gab);
+assert(cheated.offer && cheated.offer.price === 20,
+  'un prix inventé par le modèle est ramené à 20 écus');
+assert(cheated.speech === 'Allez, 5 écus et on part.', 'seul le texte du modèle est gardé');
+const out = parseFerryReply('Passe ton chemin.\n/out', gab);
+assert(out.kicked === true && !out.offer, '/out met fin à la conversation');
+
+// Pas d'aller-retour : de l'autre rive, la traversée repart.
+const gabBack = createFerryState({ from: 'fortune' });
+assert(gabBack.destination === 'surface', 'depuis Fortune City, il ramène à Avania');
+assert(ferrymanWaitsHere('surface') && ferrymanWaitsHere('fortune'),
+  'Gab tient les deux rives');
+assert(!ferrymanWaitsHere('cave:1'), 'il ne descend pas dans la grotte');
+const spot = ferrySpot('surface');
+assert(w1.floor[w1.idx(spot.stand.tx, spot.stand.ty)] === 'quay',
+  'sur Avania il attend sur le quai');
+
+// L'île d'arrivée : vierge, en attendant la ville.
+const fortuneDef = ISLANDS.fortune;
+const wFortune = new World(fortuneDef.seed, { id: 'fortune', bare: true });
+assert(wFortune.id === 'fortune', 'l’île porte son identifiant de zone');
+assert(!wFortune.blocks.some((b) => b === 'tree' || b === 'rock' || b === 'ironOre'),
+  'aucune ressource naturelle : terrain nu');
+assert(!wFortune.floor.includes('quay') && !wFortune.floor.includes('dock'),
+  'ni port ni ponton');
+assert(wFortune.caveEntrance === null, 'aucune entrée de grotte');
+assert(!wFortune.isSolidTile(64, 64), 'on y marche (herbe)');
+assert(wFortune.floor[wFortune.idx(0, 0)] === 'water', 'et elle a bien son rivage');
+// L'île de départ, elle, garde son port.
+assert(w1.floor[w1.idx(109, 64)] === 'quay', 'Avania garde son quai');
 
 console.log('▶ Casser / Poser des blocs');
 // trouve un arbre

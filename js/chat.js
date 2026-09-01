@@ -291,19 +291,24 @@ export class ChatPanel {
       box.classList.add('hidden');
       return;
     }
+    // Une offre n'est pas forcément un objet de l'inventaire : le
+    // passeur propose une traversée (label / desc / icône fournis).
     const def = ITEM_DEFS[offer.item] || {};
     box.classList.remove('hidden');
-    if (this.el.offerName) this.el.offerName.textContent = def.label || offer.item;
+    if (this.el.offerName) this.el.offerName.textContent = offer.label || def.label || offer.item;
     if (this.el.offerDesc) {
-      this.el.offerDesc.textContent = def.maxDepth
-        ? `Profondeur max ${def.maxDepth} · ${def.flavor || ''}`
-        : (def.flavor || '');
+      this.el.offerDesc.textContent = offer.desc !== undefined
+        ? offer.desc
+        : (def.maxDepth
+          ? `Profondeur max ${def.maxDepth} · ${def.flavor || ''}`
+          : (def.flavor || ''));
     }
     if (this.el.offerPrice) this.el.offerPrice.textContent = `${offer.price}`;
 
     // Icône de l'objet (sprite du jeu, pas d'emoji).
     if (this.el.offerIcon) {
-      const sprite = getItemSprite(offer.item);
+      const sprite = (typeof offer.icon === 'function' ? offer.icon() : offer.icon)
+        || getItemSprite(offer.item);
       this.el.offerIcon.innerHTML = '';
       if (sprite) {
         const img = document.createElement('img');
@@ -324,7 +329,7 @@ export class ChatPanel {
         : true;
       this.el.offerBuy.disabled = !affordable;
       this.el.offerBuy.textContent = affordable
-        ? `Acheter — ${offer.price} écus`
+        ? `${offer.payLabel || 'Acheter'} — ${offer.price} écus`
         : `Il vous manque de l'argent (${offer.price} écus)`;
     }
   }
@@ -332,14 +337,17 @@ export class ChatPanel {
   acceptOffer() {
     const offer = this.pendingOffer;
     if (!offer || !this.merchant) return;
-    const done = this.onBuy(this.merchant, offer);
-    if (done === false) return; // achat refusé (bourse vide…)
+    const npc = this.merchant;
+    const done = this.onBuy(npc, offer);
+    if (done === false) return; // refusé (bourse vide…)
     this.pendingOffer = null;
     this.renderOffer();
     // Le marchand encaisse : il redevient disponible pour la suite.
-    this.addMessage('merchant', this.merchant.state.id === 'aldric'
-      ? 'Voilà. Bonne descente.'
-      : 'Parfait, merci bien ! Revenez me voir si vous manquez de quelque chose.');
+    this.addMessage('merchant', typeof this.boughtMessage === 'function'
+      ? this.boughtMessage(npc, offer)
+      : (npc.state.id === 'aldric'
+        ? 'Voilà. Bonne descente.'
+        : 'Parfait, merci bien ! Revenez me voir si vous manquez de quelque chose.'));
     this.focusInput();
   }
 

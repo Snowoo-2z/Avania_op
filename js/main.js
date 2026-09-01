@@ -33,7 +33,13 @@ import { MERCHANTS, createMerchantState } from './merchant.js';
 import {
   askMerchant, greetMerchant, interpretCommands, resetNegotiation,
 } from './merchant-ai.js';
-import { drawMaskMerchant, drawArmorMerchant } from './npc/index.js';
+import { drawMaskMerchant, drawArmorMerchant, drawSailor } from './npc/index.js';
+import { getObjectSprite } from './tileset.js';
+import {
+  FERRYMAN, FERRY_PRICE, createFerryState, ferrySpot, ferryDestination,
+  ferrymanWaitsHere, islandName,
+} from './ferryman.js';
+import { askFerryman, greetFerryman, interpretFerryReply } from './ferryman-ai.js';
 import { MultiplayerClient } from './net.js';
 
 // Remplace tous les emojis de l'interface par de vraies icônes SVG.
@@ -188,13 +194,13 @@ async function boot() {
   const game = new Game(canvas, appearance, settings);
 
   // Sprite du ferry : le SVG du port remplace le repli procédural dès
-  // qu'il est chargé. Facultatif — en cas d'échec le jeu garde le repli.
-  try {
-    const { loadBoatSprite } = await import('./tileset.js');
-    await loadBoatSprite();
-  } catch (err) {
-    console.warn('AVANIA: sprite du ferry indisponible', err);
-  }
+  // qu'il est chargé. Le chargement est LANCÉ, pas attendu : un fichier
+  // absent, un serveur lent ou une image qui n'émet jamais d'évènement
+  // ne doit pas bloquer le démarrage — le repli procédural est déjà en
+  // place et reste affiché entretemps (voir loadBoatSprite).
+  import('./tileset.js')
+    .then(({ loadBoatSprite }) => loadBoatSprite())
+    .catch((err) => console.warn('AVANIA: sprite du ferry indisponible', err));
 
   // Déclarés AVANT le client réseau : il peut recevoir un message
   // ('chatHistory', 'social') pendant les `await` du démarrage, donc
@@ -300,7 +306,12 @@ async function boot() {
     onSocial: (payload) => phonePanel?.applySocial(payload),
   });
   game.otherPlayers = multiplayer.players;
-  game.uiCallbacks.onZoneChange = (zone) => multiplayer.setZone(zone);
+  game.uiCallbacks.onZoneChange = (zone) => {
+    multiplayer.setZone(zone);
+    // Le monde affiché vient de changer (grotte, remontée ou traversée) :
+    // les PNJ du lieu prennent la place des précédents.
+    if (typeof syncNpcs === 'function') syncNpcs(game.world);
+  };
   game.uiCallbacks.onNetUpdate = (dt, localPlayer) => {
     multiplayer.update(dt, localPlayer);
     game.otherPlayers = multiplayer.players;
@@ -601,6 +612,55 @@ async function boot() {
   merchantStates.gaspard.seed = 9137;
   merchantStates.aldric.seed = 4421;
 
+  // --- Gab, le passeur. Un seul état pour les deux rives : c'est le
+  //     même homme qui fait la navette, et il se souvient des
+  //     traversées qu'il a vendues. ---
+  const ferryState = createFerryState({ day: wallet.day, from: 'surface' });
+  ferryState.seed = 9139;
+
+  function makeFerrymanNpc(worldId) {
+    const spot = ferrySpot(worldId);
+    const px = spot.stand.tx * TILE + TILE / 2;
+    const py = spot.stand.ty * TILE + TILE;
+    return {
+      kind: FERRYMAN.kind,
+      name: FERRYMAN.name,
+      title: FERRYMAN.title,
+      x: px,
+      y: py,
+      facing: spot.facing,
+      walkPhase: 0,
+      moving: false,
+      scale: 1,
+      talkable: true,
+      showHint: true,
+      time: 0,
+      sortY: py,
+      state: ferryState,
+      draw: drawSailor,
+    };
+  }
+
+  // Gab attend sur le quai d'Avania… et sur la grève de l'autre rive.
+  // Rien dans la grotte : il ne quitte pas son bateau.
+  function syncFerryman(world) {
+    for (const npc of [...game.npcs]) {
+      if (npc.kind === FERRYMAN.kind) game.removeNpc(npc);
+    }
+    const id = (world && world.id) || 'surface';
+    if (!ferrymanWaitsHere(id)) return;
+    // Il sait toujours d'où il parle : la destination suit.
+    ferryState.from = id;
+    ferryState.destination = ferryDestination(id);
+    game.addNpc(makeFerrymanNpc(id));
+  }
+
+  // Les PNJ d'un monde : les deux marchands et le passeur.
+  function syncNpcs(world) {
+    syncMerchants(world);
+    syncFerryman(world);
+  }
+
   function makeMerchantNpc(id, spot) {
     const def = MERCHANTS[id];
     return {
@@ -639,40 +699,78 @@ async function boot() {
   // --- Comptoir de négociation ---
   merchantChat = new ChatPanel(document.getElementById('merchant-chat'), {
     onOpenChange: () => syncPause(),
-    onSend: async (npc, text, history) => askMerchant({
-      state: npc.state,
-      message: text,
-      history,
-      defs: ITEM_DEFS,
-      now: game.time,
-    }),
-    onBuy: (npc, offer) => {
-      const def = ITEM_DEFS[offer.item] || {};
-      if (!game.inventory.canAdd(offer.item, 1)) {
-        game.notify('Inventaire plein : faites de la place.');
-        return false;
-      }
-      if (!wallet.spend(offer.price, `Achat : ${def.label || offer.item}`)) {
-        game.notify(`Il vous manque ${offer.price - wallet.money} écus.`);
-        return false;
-      }
-      game.inventory.add(offer.item, 1);
-      // Le marchand encaisse : sa mémoire de vendeur s'enrichit, ce qui
-      // nourrira ses prochaines répliques.
-      npc.state.sales.push({ item: offer.item, price: offer.price, day: npc.state.day });
-      npc.state.soldCount += 1;
-      npc.state.discussing = null;
-      npc.state.currentPrice = null;
-      npc.state.patienceLeft = Math.min(
-        MERCHANTS[npc.state.id].patience, npc.state.patienceLeft + 2,
-      );
-      game.notify(`${def.label || offer.item} acheté — ${offer.price} écus.`);
-      return true;
-    },
+    onSend: async (npc, text, history) => (npc.kind === FERRYMAN.kind
+      ? askFerryman({
+        state: npc.state,
+        message: text,
+        history,
+        now: game.time,
+        money: wallet.money,
+      })
+      : askMerchant({
+        state: npc.state,
+        message: text,
+        history,
+        defs: ITEM_DEFS,
+        now: game.time,
+      })),
+    onBuy: (npc, offer) => (npc.kind === FERRYMAN.kind
+      ? payCrossing(npc, offer)
+      : buyFromMerchant(npc, offer)),
   });
+
+  // Achat au marchand (le prix vient de la négociation).
+  function buyFromMerchant(npc, offer) {
+    const def = ITEM_DEFS[offer.item] || {};
+    if (!game.inventory.canAdd(offer.item, 1)) {
+      game.notify('Inventaire plein : faites de la place.');
+      return false;
+    }
+    if (!wallet.spend(offer.price, `Achat : ${def.label || offer.item}`)) {
+      game.notify(`Il vous manque ${offer.price - wallet.money} écus.`);
+      return false;
+    }
+    game.inventory.add(offer.item, 1);
+    // Le marchand encaisse : sa mémoire de vendeur s'enrichit, ce qui
+    // nourrira ses prochaines répliques.
+    npc.state.sales.push({ item: offer.item, price: offer.price, day: npc.state.day });
+    npc.state.soldCount += 1;
+    npc.state.discussing = null;
+    npc.state.currentPrice = null;
+    npc.state.patienceLeft = Math.min(
+      MERCHANTS[npc.state.id].patience, npc.state.patienceLeft + 2,
+    );
+    game.notify(`${def.label || offer.item} acheté — ${offer.price} écus.`);
+    return true;
+  }
+
+  // Traversée : le tarif est FIXE, c'est le jeu qui tient la caisse
+  // (jamais le modèle). Aller simple : le retour se paiera aussi.
+  function payCrossing(npc, offer) {
+    const dest = npc.state.destination || ferryDestination(game.world.id);
+    const price = FERRY_PRICE;
+    if (!wallet.spend(price, `Traversée : ${islandName(dest)}`)) {
+      game.notify(`Il vous manque ${price - wallet.money} écus.`);
+      return false;
+    }
+    npc.state.crossings += 1;
+    npc.state.earned += price;
+    npc.state.discussing = null;
+    // On embarque : le comptoir se referme avant l'appareillage.
+    if (merchantChat.isOpen) merchantChat.close();
+    const landing = ferrySpot(dest).landing;
+    if (game.crossToIsland(dest, landing)) {
+      game.notify(`Traversée vers ${islandName(dest)} — ${price} écus. Aller simple.`);
+    }
+    return true;
+  }
   merchantChat.nowFn = () => game.time;
   merchantChat.canAfford = (price) => wallet.canAfford(price);
-  merchantChat.interpret = (reply, npc) => {
+  merchantChat.interpret = (reply, npc) => (npc.kind === FERRYMAN.kind
+    ? interpretFerry(reply, npc)
+    : interpretMerchant(reply, npc));
+
+  function interpretMerchant(reply, npc) {
     const parsed = interpretCommands(reply, npc.state, ITEM_DEFS);
     if (parsed.kicked) {
       // Il met le joueur dehors : plus de discussion possible pendant
@@ -682,7 +780,38 @@ async function boot() {
       game.notify(`${npc.name} ne veut plus vous parler.`);
     }
     return parsed;
-  };
+  }
+
+  // Le passeur : la traversée est une offre comme une autre, mais le
+  // prix ne bouge jamais. Son icône, c'est le ferry du port.
+  let ferryIconCanvas;
+  function ferryIcon() {
+    if (ferryIconCanvas === undefined) {
+      const sprite = getObjectSprite('ferry');
+      ferryIconCanvas = sprite ? sprite.canvas : null;
+    }
+    return ferryIconCanvas;
+  }
+
+  function interpretFerry(reply, npc) {
+    const parsed = interpretFerryReply(reply, npc.state);
+    if (parsed.offer) parsed.offer.icon = ferryIcon();
+    if (parsed.kicked) {
+      // Il retourne à son bateau et vous plante là un moment.
+      npc.state.cooldownUntil = game.time + 45;
+      npc.state.patienceLeft = 0;
+      npc.state.mood = 0;
+      game.notify(`${npc.name} retourne préparer son bateau.`);
+    }
+    return parsed;
+  }
+
+  // Petite phrase de clôture après encaissement.
+  merchantChat.boughtMessage = (npc) => (npc.kind === FERRYMAN.kind
+    ? 'Allez, embarque. On largue les amarres.'
+    : (npc.state.id === 'aldric'
+      ? 'Voilà. Bonne descente.'
+      : 'Parfait, merci bien ! Revenez me voir si vous manquez de quelque chose.'));
 
   function openMerchantChat(npc) {
     const state = npc.state;
@@ -703,25 +832,49 @@ async function boot() {
     syncPause();
   }
 
+  // Le passeur ne négocie rien : le tarif est annoncé d'emblée et le
+  // bouton d'embarquement apparaît avec son accueil.
+  function openFerryChat(npc) {
+    const state = npc.state;
+    const cooldownLeft = state.cooldownUntil ? state.cooldownUntil - game.time : 0;
+    if (cooldownLeft > 0) {
+      game.notify(`${npc.name} vous ignore encore ${Math.ceil(cooldownLeft)} s.`);
+      return;
+    }
+    if (state.patienceLeft <= 0) {
+      state.patienceLeft = state.patience || 6;
+      state.mood = 1;
+    }
+    merchantChat.open(npc);
+    merchantChat.updateStatus();
+    if (!merchantChat.el.log.children.length) {
+      merchantChat.playGreeting(greetFerryman(state, game.time, wallet.money));
+    }
+    syncPause();
+  }
+
   // --- Rappels du moteur de jeu ---
-  game.uiCallbacks.onTalk = (npc) => openMerchantChat(npc);
+  game.uiCallbacks.onTalk = (npc) => (
+    npc.kind === FERRYMAN.kind ? openFerryChat(npc) : openMerchantChat(npc)
+  );
   game.uiCallbacks.onGearChange = (gear) => walletHUD.setGear(gear);
   game.uiCallbacks.onEnterCave = (world) => {
-    syncMerchants(world);
+    syncNpcs(world);
     walletHUD.setDepth(world);
   };
   game.uiCallbacks.onExitCave = (world) => {
-    syncMerchants(world);
+    syncNpcs(world);
     walletHUD.setDepth(world);
   };
   game.uiCallbacks.onDescend = (world) => {
-    syncMerchants(world);
+    syncNpcs(world);
     walletHUD.setDepth(world);
     if (merchantChat.isOpen) merchantChat.close();
   };
-  // Le parvis de la surface a aussi ses marchands : on les place dès le
-  // démarrage, sans attendre un aller-retour dans la grotte.
-  syncMerchants(game.world);
+  // Le parvis de la surface a aussi ses marchands, et le quai son
+  // passeur : on les place dès le démarrage, sans attendre un
+  // aller-retour dans la grotte.
+  syncNpcs(game.world);
 
   // --- Invite d'interaction : suit la cible dans le monde ---
   const promptEl = document.getElementById('interact-prompt');
