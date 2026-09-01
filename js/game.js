@@ -33,6 +33,7 @@ import {
 } from './mobs/index.js';
 import { CAVE, canDescendTo } from './cave.js';
 import { PORT_SIGNS } from './harbor.js';
+import { FORTUNE_SIGNS } from './city.js';
 import { islandDef, HOME_ISLAND } from './islands.js';
 import { Crossing } from './crossing.js';
 // Chat de proximité (étape 6) : le nettoyage du texte d'une bulle utilise
@@ -2810,7 +2811,9 @@ export class Game {
   // les casser). Un texte déjà enregistré n'est jamais écrasé.
   seedPortSigns() {
     if (this.world.kind !== 'surface') return;
-    for (const s of PORT_SIGNS) {
+    // Chaque île a sa propre signalétique (port d'Avania / Fortune City).
+    const signs = this.world.id === 'fortune' ? FORTUNE_SIGNS : PORT_SIGNS;
+    for (const s of signs) {
       if (!this.world.inBounds(s.tx, s.ty)) continue;
       const i = this.world.idx(s.tx, s.ty);
       if (this.world.blocks[i] !== 'sign') continue;

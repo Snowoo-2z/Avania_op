@@ -37,7 +37,7 @@ export const FERRYMAN = {
   //   landing : la tuile où le joueur apparaît en débarquant
   spots: {
     surface: { stand: { tx: 109, ty: 61 }, landing: { tx: 108, ty: 61 }, facing: 'right' },
-    fortune: { stand: { tx: 6, ty: 64 }, landing: { tx: 7, ty: 64 }, facing: 'left' },
+    fortune: { stand: { tx: 21, ty: 64 }, landing: { tx: 22, ty: 64 }, facing: 'left' },
   },
   // De l'autre côté : Avania ↔ Fortune City.
   destination: { surface: 'fortune', fortune: 'surface' },

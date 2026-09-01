@@ -24,10 +24,9 @@ export const ISLANDS = {
     seed: 20260822,
     name: 'Fortune City',
     bare: true,
-    // Juste de quoi VOIR le bateau : une crique d'échouage taillée dans
-    // la côte ouest, du sable autour, et le ferry à l'ancre. Aucun quai,
-    // aucun ponton : le port reste à Avania.
-    anchorage: { x0: 2, y0: 60, x1: 5, y1: 68, ferry: { tx: 3, ty: 64 } },
+    // Elle a une VILLE, générée quartier par quartier (js/city.js).
+    // Pour l'instant : le quartier du port et les plages.
+    city: true,
   },
 };
 

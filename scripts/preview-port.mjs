@@ -40,7 +40,7 @@ const VIEWS = {
   // Le port d'Avania : bassin, cour, phare, ferry.
   port: { x0: 88, y0: 40, x1: 127, y1: 88, file: 'preview/port.png' },
   // L'île d'arrivée : la côte ouest, avec le mouillage et Gab.
-  fortune: { x0: 0, y0: 48, x1: 33, y1: 80, file: 'preview/fortune.png' },
+  fortune: { x0: 0, y0: 42, x1: 42, y1: 90, file: 'preview/fortune.png' },
 };
 const viewName = process.argv[2] || 'port';
 const view = VIEWS[viewName];

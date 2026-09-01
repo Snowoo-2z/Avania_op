@@ -106,16 +106,37 @@ const wFortune = new World(fortuneDef.seed, { id: 'fortune', bare: true });
 assert(wFortune.id === 'fortune', 'l’île porte son identifiant de zone');
 assert(!wFortune.blocks.some((b) => b === 'tree' || b === 'rock' || b === 'ironOre'),
   'aucune ressource naturelle : terrain nu');
-assert(!wFortune.floor.includes('quay') && !wFortune.floor.includes('dock'),
-  'ni port ni ponton');
-// Mais le bateau, lui, est bien là : une crique dans la côte, rien d'autre.
-assert(wFortune.blockAt(3, 64) === 'ferry', 'le ferry est à l’ancre dans la crique');
-assert(wFortune.floor[wFortune.idx(3, 64)] === 'water', 'il est à flot');
+// Et elle a son port : bassin, quai, jetées, grues, phare.
+assert(wFortune.floor[wFortune.idx(21, 64)] === 'quay', 'Fortune City a son quai');
+assert(!wFortune.isSolidTile(21, 64), 'on y marche');
+assert(wFortune.floor[wFortune.idx(10, 64)] === 'water', 'devant, le bassin');
+assert(wFortune.floor[wFortune.idx(10, 48)] === 'dock', 'la jetée nord est un ponton');
+assert(wFortune.isSolidTile(10, 47), 'avec son parapet de pierre');
+assert(wFortune.floor[wFortune.idx(19, 48)] === 'dock', 'la jetée rejoint le quai');
+assert(wFortune.blockAt(18, 64) === 'ferry', 'le ferry y est amarré, à flot');
+assert(wFortune.floor[wFortune.idx(18, 64)] === 'water', 'dans le bassin, pas sur le quai');
+assert(wFortune.blockAt(3, 48) === 'lighthouse', 'un phare marque l’entrée du port');
+assert(wFortune.blockAt(29, 57) === 'brick', 'la capitainerie est debout');
 const fortuneSpot = ferrySpot('fortune');
-assert(wFortune.floor[wFortune.idx(fortuneSpot.stand.tx, fortuneSpot.stand.ty)] === 'sand',
-  'Gab attend sur la grève, pas sur un quai');
+assert(wFortune.floor[wFortune.idx(fortuneSpot.stand.tx, fortuneSpot.stand.ty)] === 'quay',
+  'Gab attend sur le quai');
 assert(!wFortune.isSolidTile(fortuneSpot.landing.tx, fortuneSpot.landing.ty),
   'et on débarque sur une case libre');
+// Les plages bordent la côte, de part et d'autre du port.
+assert(wFortune.floor[wFortune.idx(3, 30)] === 'sand', 'plage au nord du port');
+assert(wFortune.floor[wFortune.idx(3, 100)] === 'sand', 'plage au sud du port');
+// Le reste de l'île attend les autres quartiers.
+assert(!wFortune.blocks.some((b) => b === 'tree' || b === 'rock'), 'toujours aucun arbre ni rocher');
+
+// Une île sans port garde la possibilité d'un simple mouillage.
+const wCove = new World(4242, {
+  id: 'cove',
+  bare: true,
+  anchorage: { x0: 2, y0: 60, x1: 5, y1: 68, ferry: { tx: 3, ty: 64 } },
+});
+assert(wCove.floor[wCove.idx(3, 64)] === 'water', 'une crique peut être creusée');
+assert(wCove.blockAt(3, 64) === 'ferry', 'le ferry y est à l’ancre');
+assert(wCove.floor[wCove.idx(6, 64)] === 'sand', 'avec du sable autour');
 assert(wFortune.caveEntrance === null, 'aucune entrée de grotte');
 assert(!wFortune.isSolidTile(64, 64), 'on y marche (herbe)');
 assert(wFortune.floor[wFortune.idx(0, 0)] === 'water', 'et elle a bien son rivage');

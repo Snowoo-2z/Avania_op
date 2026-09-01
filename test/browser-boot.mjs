@@ -1091,8 +1091,9 @@ console.log('\n▶ Le passeur : Gab et la traversée vers Fortune City');
 
   // --- 5) Fortune City est vide pour l'instant (terrain nu). ---
   assert(!game.world.blocks.some((b) => b === 'tree' || b === 'rock'),
-    'aucun arbre ni rocher : l\'île attend sa ville');
-  assert(!game.world.floor.includes('quay'), 'et elle n\'a pas encore de port');
+    'aucun arbre ni rocher : le reste de l\'île attend les autres quartiers');
+  assert(game.world.floor.includes('quay'), 'et elle a bien son port');
+  assert(game.world.floor.includes('sand'), 'avec sa plage');
 
   // --- 6) Pas d'aller-retour : Gab attend sur la grève, le retour se paie. ---
   const back = game.npcs.find((n) => n.kind === 'ferryman');

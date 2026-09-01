@@ -11,6 +11,7 @@ import { BLOCK_DEFS, ITEM_DEFS, DIGGABLE_FLOOR, SOLID_FLOOR, CROPS } from './blo
 import { generateCaveLevel, buildCaveEntrance, CAVE } from './cave.js';
 import { buildHarbor } from './harbor.js';
 import { buildAnchorage, ISLANDS } from './islands.js';
+import { buildFortuneCity } from './city.js';
 
 const W = WORLD_W;
 const H = WORLD_H;
@@ -38,6 +39,8 @@ export class World {
     this.bare = options.bare !== undefined ? !!options.bare : !!(def && def.bare);
     // Mouillage d'une île vierge : une crique et le ferry à l'ancre.
     this.anchorage = options.anchorage || (def ? def.anchorage : null);
+    // Quartiers construits (Fortune City) : voir js/city.js.
+    this.city = options.city !== undefined ? options.city : !!(def && def.city);
 
     // Couche "sol" (toujours praticable sauf l'eau) : grass / water
     this.floor = new Array(W * H).fill('grass');
@@ -147,6 +150,10 @@ export class World {
     //    côte et le ferry qui attend. Pas de quai, pas de port (voir
     //    js/islands.js).
     if (this.anchorage) buildAnchorage(this, this.anchorage);
+
+    // 8) Les quartiers de la ville, par-dessus le terrain nu (voir
+    //    js/city.js) : pour l'instant le port et les plages.
+    if (this.city) buildFortuneCity(this);
   }
 
   setBlock(tx, ty, id) {
